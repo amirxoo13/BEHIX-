@@ -274,7 +274,15 @@ export async function startMic() {
   micStream = stream;
   chunks = [];
   const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
-  recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  try {
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  } catch (err) {
+    // BUG-06: اگر ضبط‌کننده ساخته نشد، میکروفون باز نماند.
+    stream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+    recorder = null;
+    throw err;
+  }
   recorder.ondataavailable = (e) => {
     if (e.data.size) chunks.push(e.data);
   };

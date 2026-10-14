@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { playSfx, playUrl, stopAll } from "./audio";
+import { CAST } from "./characters";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, KEY, newId } from "./project";
 import type { ActorSlot, Aspect, Emotion, Shot } from "./types";
 
@@ -13,6 +14,7 @@ type Persist = {
 };
 
 let onDone: (() => void) | null = null;
+let booted = false;
 let armed = -1;
 
 export function setPlayDone(fn: (() => void) | null) {
@@ -83,11 +85,58 @@ type Studio = {
   setExporting: (v: boolean) => void;
 };
 
+const DEFAULT_CHAR = { a: CAST[0].id, b: CAST[1]?.id ?? CAST[0].id };
+
+function isShotLike(v: unknown): v is Shot {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.id === "string" && typeof o.duration === "number" && Number.isFinite(o.duration) && o.duration > 0;
+}
+
+// نما حذف نمی‌شود: بازیگرِ نبود/نامعتبر با شخصیت پیش‌فرضِ موجود در CAST ترمیم می‌شود و بقیهٔ داده‌ها حفظ می‌شوند.
+function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
+  const o = v && typeof v === "object" ? (v as Partial<ActorSlot>) : {};
+  const known = typeof o.charId === "string" && CAST.some((c) => c.id === o.charId);
+  return {
+    ...o,
+    charId: known ? (o.charId as string) : DEFAULT_CHAR[slot],
+    emotion: typeof o.emotion === "string" ? o.emotion : "neutral",
+    action: typeof o.action === "string" ? o.action : "idle",
+  } as ActorSlot;
+}
+
+function revoke(url: string | undefined) {
+  if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
+const BG_IDS = ["living", "kitchen", "yard", "cafe", "streetDay", "streetNight", "park", "car"];
+const CAMERA_IDS = ["wide", "medium", "closeLeft", "closeRight", "push", "comic"];
+const SPEAKERS = ["a", "b", "none"];
+const SFX_IDS = ["none", "beep", "slap", "shock", "crickets", "rimshot", "horn", "clink", "door"];
+
+function str(v: unknown, fallback: string): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+function oneOf<T extends string>(v: unknown, allowed: string[], fallback: T): T {
+  return typeof v === "string" && allowed.includes(v) ? (v as T) : fallback;
+}
+
+// PERS-01c: همهٔ فیلدهای متنی/شمارشی نمای ذخیره‌شده با پیش‌فرض پر می‌شوند تا UI (مثلاً dialogue.trim) کرش نکند.
 function normalize(shot: Shot): Shot {
+  const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
   return {
     ...shot,
-    heading: shot.heading || "داخلی. مکان — روز",
-    actionLine: shot.actionLine || "",
+    heading: str(shot.heading, "") || "داخلی. مکان — روز",
+    actionLine: str(shot.actionLine, ""),
+    dialogue: str(shot.dialogue, ""),
+    background: oneOf(shot.background, BG_IDS, "living"),
+    camera: oneOf(shot.camera, CAMERA_IDS, "wide"),
+    speaker: oneOf(shot.speaker, SPEAKERS, "a"),
+    sfx: oneOf(shot.sfx, SFX_IDS, "none"),
+    pitch,
+    actorA: repairActor(shot.actorA, "a"),
+    actorB: repairActor(shot.actorB, "b"),
   };
 }
 
@@ -133,13 +182,18 @@ export const useStudio = create<Studio>((set, get) => ({
   status: "",
   recording: false,
   boot: () => {
+    // Shell در هر route دوباره mount می‌شود؛ بارگذاری فقط یک‌بار تا انتخاب نما ریست نشود (BUG-01).
+    if (booted) return;
+    booted = true;
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return;
       const data = JSON.parse(raw) as Partial<Persist>;
-      if (!Array.isArray(data.shots) || data.shots.length === 0) return;
+      if (!Array.isArray(data.shots)) return;
+      const shots = data.shots.filter(isShotLike);
+      if (shots.length === 0) return;
       set({
-        shots: data.shots.map((shot) => normalize(shot)),
+        shots: shots.map((shot) => normalize(shot)),
         aspect: data.aspect ?? "wide",
         showRig: !!data.showRig,
         title: data.title || DEFAULT_TITLE,
@@ -203,6 +257,7 @@ export const useStudio = create<Studio>((set, get) => ({
     if (s.shots.length < 2) return;
     const next = s.shots.filter((_, idx) => idx !== i);
     const urls = { ...s.audioUrls };
+    revoke(urls[s.shots[i].id]);
     delete urls[s.shots[i].id];
     const selected = Math.max(0, Math.min(s.selected, next.length - 1));
     set({ shots: next, selected, audioUrls: urls });
@@ -233,6 +288,8 @@ export const useStudio = create<Studio>((set, get) => ({
   },
   setAudio: (id, url) => {
     const audioUrls = { ...get().audioUrls };
+    // فقط هنگام جایگزینی revoke می‌شود؛ در حذف (url=null) فراخواننده (sound.tsx:84-85) خودش revoke می‌کند تا دوبار revoke نشود.
+    if (url && audioUrls[id] !== url) revoke(audioUrls[id]);
     if (url) audioUrls[id] = url;
     else delete audioUrls[id];
     set({ audioUrls });
