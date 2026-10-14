@@ -63,6 +63,8 @@ type Studio = {
   storageNotice: string;
   /** true یعنی ذخیرهٔ خودکار برای حفاظت از دادهٔ خراب متوقف است. */
   storageLocked: boolean;
+  /** true تا پایان boot؛ در این فاصله setterهای پروژه نادیده گرفته می‌شوند. */
+  booting: boolean;
   /** متن JSON پشتیبان پروژهٔ فعلی (UI بعداً دانلودش می‌کند). */
   exportBackup: () => string;
   /** بازیابی از متن JSON؛ در خطا پروژه دست نمی‌خورد. */
@@ -91,6 +93,7 @@ function revoke(url: string | undefined) {
 
 const kv = idbKV(typeof indexedDB === "undefined" ? undefined : indexedDB);
 let ready = false;
+let booting = true;
 let activeKV: typeof kv = kv;
 let saveChain: Promise<unknown> = Promise.resolve();
 
@@ -147,6 +150,7 @@ export const useStudio = create<Studio>((set, get) => ({
   recording: false,
   storageNotice: "",
   storageLocked: false,
+  booting: true,
   boot: async () => {
     // Shell در هر route دوباره mount می‌شود؛ بارگذاری فقط یک‌بار (BUG-01).
     if (booted) return;
@@ -162,7 +166,9 @@ export const useStudio = create<Studio>((set, get) => ({
       set({ storageNotice: "بارگذاری پروژه ناموفق بود؛ ذخیرهٔ خودکار متوقف شد.", storageLocked: true });
     } finally {
       // F1: فقط وقتی دادهٔ خراب امن کپی شده باشد ذخیره باز می‌شود.
+      booting = false;
       ready = !locked;
+      set({ booting: false });
     }
   },
   exportBackup: () => exportBackup(persistFrom(get())),
@@ -182,12 +188,14 @@ export const useStudio = create<Studio>((set, get) => ({
   select: (i) => set({ selected: i }),
   selectDuringPlay: (i) => set({ selected: i }),
   patchShot: (partial) => {
+    if (booting) return;
     const s = get();
     const next = s.shots.map((shot, i) => (i === s.selected ? { ...shot, ...partial } : shot));
     set({ shots: next });
     saveOf(persistFrom({ ...s, shots: next }));
   },
   patchActor: (slot, partial) => {
+    if (booting) return;
     const s = get();
     const next = s.shots.map((shot, i) => {
       if (i !== s.selected) return shot;
@@ -199,6 +207,7 @@ export const useStudio = create<Studio>((set, get) => ({
     saveOf(persistFrom({ ...s, shots: next }));
   },
   setMeta: (partial) => {
+    if (booting) return;
     const s = get();
     const next = {
       title: partial.title ?? s.title,
@@ -209,6 +218,7 @@ export const useStudio = create<Studio>((set, get) => ({
     saveOf(persistFrom({ ...s, ...next }));
   },
   addShot: () => {
+    if (booting) return;
     const s = get();
     const last = s.shots[s.shots.length - 1];
     const shot: Shot = {
@@ -227,6 +237,7 @@ export const useStudio = create<Studio>((set, get) => ({
     saveOf(persistFrom({ ...s, shots: next }));
   },
   removeShot: (i) => {
+    if (booting) return;
     const s = get();
     if (s.shots.length < 2) return;
     const next = s.shots.filter((_, idx) => idx !== i);
@@ -238,6 +249,7 @@ export const useStudio = create<Studio>((set, get) => ({
     saveOf(persistFrom({ ...s, shots: next }));
   },
   moveShot: (i, dir) => {
+    if (booting) return;
     const s = get();
     const j = i + dir;
     if (j < 0 || j >= s.shots.length) return;
@@ -251,11 +263,13 @@ export const useStudio = create<Studio>((set, get) => ({
     saveOf(persistFrom({ ...s, shots: next }));
   },
   setAspect: (aspect) => {
+    if (booting) return;
     const s = get();
     set({ aspect });
     saveOf(persistFrom({ ...s, aspect }));
   },
   setShowRig: (showRig) => {
+    if (booting) return;
     const s = get();
     set({ showRig });
     saveOf(persistFrom({ ...s, showRig }));
