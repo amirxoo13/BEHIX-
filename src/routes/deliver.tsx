@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef } from "react";
-import { Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, Share2 } from "lucide-react";
+import { downloadFile, exportMessage, filmFile, SHARE_MESSAGES, shareOrDownload } from "@/components/film-share";
 import { PhaseHead, Shell } from "@/components/shell";
 import { StageCanvas } from "@/components/stage-canvas";
 import { PlayButton } from "@/components/transport";
-import { exportFilm } from "@/studio/export-film";
+import { renderFilm } from "@/studio/export-film";
 import { PHASES } from "@/studio/flow";
 import { clock, fa } from "@/studio/format";
 import { totalDuration } from "@/studio/frame";
@@ -30,6 +31,28 @@ function DeliverPage() {
   const status = useStudio((s) => s.status);
   const title = useStudio((s) => s.title);
   const busy = playing || exporting;
+  const [film, setFilm] = useState<File | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+
+  // با هر تغییر پروژه (نماها، قطع تصویر، عنوان، صداها) ویدیوی ساخته‌شدهٔ قبلی کهنه است و پاک می‌شود.
+  useEffect(
+    () =>
+      useStudio.subscribe((s, prev) => {
+        if (
+          s.shots !== prev.shots ||
+          s.aspect !== prev.aspect ||
+          s.title !== prev.title ||
+          s.logline !== prev.logline ||
+          s.genre !== prev.genre ||
+          s.showRig !== prev.showRig ||
+          s.audioUrls !== prev.audioUrls
+        ) {
+          setFilm(null);
+        }
+      }),
+    [],
+  );
   let cursor = 0;
 
   async function onExport() {
@@ -37,14 +60,33 @@ function DeliverPage() {
     if (!canvas) return;
     const setStatus = useStudio.getState().setStatus;
     setStatus("در حال ساخت فایل…");
+    setFilm(null);
+    setProgress(0);
     try {
-      const ext = await exportFilm(canvas);
-      setStatus(ext === "mp4" ? "فایل MP4 دانلود شد." : "فایل WebM دانلود شد. این مرورگر MP4 نداد.");
+      const out = await renderFilm(canvas, { onProgress: (p) => setProgress(p) });
+      const file = filmFile(out.blob, out.mime);
+      downloadFile(file);
+      setFilm(file);
+      setStatus(exportMessage(out.ext, out.notice));
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "ساخت ویدیو انجام نشد.");
-      useStudio.getState().setExporting(false);
+    } finally {
+      setProgress(null);
     }
   }
+
+  async function onShare() {
+    if (!film) return;
+    setSharing(true);
+    try {
+      const res = await shareOrDownload(film);
+      useStudio.getState().setStatus(SHARE_MESSAGES[res]);
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  const pct = progress === null ? null : Math.round(progress * 100);
 
   return (
     <Shell>
@@ -56,7 +98,28 @@ function DeliverPage() {
           <Download className="size-4" />
           {exporting ? "در حال ساخت…" : "دانلود ویدیو"}
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy || sharing || !film}
+          aria-describedby="share-note"
+          onClick={() => void onShare()}
+        >
+          <Share2 className="size-4" />
+          اشتراک‌گذاری
+        </button>
       </div>
+      {exporting && pct !== null && (
+        <div className="mt-3" data-testid="export-progress">
+          <progress className="w-full" max={100} value={pct} aria-label="پیشرفت ساخت ویدیو" />
+          <p className="text-xs text-muted" aria-live="polite">
+            {pct > 0 ? `در حال ساخت ویدیو: ${fa(pct)}٪` : "در حال آماده‌سازی… (در ضبط زنده، به اندازهٔ طول فیلم طول می‌کشد)"}
+          </p>
+        </div>
+      )}
+      <p id="share-note" className="mt-1 text-xs text-muted">
+        {film ? `آماده: ${film.name}` : "اول «دانلود ویدیو» را بزنید تا فایل ساخته شود، بعد اشتراک‌گذاری فعال می‌شود."}
+      </p>
       <p className="mt-3 text-sm text-muted">
         {title} — {fa(shots.length)} نما — {clock(totalDuration(shots))}
       </p>
