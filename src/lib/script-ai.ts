@@ -6,6 +6,9 @@
  *   SCRIPT_AI_BASE_URL  آدرس پایهٔ API، مثلاً https://.../v1
  *   SCRIPT_AI_API_KEY   کلید API
  *   SCRIPT_AI_MODEL     اسم مدل
+ * و یک متغیر اختیاری برای تنظیم‌های مخصوص هر سرویس (JSON که به بدنهٔ درخواست اضافه می‌شود):
+ *   SCRIPT_AI_EXTRA_BODY  مثلاً برای Qwen: {"enable_thinking":false}
+ *                         (بدون آن، مدل‌های Qwen 3.x اول «فکر» می‌کنند و بیش از یک دقیقه طول می‌کشد)
  */
 import { createServerFn } from "@tanstack/react-start";
 import { MAX_SCRIPT_CHARS, type Plan } from "@/studio/script-plan";
@@ -23,7 +26,18 @@ async function config() {
   const baseUrl = env("SCRIPT_AI_BASE_URL");
   const apiKey = env("SCRIPT_AI_API_KEY");
   const model = env("SCRIPT_AI_MODEL");
-  return baseUrl && apiKey && model ? { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, model } : null;
+  if (!baseUrl || !apiKey || !model) return null;
+  let extra: Record<string, unknown> = {};
+  const rawExtra = env("SCRIPT_AI_EXTRA_BODY");
+  if (rawExtra) {
+    try {
+      const parsed: unknown = JSON.parse(rawExtra);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) extra = parsed as Record<string, unknown>;
+    } catch {
+      // مقدار نامعتبر نادیده گرفته می‌شود؛ درخواست بدون تنظیم اضافه فرستاده می‌شود.
+    }
+  }
+  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, model, extra };
 }
 
 export const getScriptAiStatus = createServerFn({ method: "POST" }).handler(
@@ -52,7 +66,12 @@ export const understandScript = createServerFn({ method: "POST" })
       res = await fetch(`${c.baseUrl}/chat/completions`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${c.apiKey}` },
-        body: JSON.stringify({ model: c.model, messages: buildMessages(data.script), temperature: 0 }),
+        body: JSON.stringify({
+          ...c.extra,
+          model: c.model,
+          messages: buildMessages(data.script),
+          temperature: 0,
+        }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch (err) {

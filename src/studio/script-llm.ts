@@ -141,7 +141,7 @@ export function planFromModelReply(reply: string): { ok: true; plan: Plan } | { 
     }
     shots.push({
       scene,
-      heading: text(o.heading) || WORLD[background].place,
+      heading: text(o.heading).replace(/^\[\s*|\s*\]$/g, "") || WORLD[background].place,
       background,
       actionLine,
       speaker,

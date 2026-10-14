@@ -88,6 +88,51 @@ describe("model reply validation", () => {
   });
 });
 
+// پاسخ واقعی qwen3.8-flash (Alibaba Model Studio، 2026-10-14) به سناریوی نمونه، بدون تغییر.
+const REAL_QWEN_REPLY = `{
+  "shots": [
+    {"scene": 0, "heading": "[داخلی. قهوه‌خانه — شب]", "background": "cafe",
+     "actionLine": "پرویز وارد می‌شود، استکان در دست. پهلوان اژدر با تعجب نگاهش می‌کند.",
+     "speaker": "parviz", "dialogue": "سلام پهلوان!",
+     "characters": [{"id": "parviz", "emotion": "laugh", "action": "point"}, {"id": "pahlavan", "emotion": "shock", "action": "idle"}],
+     "sfx": "none", "camera": null},
+    {"scene": 0, "heading": "[داخلی. قهوه‌خانه — شب]", "background": "cafe", "actionLine": "",
+     "speaker": "pahlavan", "dialogue": "دیر کردی.",
+     "characters": [{"id": "pahlavan", "emotion": "angry", "action": "hips"}, {"id": "parviz", "emotion": "neutral", "action": "idle"}],
+     "sfx": "none", "camera": null},
+    {"scene": 1, "heading": "[خارجی. خیابان — شب]", "background": "streetNight", "actionLine": "",
+     "speaker": "sara", "dialogue": "کجا می‌روی؟",
+     "characters": [{"id": "sara", "emotion": "cry", "action": "idle"}, {"id": "kian", "emotion": "neutral", "action": "idle"}],
+     "sfx": "none", "camera": null},
+    {"scene": 1, "heading": "[خارجی. خیابان — شب]", "background": "streetNight", "actionLine": "",
+     "speaker": "kian", "dialogue": "من هم میام!",
+     "characters": [{"id": "kian", "emotion": "neutral", "action": "walk"}, {"id": "sara", "emotion": "neutral", "action": "idle"}],
+     "sfx": "none", "camera": null}
+  ]
+}`;
+
+describe("real model reply", () => {
+  it("UT-LLM-09 a real Qwen reply validates cleanly and lays out", async () => {
+    const r = planFromModelReply(REAL_QWEN_REPLY);
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.equal(r.plan.warnings.length, 0);
+    assert.equal(r.plan.shots[0].heading, "داخلی. قهوه‌خانه — شب");
+    assert.equal(r.plan.shots[0].camera, undefined);
+    const laid = await autoLayout("x", "auto", async () => ({ ok: true, plan: r.plan, model: "qwen3.8-flash" }));
+    assert.equal(laid.used, "model");
+    assert.deepEqual(
+      laid.shots.map((s) => [s.background, s.speaker, s.actorA.charId, s.actorB.charId]),
+      [
+        ["cafe", "a", "parviz", "pahlavan"],
+        ["cafe", "b", "parviz", "pahlavan"],
+        ["streetNight", "a", "sara", "kian"],
+        ["streetNight", "b", "sara", "kian"],
+      ],
+    );
+  });
+});
+
 describe("method selection", () => {
   const script = "[کافه]\nپرویز: سلام\nپونه: سلام";
 
