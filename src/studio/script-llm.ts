@@ -1,68 +1,68 @@
 /**
- * روش ۲: فهم سناریو با مدل زبانی. این فایل فقط متن درخواست را می‌سازد و پاسخ مدل را
- * سخت‌گیرانه با کاتالوگ چک می‌کند؛ تماس واقعی با مدل در سرور است (src/lib/script-ai.ts).
- * هر شناسه‌ای که در کاتالوگ نباشد دور ریخته می‌شود، پس مدل نمی‌تواند چیزی از خودش بسازد.
+ * روش ۲: فهم سناریو با مدل زبانی — با کمترین مصرف توکن.
+ *
+ * - به مدل خط‌های شماره‌دار سناریو و یک کاتالوگ فشرده (فقط شناسه و اسم اصلی) داده می‌شود.
+ * - مدل متن سناریو را دوباره نمی‌نویسد؛ فقط برای هر خط شماره و شناسه‌ها را برمی‌گرداند:
+ *     {"s":[[3,"cafe","parviz","parviz:laugh:point,pahlavan:shock",""], ...]}
+ * - متن دیالوگ، توضیح و سرصحنه از خود سناریو برداشته می‌شود؛ پس مدل نمی‌تواند متن را عوض کند.
+ * - هر شناسه‌ای که در کاتالوگ نباشد دور ریخته می‌شود.
+ * تماس واقعی با مدل در سرور است (src/lib/script-ai.ts).
  */
-import {
-  ACTION_ENTRIES,
-  BACKGROUNDS,
-  CAMERA_ENTRIES,
-  CHARACTERS,
-  EMOTION_ENTRIES,
-  IDS,
-  SFX_ENTRIES,
-  type Entry,
-} from "./catalog.ts";
+import { BACKGROUNDS, CHARACTERS, IDS } from "./catalog.ts";
 import { WORLD } from "./labels.ts";
-import { MAX_SHOTS, type Plan, type PlanShot } from "./script-plan.ts";
-import type { Action, BgId, CameraId, Emotion, SfxId } from "./types.ts";
+import {
+  DIALOGUE,
+  MAX_SHOTS,
+  isHeader,
+  splitDirections,
+  type Plan,
+  type PlanShot,
+} from "./script-plan.ts";
+import type { Action, BgId, Emotion, SfxId } from "./types.ts";
 
 export type ChatMessage = { role: "system" | "user"; content: string };
 
-function list<T extends string>(entries: Entry<T>[]): string {
-  return entries
-    .map((e) => `- ${e.id}: ${[e.label, ...e.aliases.filter((a) => a !== e.label)].slice(0, 6).join("، ").replace(/\*/g, "")}`)
+/** خط‌های سناریو با شمارهٔ ۱-پایه؛ خط‌های خالی شماره می‌گیرند ولی فرستاده نمی‌شوند. */
+export function scriptLines(script: string): string[] {
+  return script.split(/\r?\n/).map((l) => l.trim());
+}
+
+function numbered(script: string): string {
+  return scriptLines(script)
+    .map((l, i) => (l ? `${i + 1}|${l}` : ""))
+    .filter(Boolean)
     .join("\n");
 }
 
+/** تعداد خط‌های غیرخالی؛ برای تعیین سقف طول جواب مدل. */
+export function lineCount(script: string): number {
+  return scriptLines(script).filter(Boolean).length;
+}
+
+/** سقف توکن خروجی: حدود ۴۰ توکن برای هر خط کافی است؛ جلوی جواب‌های طولانی و پرهزینه را می‌گیرد. */
+export function maxOutputTokens(script: string): number {
+  return Math.min(3000, 60 + 40 * lineCount(script));
+}
+
 export function buildMessages(script: string): ChatMessage[] {
-  const system = `You convert a Persian animation screenplay into JSON for an animation studio.
-Use ONLY the ids listed below. Never invent ids. Reply with one JSON object and nothing else.
-
-CHARACTERS (id: Persian names)
-${list(CHARACTERS)}
-
-BACKGROUNDS (id: Persian place names)
-${list(BACKGROUNDS)}
-
-EMOTIONS
-${list(EMOTION_ENTRIES)}
-
-ACTIONS
-${list(ACTION_ENTRIES)}
-
-SOUND EFFECTS
-${list(SFX_ENTRIES.filter((e) => e.id !== "none"))}
-- none: no sound effect
-
-CAMERAS (optional)
-${list(CAMERA_ENTRIES)}
-
-Output format:
-{"shots":[{"scene":0,"heading":"<scene heading as written>","background":"<background id>","actionLine":"<scene description text before this line, Persian>","speaker":"<character id or null>","dialogue":"<spoken words exactly as written, without stage directions>","characters":[{"id":"<character id>","emotion":"<emotion id>","action":"<action id>"}],"sfx":"<sound id or none>","camera":"<camera id, optional>"}]}
-
-Rules:
-- One shot per spoken line. A description with no spoken line after it becomes a shot with "speaker": null.
-- "scene" starts at 0 and increases by 1 whenever the place changes.
-- "characters" lists everyone present in that shot (the speaker first), with emotion and action read from the text and stage directions; use "neutral" and "idle" when nothing is said.
-- Keep all Persian text exactly as written. Do not translate.`;
+  const chars = CHARACTERS.map((c) => `${c.id}=${c.label}`).join(", ");
+  const places = BACKGROUNDS.map((b) => `${b.id}=${b.label}`).join(", ");
+  const system = `Annotate a numbered Persian screenplay ("N|text"). Reply ONLY compact JSON, no spaces:
+{"s":[[N,"bg","speaker","id:emotion:action,id:emotion:action","sfx"]]}
+One item per spoken line (speaker=character id). Description lines belong to the next spoken line; give them their own item (speaker="") only when no spoken line follows in that scene.
+List everyone present. Omit ":emotion:action" parts that are neutral/idle. sfx only if the text names that sound, else "". Use only these ids:
+chars: ${chars}
+bg: ${places}
+emotion: neutral,smile,laugh,angry,cry,shock,poker(expressionless)
+action: idle,walk,point,tea(holding tea glass),hips(hands on hips),head(hand on head)
+sfx: clink,door,horn,shock,slap,beep(censor),crickets(awkward silence),rimshot`;
   return [
     { role: "system", content: system },
-    { role: "user", content: script },
+    { role: "user", content: numbered(script) },
   ];
 }
 
-/** متن JSON را از پاسخ مدل جدا می‌کند (بعضی مدل‌ها دورش ``` یا توضیح می‌گذارند). */
+/** متن JSON را از پاسخ مدل جدا می‌کند (بعضی مدل‌ها دورش ``` می‌گذارند). */
 export function extractJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -70,78 +70,136 @@ export function extractJson(text: string): unknown {
   return JSON.parse(text.slice(start, end + 1));
 }
 
-function pick<T extends string>(v: unknown, allowed: readonly T[]): T | undefined {
-  return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : undefined;
+function pick<T extends string>(v: unknown, allowed: readonly string[]): T | undefined {
+  return typeof v === "string" && allowed.includes(v) ? (v as T) : undefined;
 }
 
-function text(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
-}
-
-/** پاسخ مدل را به `Plan` تبدیل می‌کند؛ هر چیز خارج از کاتالوگ با یک هشدار کنار گذاشته می‌شود. */
-export function planFromModelReply(reply: string): { ok: true; plan: Plan } | { ok: false; error: string } {
+/** پاسخ فشردهٔ مدل + متن اصلی سناریو → `Plan`. */
+export function planFromModelReply(
+  reply: string,
+  script: string,
+): { ok: true; plan: Plan } | { ok: false; error: string } {
   let data: unknown;
   try {
     data = extractJson(reply);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "پاسخ مدل خوانا نبود." };
   }
-  const rawShots = (data as { shots?: unknown })?.shots;
-  if (!Array.isArray(rawShots) || rawShots.length === 0) {
-    return { ok: false, error: "مدل هیچ نمایی برنگرداند." };
-  }
+  const items = (data as { s?: unknown })?.s;
+  if (!Array.isArray(items) || items.length === 0) return { ok: false, error: "مدل هیچ نمایی برنگرداند." };
 
+  const lines = scriptLines(script);
   const warnings: string[] = [];
   const dropped = new Set<string>();
-  const shots: PlanShot[] = [];
-  let lastScene = 0;
-  let lastBg: BgId | undefined;
 
-  for (const [i, item] of rawShots.slice(0, MAX_SHOTS).entries()) {
-    if (!item || typeof item !== "object") continue;
-    const o = item as Record<string, unknown>;
-    const scene = Number.isInteger(o.scene) && (o.scene as number) >= 0 ? (o.scene as number) : lastScene;
-    let background = pick<BgId>(o.background, IDS.backgrounds as BgId[]);
+  // هر خط مدل: [N, bg, speaker, chars, sfx]؛ فقط خط‌های موجود و غیرسرصحنه، به ترتیب و بدون تکرار.
+  const rows = new Map<number, unknown[]>();
+  for (const it of items) {
+    if (!Array.isArray(it)) continue;
+    const n = it[0];
+    if (!Number.isInteger(n) || n < 1 || n > lines.length || !lines[n - 1]) continue;
+    if (isHeader(lines[n - 1]) !== null || rows.has(n)) continue;
+    rows.set(n, it);
+  }
+  const order = [...rows.keys()].sort((a, b) => a - b).slice(0, MAX_SHOTS);
+  if (rows.size > MAX_SHOTS) warnings.push(`فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
+
+  // توضیحی که مستقیم قبل از یک دیالوگ آمده، جزء همان نماست نه نمای جدا (حتی اگر مدل جدا داده باشد).
+  const isSpoken = (n: number) => {
+    const sp = rows.get(n)?.[2];
+    return typeof sp === "string" && sp !== "";
+  };
+  const nextLine = (n: number) => {
+    for (let i = n; i < lines.length; i++) if (lines[i]) return isHeader(lines[i]) === null ? i + 1 : -1;
+    return -1;
+  };
+  const carry: { chars: string[]; sfx: unknown } = { chars: [], sfx: "" };
+
+  const shots: PlanShot[] = [];
+  let prev = 0;
+  let lastBg: BgId | undefined;
+  for (const n of order) {
+    const row = rows.get(n)!;
+    if (!isSpoken(n)) {
+      const next = nextLine(n);
+      if (next !== -1 && isSpoken(next)) {
+        carry.chars.push(...String(row[3] ?? "").split(","));
+        if (row[4]) carry.sfx = row[4];
+        continue;
+      }
+    }
+    const [, rawBg, rawSpeaker, ownChars, ownSfx] = row;
+    const rawChars = [String(ownChars ?? ""), ...carry.chars].join(",");
+    const rawSfx = ownSfx || carry.sfx;
+    carry.chars = [];
+    carry.sfx = "";
+
+    // صحنه و سرصحنه از خط‌های سرصحنهٔ خود سناریو
+    let scene = -1;
+    let heading = "";
+    for (let i = 0; i < n - 1; i++) {
+      const h = lines[i] ? isHeader(lines[i]) : null;
+      if (h !== null) {
+        scene++;
+        heading = h;
+      }
+    }
+    scene = Math.max(0, scene);
+
+    let background = pick<BgId>(rawBg, IDS.backgrounds);
     if (!background) {
-      if (o.background !== undefined) dropped.add(`مکان «${String(o.background)}»`);
+      if (rawBg) dropped.add(`مکان «${String(rawBg)}»`);
       background = lastBg ?? "living";
     }
-    let speaker: string | null = pick(o.speaker, IDS.characters) ?? null;
-    if (o.speaker && !speaker) {
-      dropped.add(`شخصیت «${String(o.speaker)}»`);
-      speaker = null;
-    }
-    const cast: string[] = [];
+    lastBg = background;
+
+    const speaker: string | null = pick(rawSpeaker, IDS.characters) ?? null;
+    if (rawSpeaker && !speaker) dropped.add(`شخصیت «${String(rawSpeaker)}»`);
+
+    const cast: string[] = speaker ? [speaker] : [];
     const emotion: Record<string, Emotion> = {};
     const action: Record<string, Action> = {};
-    if (speaker) cast.push(speaker);
-    for (const c of Array.isArray(o.characters) ? o.characters : []) {
-      const r = (c ?? {}) as Record<string, unknown>;
-      const id = pick(r.id, IDS.characters);
-      if (!id) {
-        if (r.id !== undefined) dropped.add(`شخصیت «${String(r.id)}»`);
+    for (const part of String(rawChars ?? "").split(",")) {
+      const [id, e, a] = part.trim().split(":");
+      if (!id) continue;
+      if (!pick(id, IDS.characters)) {
+        dropped.add(`شخصیت «${id}»`);
         continue;
       }
       if (!cast.includes(id)) cast.push(id);
-      const e = pick<Emotion>(r.emotion, IDS.emotions as Emotion[]);
-      const a = pick<Action>(r.action, IDS.actions as Action[]);
-      if (e) emotion[id] = e;
-      else if (r.emotion !== undefined) dropped.add(`حالت «${String(r.emotion)}»`);
-      if (a) action[id] = a;
-      else if (r.action !== undefined) dropped.add(`حرکت «${String(r.action)}»`);
+      // اولین مقدار برنده است: حالتِ خودِ خط دیالوگ بر توضیحِ قبلش مقدم است.
+      if (e) {
+        if (!pick(e, IDS.emotions)) dropped.add(`حالت «${e}»`);
+        else if (!(id in emotion)) emotion[id] = e as Emotion;
+      }
+      if (a) {
+        if (!pick(a, IDS.actions)) dropped.add(`حرکت «${a}»`);
+        else if (!(id in action)) action[id] = a as Action;
+      }
     }
-    const sfx = pick<SfxId>(o.sfx, IDS.sfx as SfxId[]) ?? "none";
-    if (o.sfx !== undefined && !pick(o.sfx, IDS.sfx)) dropped.add(`صدای «${String(o.sfx)}»`);
-    const camera = pick<CameraId>(o.camera, IDS.cameras as CameraId[]);
-    const dialogue = speaker ? text(o.dialogue) : "";
-    const actionLine = text(o.actionLine);
-    if (!speaker && !actionLine && !dialogue) {
-      warnings.push(`نمای ${i + 1} از پاسخ مدل خالی بود و حذف شد.`);
-      continue;
+    let sfx: SfxId = "none";
+    if (rawSfx) {
+      const s = pick<SfxId>(rawSfx, IDS.sfx);
+      if (s) sfx = s;
+      else dropped.add(`صدای «${String(rawSfx)}»`);
     }
+
+    // متن‌ها از خود سناریو: توضیح‌های بین نمای قبلی و این خط، و جملهٔ این خط
+    const between = lines.slice(prev, n - 1).filter((l) => l && isHeader(l) === null);
+    let dialogue = "";
+    let actionLine: string;
+    if (speaker) {
+      const m = DIALOGUE.exec(lines[n - 1]);
+      dialogue = splitDirections(m ? m[2] : lines[n - 1]).said;
+      actionLine = between.join(" ");
+    } else {
+      actionLine = [...between, lines[n - 1]].join(" ");
+    }
+    prev = n;
+
     shots.push({
       scene,
-      heading: text(o.heading).replace(/^\[\s*|\s*\]$/g, "") || WORLD[background].place,
+      heading: heading.replace(/^\[\s*|\s*\]$/g, "") || WORLD[background].place,
       background,
       actionLine,
       speaker,
@@ -150,16 +208,11 @@ export function planFromModelReply(reply: string): { ok: true; plan: Plan } | { 
       emotion,
       action,
       sfx,
-      ...(camera ? { camera } : {}),
     });
-    lastScene = scene;
-    lastBg = background;
   }
 
-  if (rawShots.length > MAX_SHOTS) warnings.push(`فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
   for (const d of dropped) warnings.push(`${d} در کاتالوگ نبود و کنار گذاشته شد.`);
   if (shots.length === 0) return { ok: false, error: "هیچ نمای معتبری در پاسخ مدل نبود." };
-  // شخصیت‌های هر صحنه را یکی می‌کنیم تا چینش، حاضران صحنه را بداند.
   const byScene = new Map<number, string[]>();
   for (const s of shots) {
     const all = byScene.get(s.scene) ?? [];

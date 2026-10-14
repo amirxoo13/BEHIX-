@@ -1,168 +1,135 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { autoLayout } from "./auto-layout.ts";
+import { beforeEach, describe, it } from "node:test";
+import { autoLayout, clearModelCache, type ModelCall } from "./auto-layout.ts";
 import { IDS } from "./catalog.ts";
-import { buildMessages, extractJson, planFromModelReply } from "./script-llm.ts";
+import { buildMessages, extractJson, maxOutputTokens, planFromModelReply } from "./script-llm.ts";
 
-const GOOD = JSON.stringify({
-  shots: [
-    {
-      scene: 0,
-      heading: "داخلی. کافه — شب",
-      background: "cafe",
-      actionLine: "پرویز وارد می‌شود.",
-      speaker: "parviz",
-      dialogue: "سلام!",
-      characters: [
-        { id: "parviz", emotion: "smile", action: "walk" },
-        { id: "pooneh", emotion: "poker", action: "idle" },
-      ],
-      sfx: "door",
-    },
-    {
-      scene: 0,
-      background: "cafe",
-      speaker: "pooneh",
-      dialogue: "دیر کردی.",
-      characters: [{ id: "pooneh", emotion: "angry", action: "hips" }],
-      sfx: "none",
-    },
-  ],
-});
+const SCRIPT = `[داخلی. قهوه‌خانه — شب]
+پرویز وارد می‌شود، استکان در دست. پهلوان اژدر با تعجب نگاهش می‌کند.
+پرویز: سلام پهلوان! (خندان، اشاره)
+پهلوان: دیر کردی. (اخم، دست به کمر)
 
-describe("model prompt", () => {
-  it("UT-LLM-01 lists every catalog id", () => {
-    const [system, user] = buildMessages("متن");
+[خارجی. خیابان — شب]
+سارا: کجا می‌روی؟ (گریه)
+کیان: من هم میام!`;
+
+// پاسخ واقعی qwen3.8-flash (Alibaba Model Studio، 2026-10-14) به همین SCRIPT با پرامپت فشرده؛
+// مصرف واقعی: ۴۶۱ توکن ورودی + ۸۸ توکن خروجی.
+const REAL_QWEN_REPLY =
+  '{"s":[[2,"cafe","","parviz:smile:tea,pahlavan:shock",""],[3,"cafe","parviz","parviz:laugh:point",""],[4,"cafe","pahlavan","pahlavan:angry:hips",""],[7,"streetNight","sara","sara:cry",""],[8,"streetNight","kian","",""]]}';
+
+describe("compact prompt", () => {
+  it("UT-LLM-01 lists every catalog id and numbers the script lines", () => {
+    const [system, user] = buildMessages(SCRIPT);
     for (const id of [...IDS.characters, ...IDS.backgrounds, ...IDS.emotions, ...IDS.actions]) {
-      assert.ok(system.content.includes(`- ${id}:`), id);
+      assert.ok(system.content.includes(id), id);
     }
-    assert.equal(user.content, "متن");
+    assert.match(user.content, /^1\|\[داخلی/);
+    assert.match(user.content, /\n8\|کیان: من هم میام!$/);
+    assert.ok(!user.content.includes("5|"), "empty lines are not sent");
   });
-  it("UT-LLM-02 extracts JSON wrapped in code fences", () => {
+  it("UT-LLM-02 system prompt stays small and output is capped by line count", () => {
+    assert.ok(buildMessages("").at(0)!.content.length < 1400);
+    assert.equal(maxOutputTokens(SCRIPT), 60 + 40 * 7);
+    assert.equal(maxOutputTokens("x\n".repeat(500)), 3000);
+  });
+  it("UT-LLM-03 extracts JSON wrapped in code fences", () => {
     assert.deepEqual(extractJson('```json\n{"a":1}\n```'), { a: 1 });
     assert.throws(() => extractJson("no json here"));
   });
 });
 
-describe("model reply validation", () => {
-  it("UT-LLM-03 a valid reply becomes a plan; scene cast is merged", () => {
-    const r = planFromModelReply(GOOD);
+describe("compact reply → plan", () => {
+  it("UT-LLM-04 real Qwen reply: text comes from the script, description merges into next shot", () => {
+    const r = planFromModelReply(REAL_QWEN_REPLY, SCRIPT);
     assert.ok(r.ok);
     if (!r.ok) return;
-    assert.equal(r.plan.shots.length, 2);
-    assert.deepEqual(r.plan.shots[1].cast, ["pooneh", "parviz"]);
-    assert.equal(r.plan.shots[0].emotion.parviz, "smile");
+    const s = r.plan.shots;
     assert.equal(r.plan.warnings.length, 0);
+    assert.equal(s.length, 4);
+    assert.equal(s[0].speaker, "parviz");
+    assert.equal(s[0].dialogue, "سلام پهلوان!");
+    assert.match(s[0].actionLine, /^پرویز وارد می‌شود/);
+    assert.equal(s[0].emotion.parviz, "laugh", "the spoken line's own emotion wins");
+    assert.equal(s[0].action.parviz, "point");
+    assert.equal(s[0].emotion.pahlavan, "shock", "description emotions are kept");
+    assert.equal(s[0].heading, "داخلی. قهوه‌خانه — شب");
+    assert.deepEqual(s.map((x) => x.scene), [0, 0, 1, 1]);
+    assert.equal(s[2].background, "streetNight");
+    assert.equal(s[3].dialogue, "من هم میام!");
   });
-  it("UT-LLM-04 ids outside the catalog are dropped with warnings", () => {
+  it("UT-LLM-05 ids outside the catalog and bad line numbers are dropped", () => {
     const r = planFromModelReply(
-      JSON.stringify({
-        shots: [
-          {
-            scene: 0,
-            background: "moon",
-            speaker: "batman",
-            dialogue: "x",
-            actionLine: "شب است.",
-            characters: [{ id: "sara", emotion: "dancing", action: "fly" }],
-            sfx: "explosion",
-          },
-        ],
-      }),
+      '{"s":[[3,"moon","batman","sara:dancing:fly,joker",""],[99,"cafe","parviz","",""],[1,"cafe","parviz","",""],[4,"cafe","pahlavan","","explosion"]]}',
+      SCRIPT,
     );
     assert.ok(r.ok);
     if (!r.ok) return;
-    const s = r.plan.shots[0];
-    assert.equal(s.background, "living");
-    assert.equal(s.speaker, null);
-    assert.equal(s.dialogue, "");
-    assert.equal(s.sfx, "none");
-    assert.deepEqual(s.emotion, {});
-    for (const bad of ["moon", "batman", "dancing", "fly", "explosion"]) {
+    assert.equal(r.plan.shots.length, 2, "line 99 does not exist and line 1 is a header");
+    const [a, b] = r.plan.shots;
+    assert.equal(a.background, "living");
+    assert.equal(a.speaker, null);
+    assert.deepEqual(a.emotion, {});
+    assert.equal(b.sfx, "none");
+    for (const bad of ["moon", "batman", "dancing", "fly", "joker", "explosion"]) {
       assert.ok(r.plan.warnings.some((w) => w.includes(bad)), bad);
     }
   });
-  it("UT-LLM-05 garbage or empty replies are errors", () => {
-    assert.equal(planFromModelReply("I cannot help").ok, false);
-    assert.equal(planFromModelReply('{"shots":[]}').ok, false);
+  it("UT-LLM-06 garbage or empty replies are errors", () => {
+    assert.equal(planFromModelReply("I cannot help", SCRIPT).ok, false);
+    assert.equal(planFromModelReply('{"s":[]}', SCRIPT).ok, false);
   });
 });
 
-// پاسخ واقعی qwen3.8-flash (Alibaba Model Studio، 2026-10-14) به سناریوی نمونه، بدون تغییر.
-const REAL_QWEN_REPLY = `{
-  "shots": [
-    {"scene": 0, "heading": "[داخلی. قهوه‌خانه — شب]", "background": "cafe",
-     "actionLine": "پرویز وارد می‌شود، استکان در دست. پهلوان اژدر با تعجب نگاهش می‌کند.",
-     "speaker": "parviz", "dialogue": "سلام پهلوان!",
-     "characters": [{"id": "parviz", "emotion": "laugh", "action": "point"}, {"id": "pahlavan", "emotion": "shock", "action": "idle"}],
-     "sfx": "none", "camera": null},
-    {"scene": 0, "heading": "[داخلی. قهوه‌خانه — شب]", "background": "cafe", "actionLine": "",
-     "speaker": "pahlavan", "dialogue": "دیر کردی.",
-     "characters": [{"id": "pahlavan", "emotion": "angry", "action": "hips"}, {"id": "parviz", "emotion": "neutral", "action": "idle"}],
-     "sfx": "none", "camera": null},
-    {"scene": 1, "heading": "[خارجی. خیابان — شب]", "background": "streetNight", "actionLine": "",
-     "speaker": "sara", "dialogue": "کجا می‌روی؟",
-     "characters": [{"id": "sara", "emotion": "cry", "action": "idle"}, {"id": "kian", "emotion": "neutral", "action": "idle"}],
-     "sfx": "none", "camera": null},
-    {"scene": 1, "heading": "[خارجی. خیابان — شب]", "background": "streetNight", "actionLine": "",
-     "speaker": "kian", "dialogue": "من هم میام!",
-     "characters": [{"id": "kian", "emotion": "neutral", "action": "walk"}, {"id": "sara", "emotion": "neutral", "action": "idle"}],
-     "sfx": "none", "camera": null}
-  ]
-}`;
+describe("method selection saves tokens", () => {
+  beforeEach(() => clearModelCache());
+  const realModel: ModelCall = async (script) => {
+    const p = planFromModelReply(REAL_QWEN_REPLY, script);
+    if (!p.ok) throw new Error(p.error);
+    return { ok: true, plan: p.plan, model: "qwen3.8-flash", usage: { input: 461, output: 88 } };
+  };
+  const counting = () => {
+    let calls = 0;
+    const fn: ModelCall = async (s) => {
+      calls++;
+      return realModel(s);
+    };
+    return { fn, calls: () => calls };
+  };
 
-describe("real model reply", () => {
-  it("UT-LLM-09 a real Qwen reply validates cleanly and lays out", async () => {
-    const r = planFromModelReply(REAL_QWEN_REPLY);
-    assert.ok(r.ok);
-    if (!r.ok) return;
-    assert.equal(r.plan.warnings.length, 0);
-    assert.equal(r.plan.shots[0].heading, "داخلی. قهوه‌خانه — شب");
-    assert.equal(r.plan.shots[0].camera, undefined);
-    const laid = await autoLayout("x", "auto", async () => ({ ok: true, plan: r.plan, model: "qwen3.8-flash" }));
-    assert.equal(laid.used, "model");
-    assert.deepEqual(
-      laid.shots.map((s) => [s.background, s.speaker, s.actorA.charId, s.actorB.charId]),
-      [
-        ["cafe", "a", "parviz", "pahlavan"],
-        ["cafe", "b", "parviz", "pahlavan"],
-        ["streetNight", "a", "sara", "kian"],
-        ["streetNight", "b", "sara", "kian"],
-      ],
-    );
+  it("UT-LLM-07 smart: a fully understood script never calls the model", async () => {
+    const m = counting();
+    const r = await autoLayout(SCRIPT, "smart", m.fn);
+    assert.equal(m.calls(), 0);
+    assert.equal(r.used, "dictionary");
+    assert.deepEqual(r.usage, { input: 0, output: 0 });
   });
-});
-
-describe("method selection", () => {
-  const script = "[کافه]\nپرویز: سلام\nپونه: سلام";
-
-  it("UT-LLM-06 auto uses the model when it answers", async () => {
-    const r = await autoLayout(script, "auto", async () => {
-      const p = planFromModelReply(GOOD);
-      if (!p.ok) throw new Error(p.error);
-      return { ok: true, plan: p.plan, model: "test-model" };
-    });
-    assert.equal(r.used, "model");
-    assert.equal(r.model, "test-model");
-    assert.equal(r.shots[0].actorA.emotion, "smile");
+  it("UT-LLM-08 smart: an unknown direction sends the script to the model once, then cache", async () => {
+    const odd = SCRIPT.replace("(گریه)", "(دلخور و بی‌قرار)");
+    const m = counting();
+    const first = await autoLayout(odd, "smart", m.fn);
+    assert.equal(first.used, "model");
+    assert.deepEqual(first.usage, { input: 461, output: 88 });
+    const again = await autoLayout(odd, "smart", m.fn);
+    assert.equal(m.calls(), 1, "same text is not paid for twice");
+    assert.deepEqual(again.usage, { input: 0, output: 0 });
   });
-  it("UT-LLM-07 auto falls back to the dictionary on model error or exception", async () => {
-    const failed = await autoLayout(script, "auto", async () => ({ ok: false, error: "خطای 500" }));
+  it("UT-LLM-09 model method always asks; failures fall back to the dictionary", async () => {
+    const m = counting();
+    assert.equal((await autoLayout(SCRIPT, "model", m.fn)).used, "model");
+    assert.equal(m.calls(), 1);
+    clearModelCache();
+    const failed = await autoLayout(SCRIPT, "model", async () => ({ ok: false, error: "خطای 500" }));
     assert.equal(failed.used, "dictionary");
-    assert.equal(failed.shots.length, 2);
     assert.match(failed.warnings[0], /خطای 500/);
-    const thrown = await autoLayout(script, "auto", async () => {
+    const thrown = await autoLayout(SCRIPT, "model", async () => {
       throw new Error("network");
     });
     assert.equal(thrown.used, "dictionary");
   });
-  it("UT-LLM-08 dictionary method never calls the model", async () => {
-    let called = false;
-    const r = await autoLayout(script, "dictionary", async () => {
-      called = true;
-      return { ok: false, error: "x" };
-    });
-    assert.equal(called, false);
-    assert.equal(r.used, "dictionary");
+  it("UT-LLM-10 dictionary method never calls the model", async () => {
+    const m = counting();
+    await autoLayout(SCRIPT, "dictionary", m.fn);
+    assert.equal(m.calls(), 0);
   });
 });

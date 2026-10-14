@@ -15,8 +15,10 @@ import { MAX_SCRIPT_CHARS, type Plan } from "@/studio/script-plan";
 
 export type ScriptAiStatus = { configured: boolean; model: string | null };
 
+export type TokenUsage = { input: number; output: number };
+
 export type UnderstandResult =
-  | { ok: true; plan: Plan; model: string }
+  | { ok: true; plan: Plan; model: string; usage: TokenUsage | null }
   | { ok: false; error: string };
 
 const TIMEOUT_MS = 60_000;
@@ -59,7 +61,7 @@ export const understandScript = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<UnderstandResult> => {
     const c = await config();
     if (!c) return { ok: false, error: "مدل زبانی تنظیم نشده است." };
-    const { buildMessages, planFromModelReply } = await import("@/studio/script-llm");
+    const { buildMessages, maxOutputTokens, planFromModelReply } = await import("@/studio/script-llm");
 
     let res: Response;
     try {
@@ -71,6 +73,7 @@ export const understandScript = createServerFn({ method: "POST" })
           model: c.model,
           messages: buildMessages(data.script),
           temperature: 0,
+          max_tokens: maxOutputTokens(data.script),
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
@@ -81,13 +84,21 @@ export const understandScript = createServerFn({ method: "POST" })
     if (!res.ok) return { ok: false, error: `سرویس مدل خطای ${res.status} برگرداند.` };
 
     let content: unknown;
+    let usage: TokenUsage | null = null;
     try {
-      const body = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+      const body = (await res.json()) as {
+        choices?: { message?: { content?: unknown } }[];
+        usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
+      };
       content = body.choices?.[0]?.message?.content;
+      const u = body.usage;
+      if (u && typeof u.prompt_tokens === "number" && typeof u.completion_tokens === "number") {
+        usage = { input: u.prompt_tokens, output: u.completion_tokens };
+      }
     } catch {
       return { ok: false, error: "پاسخ سرویس مدل خوانا نبود." };
     }
     if (typeof content !== "string") return { ok: false, error: "پاسخ مدل متن نداشت." };
-    const parsed = planFromModelReply(content);
-    return parsed.ok ? { ok: true, plan: parsed.plan, model: c.model } : parsed;
+    const parsed = planFromModelReply(content, data.script);
+    return parsed.ok ? { ok: true, plan: parsed.plan, model: c.model, usage } : parsed;
   });

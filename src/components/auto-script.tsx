@@ -53,7 +53,7 @@ export function AutoScript() {
   const busy = useStudio((s) => s.playing || s.exporting || s.booting);
   const locked = useStudio((s) => s.storageLocked);
   const [script, setScript] = useState("");
-  const [method, setMethod] = useState<AutoMethod>("auto");
+  const [method, setMethod] = useState<AutoMethod>("smart");
   const [ai, setAi] = useState<ScriptAiStatus | null>(null);
   const [working, setWorking] = useState(false);
   const [result, setResult] = useState<AutoResult | null>(null);
@@ -147,8 +147,8 @@ export function AutoScript() {
       <fieldset className="mt-3">
         <legend className="lbl">روش فهم متن</legend>
         <label className="flex min-h-11 items-center gap-2">
-          <input type="radio" name="auto-method" checked={method === "auto"} onChange={() => setMethod("auto")} />
-          خودکار: مدل زبانی، و اگر نشد دیکشنری
+          <input type="radio" name="auto-method" checked={method === "smart"} onChange={() => setMethod("smart")} />
+          هوشمند: اول دیکشنری، مدل فقط اگر لازم شد (کم‌مصرف)
         </label>
         <label className="flex min-h-11 items-center gap-2">
           <input
@@ -158,6 +158,10 @@ export function AutoScript() {
             onChange={() => setMethod("dictionary")}
           />
           فقط دیکشنری (بدون هوش مصنوعی، رایگان)
+        </label>
+        <label className="flex min-h-11 items-center gap-2">
+          <input type="radio" name="auto-method" checked={method === "model"} onChange={() => setMethod("model")} />
+          همیشه مدل زبانی
         </label>
         <p className="text-xs text-muted">
           {ai === null
@@ -193,6 +197,11 @@ export function AutoScript() {
           <p className="font-bold">
             {fa(result.shots.length)} نما آماده شد — روش:{" "}
             {result.used === "model" ? `مدل زبانی (${result.model})` : "دیکشنری"}
+          </p>
+          <p className="text-sm text-muted">
+            مصرف توکن این بار: {fa(result.usage.input + result.usage.output)}
+            {result.usage.input + result.usage.output > 0 &&
+              ` (ورودی ${fa(result.usage.input)}، خروجی ${fa(result.usage.output)})`}
           </p>
           {result.warnings.length > 0 && (
             <ul className="mt-2 list-disc ps-5 text-sm text-muted">

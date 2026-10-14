@@ -40,17 +40,32 @@ export type PlanShot = {
   camera?: CameraId;
 };
 
-export type Plan = { shots: PlanShot[]; warnings: string[] };
+export type Plan = {
+  shots: PlanShot[];
+  warnings: string[];
+  /** تعداد جاهایی که دیکشنری مطمئن نبود؛ صفر یعنی مدل زبانی لازم نیست. */
+  uncertain?: number;
+};
 
 export const MAX_SHOTS = 60;
 export const MAX_SCRIPT_CHARS = 12000;
 
 const HEADER = /^\s*\[(.+)\]\s*$/;
 const HEADER_WORDS = ["صحنه", "سکانس", "داخلی", "خارجی"];
-const DIALOGUE = /^([^:：]{1,40})[:：]\s*(.*)$/;
+export const DIALOGUE = /^([^:：]{1,40})[:：]\s*(.*)$/;
 const PAREN = /\(([^)]*)\)|（([^）]*)）/g;
 
-function isHeader(line: string): string | null {
+/** جملهٔ گفته‌شده بدون پرانتزها، و متن داخل پرانتزها. */
+export function splitDirections(text: string): { said: string; directions: string } {
+  const dirs: string[] = [];
+  const said = text.replace(PAREN, (_, a: string | undefined, b: string | undefined) => {
+    dirs.push(a ?? b ?? "");
+    return " ";
+  });
+  return { said: said.replace(/\s+/g, " ").trim(), directions: dirs.join(" ") };
+}
+
+export function isHeader(line: string): string | null {
   const m = HEADER.exec(line);
   if (m) return m[1].trim();
   const n = normalizeFa(line);
@@ -95,13 +110,17 @@ export function planFromDictionary(script: string): Plan {
   let pendingEmotion: Record<string, Emotion> = {};
   let pendingAction: Record<string, Action> = {};
   const unknownNames = new Set<string>();
+  let uncertain = 0;
 
   const open = (heading: string) => {
     scene = { heading, cast: [], shots: [] };
     scenes.push(scene);
     const bg = backgroundOf(heading);
     if (bg) scene.background = bg;
-    else if (heading) warnings.push(`مکانِ «${heading}» در کاتالوگ پیدا نشد.`);
+    else if (heading) {
+      warnings.push(`مکانِ «${heading}» در کاتالوگ پیدا نشد.`);
+      uncertain++;
+    }
   };
   const addCast = (id: string) => {
     if (scene && !scene.cast.includes(id)) scene.cast.push(id);
@@ -138,12 +157,7 @@ export function planFromDictionary(script: string): Plan {
     const dlg = DIALOGUE.exec(line);
     const speaker = dlg ? findFirst(dlg[1], CHARACTERS) : undefined;
     if (dlg && speaker) {
-      const directions: string[] = [];
-      const said = dlg[2].replace(PAREN, (_, a: string | undefined, b: string | undefined) => {
-        directions.push(a ?? b ?? "");
-        return " ";
-      });
-      const dir = directions.join(" ");
+      const { said, directions: dir } = splitDirections(dlg[2]);
       addCast(speaker);
       const emotion = { ...pendingEmotion };
       const action = { ...pendingAction };
@@ -151,13 +165,15 @@ export function planFromDictionary(script: string): Plan {
       const a = findFirst(dir, ACTION_ENTRIES);
       if (e) emotion[speaker] = e;
       if (a) action[speaker] = a;
+      const dirSfx = findFirst(dir, SFX_ENTRIES);
+      if (dir.trim() && !e && !a && !dirSfx) uncertain++;
       current.shots.push({
         actionLine: pendingDesc.join(" "),
         speaker,
-        dialogue: said.replace(/\s+/g, " ").trim(),
+        dialogue: said,
         emotion,
         action,
-        sfx: findFirst(dir, SFX_ENTRIES) ?? pendingSfx,
+        sfx: dirSfx ?? pendingSfx,
       });
       pendingDesc = [];
       pendingSfx = "none";
@@ -165,7 +181,10 @@ export function planFromDictionary(script: string): Plan {
       pendingAction = {};
       continue;
     }
-    if (dlg && normalizeFa(dlg[1]).split(" ").length <= 3) unknownNames.add(dlg[1].trim());
+    if (dlg && normalizeFa(dlg[1]).split(" ").length <= 3) {
+      unknownNames.add(dlg[1].trim());
+      uncertain++;
+    }
 
     // خط توضیح صحنه
     pendingDesc.push(line);
@@ -190,6 +209,7 @@ export function planFromDictionary(script: string): Plan {
     let background = s.background ?? s.backgroundFromText ?? lastBg;
     if (!background) {
       background = "living";
+      uncertain++;
       warnings.push(`صحنهٔ ${i + 1}: مکان مشخص نبود؛ «${WORLD.living.place}» گذاشته شد.`);
     }
     lastBg = background;
@@ -203,7 +223,7 @@ export function planFromDictionary(script: string): Plan {
     warnings.push(`فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
     shots.length = MAX_SHOTS;
   }
-  return { shots, warnings };
+  return { shots, warnings, uncertain };
 }
 
 function words(text: string): number {
