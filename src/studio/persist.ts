@@ -2,6 +2,7 @@
 // این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
 import { CAST } from "./characters.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
+import { MAX_PROPS, PROP_IDS, type PropPlacement } from "./props.ts";
 import { MAX_EXTRAS, VARIANTS, type ActorSlot, type Aspect, type Shot } from "./types.ts";
 
 export type Persist = {
@@ -78,6 +79,19 @@ function repairExtras(v: unknown, main: string[]): ActorSlot[] {
   return out;
 }
 
+function repairProps(v: unknown): PropPlacement[] {
+  if (!Array.isArray(v)) return [];
+  const out: PropPlacement[] = [];
+  for (const item of v) {
+    const o = item && typeof item === "object" ? (item as Partial<PropPlacement>) : null;
+    if (!o || typeof o.id !== "string" || !(PROP_IDS as string[]).includes(o.id)) continue;
+    const x = typeof o.x === "number" && Number.isFinite(o.x) ? Math.min(1, Math.max(0, o.x)) : 0.5;
+    out.push({ id: o.id, x, layer: o.layer === "front" ? "front" : "back" });
+    if (out.length >= MAX_PROPS) break;
+  }
+  return out;
+}
+
 // PERS-01c: همهٔ فیلدهای متنی/شمارشی با پیش‌فرض پر می‌شوند.
 export function normalize(shot: Shot): Shot {
   const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
@@ -100,6 +114,7 @@ export function normalize(shot: Shot): Shot {
     actorA,
     actorB,
     extras: repairExtras(shot.extras, [actorA.charId, actorB.charId]),
+    props: repairProps(shot.props),
   };
 }
 

@@ -184,3 +184,34 @@ describe("more than two people", () => {
     assert.ok(r.warnings.some((w) => w.includes("حداکثر ۵") || w.includes("حداکثر 5")));
   });
 });
+
+describe("props from the scenario", () => {
+  const SCR = `قهوه‌خانه، شب
+یک سماور بزرگ و قلیان کنار تخت است.
+پرویز: سلام! (به سماور اشاره می‌کند)
+پهلوان: بفرما.
+
+خیابان، روز
+یک پیکان و یک تاکسی کنار درخت پارک شده‌اند.
+سارا: کجا؟`;
+  it("UT-PR-01 dictionary finds props in descriptions; table-top items get a table", () => {
+    const { shots } = layoutPlan(planFromDictionary(SCR));
+    const cafe = shots[0].props;
+    assert.deepEqual(cafe.map((p) => p.id).sort(), ["hookah", "samovar", "table"]);
+    assert.equal(cafe.find((p) => p.id === "table")!.layer, "front");
+    const street = shots.at(-1)!.props.map((p) => p.id);
+    assert.deepEqual(street.sort(), ["peykan", "taxi", "tree"]);
+    // اشیاء بزرگ کنار قاب‌اند تا جلوی بازیگران (۰٫۳ و ۰٫۷۲) را نگیرند
+    for (const p of shots.at(-1)!.props) assert.ok(p.x < 0.2 || p.x > 0.8, p.id);
+  });
+  it("UT-PR-02 the model path gets the same props from the script text, at no token cost", async () => {
+    const { propsByScene } = await import("./script-plan.ts");
+    assert.deepEqual(propsByScene(SCR), [["samovar", "hookah"], ["peykan", "taxi", "tree"]]);
+  });
+  it("UT-PR-03 dialogue words are not props; generated shots survive the validator", () => {
+    const { shots } = layoutPlan(planFromDictionary("پارک\nسارا: من از گربه می‌ترسم"));
+    assert.deepEqual(shots[0].props, []);
+    const r = parseProject({ shots: layoutPlan(planFromDictionary(SCR)).shots });
+    assert.ok(r.ok && r.dropped === 0);
+  });
+});

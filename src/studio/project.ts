@@ -27,6 +27,7 @@ export const DEFAULT_SHOTS: Shot[] = [
     actorA: { charId: "parviz", emotion: "neutral", action: "tea" },
     actorB: { charId: "pooneh", emotion: "poker", action: "hips" },
     extras: [],
+    props: [],
   },
   {
     id: "s2",
@@ -45,6 +46,11 @@ export const DEFAULT_SHOTS: Shot[] = [
     actorA: { charId: "parviz", emotion: "poker", action: "idle" },
     actorB: { charId: "pahlavan", emotion: "poker", action: "tea" },
     extras: [{ charId: "reza", emotion: "smile", action: "tea" }],
+    props: [
+      { id: "table", x: 0.51, layer: "front" },
+      { id: "samovar", x: 0.47, layer: "front" },
+      { id: "hookah", x: 0.06, layer: "back" },
+    ],
   },
   {
     id: "s3",
@@ -62,6 +68,7 @@ export const DEFAULT_SHOTS: Shot[] = [
     actorA: { charId: "parviz", emotion: "neutral", action: "walk" },
     actorB: { charId: "reza", emotion: "neutral", action: "idle" },
     extras: [],
+    props: [],
   },
 ];
 

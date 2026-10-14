@@ -83,7 +83,7 @@ type Studio = {
   addShot: () => void;
   removeShot: (i: number) => void;
   /** تغییر طرح یا شب/روز برای همهٔ نماهایی که در این مکان‌اند. */
-  patchPlace: (background: Shot["background"], partial: Partial<Pick<Shot, "variant" | "night">>) => void;
+  patchPlace: (background: Shot["background"], partial: Partial<Pick<Shot, "variant" | "night" | "props">>) => void;
   /** همهٔ نماها را با نماهای تازه (مثلاً از چیدن خودکار سناریو) جایگزین می‌کند. */
   replaceShots: (shots: Shot[]) => boolean;
   moveShot: (i: number, dir: -1 | 1) => void;

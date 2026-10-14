@@ -14,6 +14,7 @@ import {
   DIALOGUE,
   MAX_SHOTS,
   isHeader,
+  propsByScene,
   sceneTraits,
   splitDirections,
   type Plan,
@@ -118,6 +119,8 @@ export function planFromModelReply(
   let prev = 0;
   let lastBg: BgId | undefined;
   const placeVariant = new Map<BgId, number>();
+  // اشیاء صحنه از خود متن خوانده می‌شود (رایگان)، نه از مدل.
+  const sceneProps = propsByScene(script);
   for (const n of order) {
     const row = rows.get(n)!;
     if (!isSpoken(n)) {
@@ -215,6 +218,7 @@ export function planFromModelReply(
       emotion,
       action,
       sfx,
+      props: [...(sceneProps[scene] ?? [])],
     });
   }
 

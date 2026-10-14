@@ -187,7 +187,7 @@ function hairFront(ctx: CanvasRenderingContext2D, char: CharacterDef, y: number)
     ctx.strokeRect(28, y - 8, 10, 22);
   } else if (char.hairStyle === "bob" || char.hairStyle === "bowl") {
     ctx.beginPath();
-    ctx.arc(0, y - 8, 40, Math.PI * 1.05, Math.PI * 1.95, true);
+    ctx.arc(0, y - 8, 40, Math.PI * 1.05, Math.PI * 1.95, false);
     ctx.quadraticCurveTo(36, y + 18, 24, y + (char.hairStyle === "bob" ? 10 : 2));
     ctx.quadraticCurveTo(0, y - 20, -24, y + (char.hairStyle === "bob" ? 10 : 2));
     ctx.quadraticCurveTo(-36, y + 18, -40, y - 8);

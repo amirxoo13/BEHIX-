@@ -62,7 +62,7 @@ describe("migration localStorage → IndexedDB", () => {
     const res = await loadProject(kv, ls);
     assert.equal(res.source, "migrated");
     assert.equal(res.data?.shots.length, 2);
-    assert.deepEqual(res.data?.shots[0], { ...goodShot, variant: 0, night: false, extras: [] }); // valid data untouched; new fields get defaults
+    assert.deepEqual(res.data?.shots[0], { ...goodShot, variant: 0, night: false, extras: [], props: [] }); // valid data untouched; new fields get defaults
     const repaired = res.data!.shots[1];
     assert.equal(repaired.dialogue, "");
     assert.equal(repaired.speaker, "a");

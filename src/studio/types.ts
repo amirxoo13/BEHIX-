@@ -1,3 +1,5 @@
+import type { PropPlacement } from "./props.ts";
+
 export type Aspect = "wide" | "square" | "story";
 
 /** مکان‌ها. داخل ساختمان: living..parking. «streetDay/streetNight» فقط برای خواندن پروژه‌های قدیمی است. */
@@ -113,6 +115,8 @@ export type Shot = {
   actorB: ActorSlot;
   /** بقیهٔ حاضرین صحنه (حداکثر MAX_EXTRAS نفر)؛ عقب‌تر از دو بازیگر اصلی ایستاده‌اند و حرف نمی‌زنند. */
   extras: ActorSlot[];
+  /** اشیاء جدا از پس‌زمینه (ماشین، درخت، سماور، ...) با جای هرکدام در قاب. */
+  props: PropPlacement[];
 };
 
 /** با دو بازیگر اصلی، حداکثر ۵ نفر در قاب. */

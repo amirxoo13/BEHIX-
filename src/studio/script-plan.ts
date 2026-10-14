@@ -13,6 +13,7 @@ import {
   BACKGROUNDS,
   CHARACTERS,
   EMOTION_ENTRIES,
+  PROP_ENTRIES,
   SFX_ENTRIES,
   findAll,
   findFirst,
@@ -21,6 +22,7 @@ import {
 } from "./catalog.ts";
 import { WORLD } from "./labels.ts";
 import { newId } from "./project.ts";
+import { placeProps, type PropId } from "./props.ts";
 import { MAX_EXTRAS, VARIANTS, type Action, type BgId, type CameraId, type Emotion, type SfxId, type Shot, type Speaker } from "./types.ts";
 
 export type PlanShot = {
@@ -41,6 +43,8 @@ export type PlanShot = {
   action: Record<string, Action>;
   sfx: SfxId;
   camera?: CameraId;
+  /** اشیائی که در متن صحنه آمده (پیکان، سماور، درخت، ...). */
+  props: PropId[];
 };
 
 export type Plan = {
@@ -132,8 +136,38 @@ type SceneDraft = {
   night: boolean;
   variant?: number;
   cast: string[];
-  shots: Omit<PlanShot, "cast" | "background" | "scene" | "heading" | "night" | "variant">[];
+  props: PropId[];
+  shots: Omit<PlanShot, "cast" | "background" | "scene" | "heading" | "night" | "variant" | "props">[];
 };
+
+/** اشیائی که در یک متن اسمشان آمده، به ترتیب و بدون تکرار. */
+export function propsIn(text: string): PropId[] {
+  return [...new Set(findAll(text, PROP_ENTRIES).map((m) => m.id))];
+}
+
+/**
+ * اشیاء هر صحنه از خود متن سناریو (سرصحنه و خط‌های توضیح، نه دیالوگ‌ها)؛ برای وقتی که
+ * مدل زبانی صحنه‌ها را فهمیده، چون مدل اسم اشیاء را برنمی‌گرداند. شمارهٔ صحنه مثل script-llm.ts:
+ * تعداد سرصحنه‌های قبل از خط، منهای یک (حداقل صفر).
+ */
+export function propsByScene(script: string): PropId[][] {
+  const out: PropId[][] = [[]];
+  let scene = -1;
+  for (const raw of script.slice(0, MAX_SCRIPT_CHARS).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const h = isHeader(line);
+    if (h !== null) {
+      scene++;
+      out[scene] ??= [];
+    }
+    const idx = Math.max(0, scene);
+    const dlg = DIALOGUE.exec(line);
+    const text = h !== null ? h : dlg && findFirst(dlg[1], CHARACTERS) ? splitDirections(dlg[2]).directions : line;
+    for (const id of propsIn(text)) if (!out[idx].includes(id)) out[idx].push(id);
+  }
+  return out;
+}
 
 /** روش ۱: فهم سناریو با دیکشنری کاتالوگ. همیشه در دسترس، بدون اینترنت. */
 export function planFromDictionary(script: string): Plan {
@@ -149,7 +183,7 @@ export function planFromDictionary(script: string): Plan {
 
   const open = (heading: string) => {
     const traits = sceneTraits(heading);
-    scene = { heading, cast: [], shots: [], night: traits.night, variant: traits.variant };
+    scene = { heading, cast: [], props: propsIn(heading), shots: [], night: traits.night, variant: traits.variant };
     scenes.push(scene);
     const bg = traits.background;
     if (bg) scene.background = bg;
@@ -195,6 +229,7 @@ export function planFromDictionary(script: string): Plan {
     if (dlg && speaker) {
       const { said, directions: dir } = splitDirections(dlg[2]);
       addCast(speaker);
+      for (const id of propsIn(dir)) if (!current.props.includes(id)) current.props.push(id);
       const emotion = { ...pendingEmotion };
       const action = { ...pendingAction };
       const e = findFirst(dir, EMOTION_ENTRIES);
@@ -224,6 +259,7 @@ export function planFromDictionary(script: string): Plan {
 
     // خط توضیح صحنه
     pendingDesc.push(line);
+    for (const id of propsIn(line)) if (!current.props.includes(id)) current.props.push(id);
     for (const c of findAll(line, CHARACTERS)) addCast(c.id);
     if (!current.background && !current.backgroundFromText) {
       current.backgroundFromText = backgroundOf(line);
@@ -255,7 +291,7 @@ export function planFromDictionary(script: string): Plan {
     placeVariant.set(background, variant);
     const heading = s.heading || WORLD[background].place;
     for (const shot of s.shots) {
-      shots.push({ ...shot, scene: i, heading, background, variant, night: s.night, cast: [...s.cast] });
+      shots.push({ ...shot, scene: i, heading, background, variant, night: s.night, cast: [...s.cast], props: [...s.props] });
     }
   });
 
@@ -365,6 +401,7 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
       actorA,
       actorB,
       extras,
+      props: placeProps(p.props),
     });
     if (p.speaker) lastSpeaker = p.speaker;
   }

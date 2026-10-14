@@ -6,6 +6,7 @@
  */
 import { CAST } from "./characters.ts";
 import { ACTIONS, CAMERAS, EMOTIONS, SFXS, WORLD } from "./labels.ts";
+import { PROPS, type PropId } from "./props.ts";
 import type { Action, BgId, CameraId, Emotion, SfxId } from "./types.ts";
 
 export type Entry<T extends string> = { id: T; label: string; aliases: string[] };
@@ -113,6 +114,13 @@ export const SFX_ENTRIES: Entry<SfxId>[] = SFXS.map((s) => ({
       : [...new Set([...(normalizeFa(s.label).length > 2 ? [s.label] : []), ...SFX_ALIASES[s.id]])],
 }));
 
+/** اشیاء جدا (ماشین، درخت، سماور، ...). */
+export const PROP_ENTRIES: Entry<PropId>[] = PROPS.map((p) => ({
+  id: p.id,
+  label: p.label,
+  aliases: [...new Set([p.label, ...p.aliases])],
+}));
+
 export const CAMERA_ENTRIES: Entry<CameraId>[] = CAMERAS.map((c) => ({
   id: c.id,
   label: c.label,
@@ -175,4 +183,5 @@ export const IDS = {
   actions: ACTION_ENTRIES.map((e) => e.id),
   sfx: SFX_ENTRIES.map((e) => e.id),
   cameras: CAMERA_ENTRIES.map((e) => e.id),
+  props: PROP_ENTRIES.map((e) => e.id),
 };

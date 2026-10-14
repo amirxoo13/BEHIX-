@@ -1,6 +1,7 @@
 import { findChar } from "./characters";
 import { drawActor, type FaceDraw } from "./draw-actor";
 import { SCROLLING, drawBackground } from "./draw-bg";
+import { drawProps } from "./props";
 import { readMouth } from "./audio";
 import {
   blinkAt,
@@ -154,10 +155,12 @@ export function renderFrame(
   ctx.clearRect(0, 0, w, h);
   ctx.save();
   applyCamera(ctx, shot, opts.local, w, h);
-  drawBackground(ctx, shot.background, w, h, scrollFor(opts.now, shot, scale), time, {
+  const scroll = scrollFor(opts.now, shot, scale);
+  drawBackground(ctx, shot.background, w, h, scroll, time, {
     variant: shot.variant,
     night: shot.night,
   });
+  drawProps(ctx, shot.props, "back", w, footY, scale, scroll);
 
   type Slot = {
     id: string;
@@ -226,6 +229,7 @@ export function renderFrame(
       s.inner,
     );
   }
+  drawProps(ctx, shot.props, "front", w, footY, scale, scroll);
   ctx.restore();
 
   if (shot.speaker !== "none" && shot.dialogue.trim()) {
