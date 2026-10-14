@@ -6,6 +6,7 @@ import { PhaseHead, Shell } from "@/components/shell";
 import { StageCanvas } from "@/components/stage-canvas";
 import { PlayButton } from "@/components/transport";
 import { renderFilm } from "@/studio/export-film";
+import { exportSnapChanged, exportSnapOf } from "@/studio/export-snap";
 import { PHASES } from "@/studio/flow";
 import { clock, fa } from "@/studio/format";
 import { totalDuration } from "@/studio/frame";
@@ -63,7 +64,13 @@ function DeliverPage() {
     setFilm(null);
     setProgress(0);
     try {
+      const before = exportSnapOf(useStudio.getState());
       const out = await renderFilm(canvas, { onProgress: (p) => setProgress(p) });
+      if (exportSnapChanged(before, exportSnapOf(useStudio.getState()))) {
+        setFilm(null);
+        setStatus("پروژه هنگام ساخت فایل عوض شد؛ این فایل ذخیره نشد.");
+        return;
+      }
       const file = filmFile(out.blob, out.mime);
       downloadFile(file);
       setFilm(file);
