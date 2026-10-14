@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { FLOW, PHASES } from "@/studio/flow";
 import { finishPlayback, useStudio } from "@/studio/store";
 
@@ -12,6 +12,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const boot = useStudio((s) => s.boot);
   const title = useStudio((s) => s.title);
   const path = useRouterState({ select: (s) => clean(s.location.pathname) });
+  const railRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     boot();
@@ -19,6 +20,12 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     finishPlayback();
+  }, [path]);
+
+  // On mobile the rail scrolls horizontally; keep the current step visible.
+  useEffect(() => {
+    const active = railRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [path]);
 
   const index = FLOW.findIndex((item) => item.to === path);
@@ -37,7 +44,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </Link>
       </header>
       <div className="layout">
-        <nav className="rail" aria-label="خط تولید">
+        <nav ref={railRef} className="rail" aria-label="خط تولید">
           <Link to="/" className="step-link" aria-current={path === "/" ? "page" : undefined}>
             <span className="step-no">00</span>
             پروژه
@@ -54,7 +61,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="work">
+        <main className="work">
           {children}
           <div className="pager">
             {prev ? (
@@ -72,7 +79,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <span />
             )}
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );
@@ -90,12 +97,12 @@ export function PhaseHead({
   lede: string;
 }) {
   return (
-    <header className="mb-5">
+    <div className="mb-5">
       <p className="kicker">
         {no} · {en}
       </p>
       <h1 className="mt-1 text-2xl font-bold">{title}</h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{lede}</p>
-    </header>
+    </div>
   );
 }
