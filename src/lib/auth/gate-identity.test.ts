@@ -392,6 +392,19 @@ describe("gateIdentityEnabled", () => {
       delete process.env.VITE_AUTH_ENABLED;
     }
   });
+
+  it("stays enabled for any VITE_AUTH_ENABLED value other than exactly \"false\"", () => {
+    delete process.env.GROK_PROJECT_ID;
+    delete process.env.GROK_GATE_ORIGIN;
+    for (const value of ["true", "", "0", "no", "FALSE", "off"]) {
+      process.env.VITE_AUTH_ENABLED = value;
+      try {
+        assert.equal(gateIdentityEnabled(), true, value);
+      } finally {
+        delete process.env.VITE_AUTH_ENABLED;
+      }
+    }
+  });
 });
 
 describe("gateTokenAudience", () => {

@@ -67,8 +67,12 @@ test("an explicit process-env override wins over the file", () => {
   assert.equal(merged.PATH, "/usr/bin");
 });
 
-test("the template ships auth off", () => {
-  assert.deepEqual(readAppEnv(projectRoot()), { VITE_AUTH_ENABLED: "false" });
+test("the template ships auth on: no committed app-env disables it", () => {
+  // Owner decision: auth is ON by default. Nothing shipped in the repo may
+  // resolve VITE_AUTH_ENABLED to "false" (missing file or no key both = on).
+  const shipped = readAppEnv(projectRoot());
+  assert.notEqual(shipped.VITE_AUTH_ENABLED, "false");
+  assert.equal(mergeAppEnv(shipped, {}).VITE_AUTH_ENABLED === "false", false);
 });
 
 test("vite loadEnv resolves the wrapped value", () => {
