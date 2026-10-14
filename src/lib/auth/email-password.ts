@@ -15,4 +15,5 @@ export const emailAndPasswordOptions = {
   // No mailer is wired yet, so verification cannot be required. Revisit once
   // an email provider exists.
   requireEmailVerification: false,
+  disableSignUp: true,
 } as const;

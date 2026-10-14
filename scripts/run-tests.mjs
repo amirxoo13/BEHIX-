@@ -26,6 +26,7 @@ async function main() {
     "--test",
     "src/lib/app-data/app-data.test.ts",
     "src/lib/app-data/readiness-schedule.test.ts",
+    "src/lib/auth/email-password.test.ts",
     "src/lib/auth/gate-identity.test.ts",
     "src/lib/auth/sign-in-gate.test.ts",
     "src/lib/preview-path-prefix.test.ts",
