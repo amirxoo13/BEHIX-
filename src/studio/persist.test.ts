@@ -395,8 +395,22 @@ describe("T07-v4 mixed valid + invalid shots", () => {
   it("UT-V4-02 legacy mixed: byte-equal backup, notice, valid shots kept, migration ok after backup", async () => {
     const raw = JSON.stringify(mixed);
     const ls = fakeLS({ [LEGACY_KEY]: raw });
-    const kv = memoryKV();
+    const writes: string[] = [];
+    const inner = memoryKV();
+    const kv: KV & { data: Record<string, unknown> } = {
+      data: inner.data,
+      async get(k) {
+        return inner.get(k);
+      },
+      async set(k, v) {
+        writes.push(k);
+        await inner.set(k, v);
+      },
+    };
     const res = await loadProject(kv, ls, NOW);
+    const corruptAt = writes.findIndex((k) => k.startsWith("corrupt-"));
+    const projectAt = writes.indexOf(IDB_KEY);
+    assert.ok(corruptAt >= 0 && projectAt > corruptAt, `writes=${writes.join(",")}`);
     assert.equal(kv.data[`corrupt-${NOW}-legacy`], raw);
     assert.deepEqual(res.quarantined, [`idb:corrupt-${NOW}-legacy`]);
     assert.match(res.notice ?? "", /1 نما خراب بود/);
