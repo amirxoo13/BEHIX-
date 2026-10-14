@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { isMigrationFile, migrationName, pendingMigrations } from "./migration-plan.mjs";
+import { isMigrationFile, migrationName, migrationNumberStart, pendingMigrations } from "./migration-plan.mjs";
 import { projectRoot } from "./with-app-env.mjs";
 
 const AUTH_MIGRATION = "0001_auth.sql";
@@ -86,8 +86,9 @@ test("top-level migrations match the sign-in policy and never shadow the auth sc
   }
 
   // 3. No duplicate names; no file other than the verbatim copy shadows a
-  //    name from migrations/auth/; the rest are numbered consecutively after
-  //    the auth migration (or from 0001 when sign-in is off).
+  //    name from migrations/auth/; the rest are numbered consecutively.
+  //    With the auth copy present they start at 2. Without it they start at 1,
+  //    or at 2 when 0002_auth_rate_limit.sql is retained and not renumbered.
   assert.equal(new Set(topLevel).size, topLevel.length, "duplicate top-level migration names");
   const others = topLevel.filter((n) => n !== AUTH_MIGRATION);
   for (const name of others) {
@@ -99,7 +100,7 @@ test("top-level migrations match the sign-in policy and never shadow the auth sc
     return Number(m[1]);
   });
   assert.equal(new Set(numbers).size, numbers.length, "two top-level migrations share a number");
-  const first = topLevel.includes(AUTH_MIGRATION) ? 2 : 1;
+  const first = migrationNumberStart(topLevel.includes(AUTH_MIGRATION), numbers);
   assert.deepEqual(numbers, numbers.map((_, i) => first + i), "top-level migration numbers must be consecutive");
 });
 

@@ -359,6 +359,24 @@ describe("T07-v3 F6: IDB read error", () => {
     const res = await loadProject(memoryKV(), ls, 20);
     assert.equal(res.data?.title, "ONLY");
   });
+
+  it("UT-CR-05 newer provisional legacy is not applied but is announced", async () => {
+    const idbProject = {
+      shots: [{ id: "r", duration: 2, dialogue: "REAL" }],
+      aspect: "wide",
+      showRig: false,
+      title: "REAL",
+      logline: "",
+      genre: "",
+      savedAt: 1000,
+    };
+    const legacy = { ...legacyProject, title: "TEMP", savedAt: 5000, provisional: true };
+    const kv = memoryKV({ [IDB_KEY]: idbProject });
+    const ls = fakeLS({ [LEGACY_KEY]: JSON.stringify(legacy) });
+    const res = await loadProject(kv, ls, 6000);
+    assert.equal(res.data?.title, "REAL");
+    assert.match(res.notice ?? "", /موقت/);
+  });
 });
 
 describe("T07-v4 mixed valid + invalid shots", () => {
@@ -377,8 +395,22 @@ describe("T07-v4 mixed valid + invalid shots", () => {
   it("UT-V4-02 legacy mixed: byte-equal backup, notice, valid shots kept, migration ok after backup", async () => {
     const raw = JSON.stringify(mixed);
     const ls = fakeLS({ [LEGACY_KEY]: raw });
-    const kv = memoryKV();
+    const writes: string[] = [];
+    const inner = memoryKV();
+    const kv: KV & { data: Record<string, unknown> } = {
+      data: inner.data,
+      async get(k) {
+        return inner.get(k);
+      },
+      async set(k, v) {
+        writes.push(k);
+        await inner.set(k, v);
+      },
+    };
     const res = await loadProject(kv, ls, NOW);
+    const corruptAt = writes.findIndex((k) => k.startsWith("corrupt-"));
+    const projectAt = writes.indexOf(IDB_KEY);
+    assert.ok(corruptAt >= 0 && projectAt > corruptAt, `writes=${writes.join(",")}`);
     assert.equal(kv.data[`corrupt-${NOW}-legacy`], raw);
     assert.deepEqual(res.quarantined, [`idb:corrupt-${NOW}-legacy`]);
     assert.match(res.notice ?? "", /1 نما خراب بود/);
@@ -419,5 +451,31 @@ describe("T07-v4 mixed valid + invalid shots", () => {
     const res = await loadProject(kv, fakeLS(), NOW);
     assert.deepEqual(res.quarantined, []);
     assert.equal(res.notice, undefined);
+  });
+
+  it("UT-CR-06 legacy is kept when read-back differs beyond shot count", async () => {
+    const legacy = {
+      shots: [goodShot],
+      title: "LEGACY-TITLE",
+      aspect: "wide",
+      showRig: false,
+      logline: "L",
+      genre: "G",
+      savedAt: 50,
+    };
+    const raw = JSON.stringify(legacy);
+    const ls = fakeLS({ [LEGACY_KEY]: raw });
+    const store = memoryKV();
+    const kv: KV = {
+      async get(k) {
+        const v = await store.get(k);
+        if (k === IDB_KEY && v && typeof v === "object") return { ...(v as Record<string, unknown>), title: "TAMPERED" };
+        return v;
+      },
+      set: (k, v) => store.set(k, v),
+    };
+    const res = await loadProject(kv, ls, 99);
+    assert.equal(ls.data[LEGACY_KEY], raw);
+    assert.equal(res.source, "legacy-fallback");
   });
 });

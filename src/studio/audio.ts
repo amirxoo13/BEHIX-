@@ -287,20 +287,20 @@ export async function startMic() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   micStream = stream;
   chunks = [];
-  const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
   try {
+    const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
     recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    recorder.start();
   } catch (err) {
-    // BUG-06: اگر ضبط‌کننده ساخته نشد، میکروفون باز نماند.
+    // BUG-06 / CR-2: پشتیبانی، ساخت، یا start اگر شکست، میکروفون باز نماند.
     stream.getTracks().forEach((t) => t.stop());
     micStream = null;
     recorder = null;
     throw err;
   }
-  recorder.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-  recorder.start();
 }
 
 export function stopMic(): Promise<Blob> {
@@ -349,8 +349,13 @@ export async function renderMixOffline(
   const decoded = new Map<string, AudioBuffer>();
   for (const cue of cues) {
     if (!cue.url || decoded.has(cue.url)) continue;
-    const arr = await (await fetch(cue.url)).arrayBuffer();
-    decoded.set(cue.url, await octx.decodeAudioData(arr));
+    try {
+      const res = await fetch(cue.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      decoded.set(cue.url, await octx.decodeAudioData(await res.arrayBuffer()));
+    } catch (err) {
+      console.warn("[mix] skipping voice clip", err);
+    }
   }
   try {
     for (const cue of cues) {

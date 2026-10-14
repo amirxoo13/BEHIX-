@@ -256,6 +256,17 @@ async function quarantine(
   return null;
 }
 
+function samePersist(a: Persist, b: Persist): boolean {
+  return (
+    a.aspect === b.aspect &&
+    a.showRig === b.showRig &&
+    a.title === b.title &&
+    a.logline === b.logline &&
+    a.genre === b.genre &&
+    JSON.stringify(a.shots) === JSON.stringify(b.shots)
+  );
+}
+
 /**
  * - هر دو منبع خوانده می‌شوند؛ از بین نسخه‌های معتبر، جدیدتر (savedAt) انتخاب می‌شود (F2).
  * - دادهٔ خراب قبل از باز شدن قفل ذخیره در کلید جداگانه کپی می‌شود؛ اگر نشد saveLocked=true (F1).
@@ -326,7 +337,7 @@ export async function loadProject(
         const stamp = legacy.kind === "valid" && legacy.savedAt ? legacy.savedAt : now;
         await kv.set(IDB_KEY, { ...chosen.data, savedAt: stamp });
         const check = classify(await kv.get(IDB_KEY));
-        if (check.kind === "valid" && check.data.shots.length === chosen.data.shots.length) {
+        if (check.kind === "valid" && samePersist(check.data, chosen.data)) {
           try {
             ls?.removeItem(LEGACY_KEY);
           } catch {
@@ -341,6 +352,8 @@ export async function loadProject(
   }
 
   let notice: string | undefined;
+  const newerProvisional =
+    idb.kind === "valid" && legacy.kind === "valid" && legacy.provisional && legacy.savedAt > idb.savedAt;
   if (droppedTotal > 0 && !saveLocked) {
     notice = `${droppedTotal} نما خراب بود و کنار گذاشته شد؛ یک نسخه از دادهٔ اصلی جداگانه نگه داشته شد و پاک نشده است.`;
   } else if (quarantined.length) {
@@ -353,6 +366,10 @@ export async function loadProject(
     notice = "دادهٔ ذخیره‌شده خراب است و نسخهٔ امن از آن ساخته نشد؛ برای جلوگیری از پاک شدن، ذخیرهٔ خودکار متوقف شد. لطفاً از پروژه پشتیبان بگیرید.";
   } else if (source === "legacy-fallback" && useKV) {
     notice ??= "انتقال پروژه به حافظهٔ جدید انجام نشد؛ دادهٔ قبلی سر جایش ماند.";
+  }
+  if (newerProvisional && !idbUnreadable && !saveLocked) {
+    const extra = "نسخهٔ موقت جدیدتری در حافظهٔ قدیمی ماند و جایگزین پروژهٔ اصلی نشد.";
+    notice = notice ? `${notice} ${extra}` : extra;
   }
   return {
     data: chosen?.data ?? null,
