@@ -76,6 +76,8 @@ type Studio = {
   setMeta: (partial: Partial<Meta>) => void;
   addShot: () => void;
   removeShot: (i: number) => void;
+  /** همهٔ نماها را با نماهای تازه (مثلاً از چیدن خودکار سناریو) جایگزین می‌کند. */
+  replaceShots: (shots: Shot[]) => boolean;
   moveShot: (i: number, dir: -1 | 1) => void;
   setAspect: (a: Aspect) => void;
   setShowRig: (v: boolean) => void;
@@ -255,6 +257,15 @@ export const useStudio = create<Studio>((set, get) => ({
     const selected = Math.max(0, Math.min(s.selected, next.length - 1));
     set({ shots: next, selected, audioUrls: urls });
     saveOf(persistFrom({ ...s, shots: next }));
+  },
+  replaceShots: (shots) => {
+    if (booting || shots.length === 0) return false;
+    const s = get();
+    if (s.playing) finishPlayback();
+    for (const url of Object.values(s.audioUrls)) revoke(url);
+    set({ shots, selected: 0, audioUrls: {} });
+    saveOf(persistFrom({ ...s, shots }));
+    return true;
   },
   moveShot: (i, dir) => {
     if (booting) return;
