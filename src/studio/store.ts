@@ -1,8 +1,8 @@
 import { create } from "zustand";
-import { playSfx, playUrl, stopAll } from "./audio";
-import { exportBackup, idbKV, importBackup, loadProject, saveProject, type Persist } from "./persist";
-import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, newId } from "./project";
-import type { ActorSlot, Aspect, Emotion, Shot } from "./types";
+import { playSfx, playUrl, stopAll } from "./audio.ts";
+import { exportBackup, idbKV, importBackup, loadProject, saveProject, type Persist } from "./persist.ts";
+import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, newId } from "./project.ts";
+import type { ActorSlot, Aspect, Emotion, Shot } from "./types.ts";
 
 
 let onDone: (() => void) | null = null;
@@ -98,7 +98,18 @@ let saveChain: Promise<unknown> = Promise.resolve();
 function saveOf(state: Persist) {
   if (!ready) return;
   const snapshot = structuredClone(state);
-  saveChain = saveChain.then(() => saveProject(activeKV, snapshot)).catch(() => undefined);
+  saveChain = saveChain
+    .then(async () => {
+      const where = await saveProject(activeKV, snapshot);
+      if (where === "failed") {
+        ready = false;
+        useStudio.setState({
+          storageLocked: true,
+          storageNotice: "ذخیرهٔ خودکار ناموفق بود؛ ذخیرهٔ بعدی متوقف شد.",
+        });
+      }
+    })
+    .catch(() => undefined);
 }
 
 function persistFrom(s: {
