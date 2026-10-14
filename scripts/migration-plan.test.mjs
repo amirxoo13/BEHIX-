@@ -56,10 +56,51 @@ test("non-.sql entries are dropped (readdir also yields the auth/ directory)", (
   assert.deepEqual(pendingMigrations(["auth", "README.md"], []), []);
 });
 
-test("the auth schema ships outside the globbed directory", () => {
-  const migrationsDir = join(projectRoot(), "migrations");
-  assert.deepEqual(pendingMigrations(readdirSync(migrationsDir), []), []);
-  assert.ok(readdirSync(join(migrationsDir, "auth")).includes("0001_auth.sql"));
+/**
+ * Reads `emailAndPasswordEnabled` from src/lib/auth/email-password.ts. Fails
+ * loudly unless the file declares it exactly once as a literal true/false.
+ */
+function emailPasswordEnabled(root) {
+  const src = readFileSync(join(root, "src/lib/auth/email-password.ts"), "utf8");
+  const matches = [...src.matchAll(/^export const emailAndPasswordEnabled\s*=\s*(true|false)\s*;/gm)];
+  assert.equal(matches.length, 1, "emailAndPasswordEnabled must be declared once as a literal true/false");
+  return matches[0][1] === "true";
+}
+
+test("top-level migrations match the sign-in policy and never shadow the auth schema", () => {
+  const root = projectRoot();
+  const migrationsDir = join(root, "migrations");
+  const authDir = join(migrationsDir, "auth");
+
+  // 1. The auth schema source is always kept.
+  const authFiles = readdirSync(authDir).filter(isMigrationFile);
+  assert.ok(authFiles.includes(AUTH_MIGRATION), "migrations/auth/0001_auth.sql must exist");
+
+  const topLevel = pendingMigrations(readdirSync(migrationsDir), []).map((m) => m.name);
+
+  // 2. The auth copy is present at top level exactly when sign-in is on.
+  if (emailPasswordEnabled(root)) {
+    assert.ok(topLevel.includes(AUTH_MIGRATION), "sign-in is on: migrations/0001_auth.sql must be present");
+  } else {
+    assert.ok(!topLevel.includes(AUTH_MIGRATION), "sign-in is off: migrations/0001_auth.sql must not be present");
+  }
+
+  // 3. No duplicate names; no file other than the verbatim copy shadows a
+  //    name from migrations/auth/; the rest are numbered consecutively after
+  //    the auth migration (or from 0001 when sign-in is off).
+  assert.equal(new Set(topLevel).size, topLevel.length, "duplicate top-level migration names");
+  const others = topLevel.filter((n) => n !== AUTH_MIGRATION);
+  for (const name of others) {
+    assert.ok(!authFiles.includes(name), `${name} shadows a file in migrations/auth/`);
+  }
+  const numbers = others.map((n) => {
+    const m = /^(\d{4})_[a-z0-9_]+\.sql$/.exec(n);
+    assert.ok(m, `${n} is not named NNNN_name.sql`);
+    return Number(m[1]);
+  });
+  assert.equal(new Set(numbers).size, numbers.length, "two top-level migrations share a number");
+  const first = topLevel.includes(AUTH_MIGRATION) ? 2 : 1;
+  assert.deepEqual(numbers, numbers.map((_, i) => first + i), "top-level migration numbers must be consecutive");
 });
 
 test("this workspace's auth schema copy is byte-identical to its source", () => {
