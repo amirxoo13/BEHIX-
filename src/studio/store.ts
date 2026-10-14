@@ -1,17 +1,9 @@
 import { create } from "zustand";
 import { playSfx, playUrl, stopAll } from "./audio";
-import { CAST } from "./characters";
-import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, KEY, newId } from "./project";
+import { exportBackup, idbKV, importBackup, loadProject, saveProject, type Persist } from "./persist";
+import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, newId } from "./project";
 import type { ActorSlot, Aspect, Emotion, Shot } from "./types";
 
-type Persist = {
-  shots: Shot[];
-  aspect: Aspect;
-  showRig: boolean;
-  title: string;
-  logline: string;
-  genre: string;
-};
 
 let onDone: (() => void) | null = null;
 let booted = false;
@@ -66,7 +58,15 @@ type Studio = {
   pulses: { a: number; b: number };
   status: string;
   recording: boolean;
-  boot: () => void;
+  boot: () => Promise<void>;
+  /** پیام فارسی وضعیت ذخیره‌سازی (دادهٔ خراب/قفل)؛ UI توسط T02 نمایش داده می‌شود. */
+  storageNotice: string;
+  /** true یعنی ذخیرهٔ خودکار برای حفاظت از دادهٔ خراب متوقف است. */
+  storageLocked: boolean;
+  /** متن JSON پشتیبان پروژهٔ فعلی (UI بعداً دانلودش می‌کند). */
+  exportBackup: () => string;
+  /** بازیابی از متن JSON؛ در خطا پروژه دست نمی‌خورد. */
+  importBackup: (text: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   select: (i: number) => void;
   selectDuringPlay: (i: number) => void;
   patchShot: (partial: Partial<Shot>) => void;
@@ -85,67 +85,20 @@ type Studio = {
   setExporting: (v: boolean) => void;
 };
 
-const DEFAULT_CHAR = { a: CAST[0].id, b: CAST[1]?.id ?? CAST[0].id };
-
-function isShotLike(v: unknown): v is Shot {
-  if (!v || typeof v !== "object") return false;
-  const o = v as Record<string, unknown>;
-  return typeof o.id === "string" && typeof o.duration === "number" && Number.isFinite(o.duration) && o.duration > 0;
-}
-
-// نما حذف نمی‌شود: بازیگرِ نبود/نامعتبر با شخصیت پیش‌فرضِ موجود در CAST ترمیم می‌شود و بقیهٔ داده‌ها حفظ می‌شوند.
-function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
-  const o = v && typeof v === "object" ? (v as Partial<ActorSlot>) : {};
-  const known = typeof o.charId === "string" && CAST.some((c) => c.id === o.charId);
-  return {
-    ...o,
-    charId: known ? (o.charId as string) : DEFAULT_CHAR[slot],
-    emotion: typeof o.emotion === "string" ? o.emotion : "neutral",
-    action: typeof o.action === "string" ? o.action : "idle",
-  } as ActorSlot;
-}
-
 function revoke(url: string | undefined) {
   if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
 }
 
-const BG_IDS = ["living", "kitchen", "yard", "cafe", "streetDay", "streetNight", "park", "car"];
-const CAMERA_IDS = ["wide", "medium", "closeLeft", "closeRight", "push", "comic"];
-const SPEAKERS = ["a", "b", "none"];
-const SFX_IDS = ["none", "beep", "slap", "shock", "crickets", "rimshot", "horn", "clink", "door"];
+const kv = idbKV(typeof indexedDB === "undefined" ? undefined : indexedDB);
+let ready = false;
+let activeKV: typeof kv = kv;
+let saveChain: Promise<unknown> = Promise.resolve();
 
-function str(v: unknown, fallback: string): string {
-  return typeof v === "string" ? v : fallback;
-}
-
-function oneOf<T extends string>(v: unknown, allowed: string[], fallback: T): T {
-  return typeof v === "string" && allowed.includes(v) ? (v as T) : fallback;
-}
-
-// PERS-01c: همهٔ فیلدهای متنی/شمارشی نمای ذخیره‌شده با پیش‌فرض پر می‌شوند تا UI (مثلاً dialogue.trim) کرش نکند.
-function normalize(shot: Shot): Shot {
-  const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
-  return {
-    ...shot,
-    heading: str(shot.heading, "") || "داخلی. مکان — روز",
-    actionLine: str(shot.actionLine, ""),
-    dialogue: str(shot.dialogue, ""),
-    background: oneOf(shot.background, BG_IDS, "living"),
-    camera: oneOf(shot.camera, CAMERA_IDS, "wide"),
-    speaker: oneOf(shot.speaker, SPEAKERS, "a"),
-    sfx: oneOf(shot.sfx, SFX_IDS, "none"),
-    pitch,
-    actorA: repairActor(shot.actorA, "a"),
-    actorB: repairActor(shot.actorB, "b"),
-  };
-}
-
+// نوشتن‌ها به ترتیب صف می‌شوند؛ تا پایان بارگذاری چیزی نوشته نمی‌شود تا دادهٔ قدیمی بازنویسی نشود.
 function saveOf(state: Persist) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* private mode / quota */
-  }
+  if (!ready) return;
+  const snapshot = structuredClone(state);
+  saveChain = saveChain.then(() => saveProject(activeKV, snapshot)).catch(() => undefined);
 }
 
 function persistFrom(s: {
@@ -181,29 +134,39 @@ export const useStudio = create<Studio>((set, get) => ({
   pulses: { a: 0, b: 0 },
   status: "",
   recording: false,
-  boot: () => {
-    // Shell در هر route دوباره mount می‌شود؛ بارگذاری فقط یک‌بار تا انتخاب نما ریست نشود (BUG-01).
+  storageNotice: "",
+  storageLocked: false,
+  boot: async () => {
+    // Shell در هر route دوباره mount می‌شود؛ بارگذاری فقط یک‌بار (BUG-01).
     if (booted) return;
     booted = true;
+    let locked = true;
     try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw) as Partial<Persist>;
-      if (!Array.isArray(data.shots)) return;
-      const shots = data.shots.filter(isShotLike);
-      if (shots.length === 0) return;
-      set({
-        shots: shots.map((shot) => normalize(shot)),
-        aspect: data.aspect ?? "wide",
-        showRig: !!data.showRig,
-        title: data.title || DEFAULT_TITLE,
-        logline: data.logline || DEFAULT_LOGLINE,
-        genre: data.genre || DEFAULT_GENRE,
-        selected: 0,
-      });
+      const res = await loadProject(kv);
+      activeKV = res.useKV ? kv : null;
+      locked = res.saveLocked;
+      set({ storageNotice: res.notice ?? "", storageLocked: res.saveLocked });
+      if (res.data) set({ ...res.data, selected: 0 });
     } catch {
-      /* ignore broken save */
+      set({ storageNotice: "بارگذاری پروژه ناموفق بود؛ ذخیرهٔ خودکار متوقف شد.", storageLocked: true });
+    } finally {
+      // F1: فقط وقتی دادهٔ خراب امن کپی شده باشد ذخیره باز می‌شود.
+      ready = !locked;
     }
+  },
+  exportBackup: () => exportBackup(persistFrom(get())),
+  importBackup: async (text) => {
+    const res = importBackup(text);
+    if (!res.ok) return res;
+    if (get().storageLocked) {
+      return { ok: false, error: "ذخیره‌سازی به دلیل دادهٔ خراب قفل است؛ پروژه جایگزین نشد." };
+    }
+    if (get().playing) finishPlayback();
+    for (const url of Object.values(get().audioUrls)) revoke(url);
+    set({ ...res.data, selected: 0, audioUrls: {} });
+    saveOf(res.data);
+    await saveChain;
+    return { ok: true };
   },
   select: (i) => set({ selected: i }),
   selectDuringPlay: (i) => set({ selected: i }),

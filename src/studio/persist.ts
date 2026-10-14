@@ -1,0 +1,416 @@
+// ذخیره‌سازی امن پروژه: IndexedDB با مهاجرت از localStorage و پشتیبان JSON.
+// این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
+import { CAST } from "./characters.ts";
+import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
+import type { ActorSlot, Aspect, Shot } from "./types.ts";
+
+export type Persist = {
+  shots: Shot[];
+  aspect: Aspect;
+  showRig: boolean;
+  title: string;
+  logline: string;
+  genre: string;
+};
+
+export const LEGACY_KEY = KEY;
+export const IDB_NAME = "behix";
+export const IDB_STORE = "kv";
+export const IDB_KEY = "project";
+export const BACKUP_FORMAT = "behix-backup";
+export const BACKUP_VERSION = 1;
+export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
+
+/* ---------- normalize (T04-v3) ---------- */
+
+const DEFAULT_CHAR = { a: CAST[0].id, b: CAST[1]?.id ?? CAST[0].id };
+const BG_IDS = ["living", "kitchen", "yard", "cafe", "streetDay", "streetNight", "park", "car"];
+const CAMERA_IDS = ["wide", "medium", "closeLeft", "closeRight", "push", "comic"];
+const SPEAKERS = ["a", "b", "none"];
+const SFX_IDS = ["none", "beep", "slap", "shock", "crickets", "rimshot", "horn", "clink", "door"];
+const ASPECTS = ["wide", "square", "story"];
+
+export function isShotLike(v: unknown): v is Shot {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.id === "string" && typeof o.duration === "number" && Number.isFinite(o.duration) && o.duration > 0;
+}
+
+function str(v: unknown, fallback: string): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+function oneOf<T extends string>(v: unknown, allowed: string[], fallback: T): T {
+  return typeof v === "string" && allowed.includes(v) ? (v as T) : fallback;
+}
+
+// نما حذف نمی‌شود: بازیگرِ نبود/نامعتبر با شخصیت پیش‌فرضِ موجود در CAST ترمیم می‌شود.
+function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
+  const o = v && typeof v === "object" ? (v as Partial<ActorSlot>) : {};
+  const known = typeof o.charId === "string" && CAST.some((c) => c.id === o.charId);
+  return {
+    ...o,
+    charId: known ? (o.charId as string) : DEFAULT_CHAR[slot],
+    emotion: typeof o.emotion === "string" ? o.emotion : "neutral",
+    action: typeof o.action === "string" ? o.action : "idle",
+  } as ActorSlot;
+}
+
+// PERS-01c: همهٔ فیلدهای متنی/شمارشی با پیش‌فرض پر می‌شوند.
+export function normalize(shot: Shot): Shot {
+  const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
+  return {
+    ...shot,
+    heading: str(shot.heading, "") || "داخلی. مکان — روز",
+    actionLine: str(shot.actionLine, ""),
+    dialogue: str(shot.dialogue, ""),
+    background: oneOf(shot.background, BG_IDS, "living"),
+    camera: oneOf(shot.camera, CAMERA_IDS, "wide"),
+    speaker: oneOf(shot.speaker, SPEAKERS, "a"),
+    sfx: oneOf(shot.sfx, SFX_IDS, "none"),
+    pitch,
+    actorA: repairActor(shot.actorA, "a"),
+    actorB: repairActor(shot.actorB, "b"),
+  };
+}
+
+export type ParseResult = { ok: true; data: Persist } | { ok: false; error: string };
+
+/** دادهٔ خام (شیء) را اعتبارسنجی و ترمیم می‌کند. هرگز throw نمی‌کند. */
+export function parseProject(raw: unknown): ParseResult {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "ساختار پروژه نامعتبر است." };
+  const d = raw as Record<string, unknown>;
+  if (!Array.isArray(d.shots)) return { ok: false, error: "فهرست نماها در فایل نیست." };
+  const shots = d.shots.filter(isShotLike).map((s) => normalize(s));
+  if (shots.length === 0) return { ok: false, error: "هیچ نمای معتبری در فایل نیست." };
+  return {
+    ok: true,
+    data: {
+      shots,
+      aspect: oneOf(d.aspect, ASPECTS, "wide"),
+      showRig: d.showRig === true,
+      title: str(d.title, "") || DEFAULT_TITLE,
+      logline: str(d.logline, "") || DEFAULT_LOGLINE,
+      genre: str(d.genre, "") || DEFAULT_GENRE,
+    },
+  };
+}
+
+/* ---------- key-value backends ---------- */
+
+export interface KV {
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
+export interface LegacyStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function req<T>(r: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+/** IndexedDB ساده (بدون وابستگی). اگر IndexedDB نباشد null برمی‌گرداند. */
+export function idbKV(factory: IDBFactory | undefined = globalThis.indexedDB): KV | null {
+  if (!factory) return null;
+  let dbp: Promise<IDBDatabase> | null = null;
+  const db = () => {
+    dbp ??= new Promise<IDBDatabase>((resolve, reject) => {
+      const open = factory.open(IDB_NAME, 1);
+      open.onupgradeneeded = () => {
+        if (!open.result.objectStoreNames.contains(IDB_STORE)) open.result.createObjectStore(IDB_STORE);
+      };
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+      open.onblocked = () => reject(new Error("IndexedDB blocked"));
+    }).catch((e) => {
+      dbp = null;
+      throw e;
+    });
+    return dbp;
+  };
+  return {
+    async get(key) {
+      const tx = (await db()).transaction(IDB_STORE, "readonly");
+      return req(tx.objectStore(IDB_STORE).get(key));
+    },
+    async set(key, value) {
+      const tx = (await db()).transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).put(value, key);
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
+      });
+    },
+  };
+}
+
+/** برای تست و حالت بدون IndexedDB. */
+export function memoryKV(init: Record<string, unknown> = {}): KV & { data: Record<string, unknown> } {
+  const data: Record<string, unknown> = { ...init };
+  return {
+    data,
+    async get(k) {
+      return structuredClone(data[k]);
+    },
+    async set(k, v) {
+      data[k] = structuredClone(v);
+    },
+  };
+}
+
+function legacyStorage(): LegacyStorage | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/* ---------- load / migrate / save ---------- */
+
+export const CORRUPT_PREFIX = "corrupt-";
+export const LEGACY_CORRUPT_PREFIX = "behix-corrupt-";
+
+export type LoadSource = "idb" | "migrated" | "legacy-fallback" | "none";
+export type LoadResult = {
+  data: Persist | null;
+  source: LoadSource;
+  /** پیام فارسی برای نمایش به کاربر (خطا/قرنطینه). */
+  notice?: string;
+  error?: string;
+  /** اگر true، هیچ ذخیره‌ای نباید انجام شود (دادهٔ خراب امن کپی نشد). */
+  saveLocked: boolean;
+  /** آیا IndexedDB برای ذخیره‌های بعدی قابل اعتماد است. */
+  useKV: boolean;
+  quarantined: string[];
+};
+
+type Slot = { kind: "empty" } | { kind: "unreadable" } | { kind: "valid"; data: Persist; savedAt: number; provisional: boolean } | { kind: "corrupt"; raw: unknown; error: string };
+
+function savedAtOf(raw: unknown): number {
+  const t = raw && typeof raw === "object" ? (raw as { savedAt?: unknown }).savedAt : undefined;
+  return typeof t === "number" && Number.isFinite(t) ? t : 0;
+}
+
+function classify(raw: unknown): Slot {
+  if (raw === undefined || raw === null) return { kind: "empty" };
+  const p = parseProject(raw);
+  const provisional = !!raw && typeof raw === "object" && (raw as { provisional?: unknown }).provisional === true;
+  return p.ok ? { kind: "valid", data: p.data, savedAt: savedAtOf(raw), provisional } : { kind: "corrupt", raw, error: p.error };
+}
+
+function readLegacySlot(ls: LegacyStorage | null): Slot {
+  if (!ls) return { kind: "empty" };
+  let raw: string | null;
+  try {
+    raw = ls.getItem(LEGACY_KEY);
+  } catch {
+    return { kind: "unreadable" };
+  }
+  if (raw === null || raw === "") return { kind: "empty" };
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const slot = classify(parsed);
+    return slot.kind === "corrupt" ? { ...slot, raw } : slot.kind === "empty" ? { kind: "corrupt", raw, error: "دادهٔ قدیمی خالی است." } : slot;
+  } catch {
+    return { kind: "corrupt", raw, error: "دادهٔ قدیمی localStorage خراب است." };
+  }
+}
+
+async function quarantine(
+  kv: KV | null,
+  ls: LegacyStorage | null,
+  origin: "idb" | "legacy",
+  raw: unknown,
+  now: number,
+): Promise<string | null> {
+  const key = `${CORRUPT_PREFIX}${now}-${origin}`;
+  if (kv) {
+    try {
+      await kv.set(key, raw);
+      const back = await kv.get(key);
+      if (back !== undefined) return `idb:${key}`;
+    } catch {
+      /* try localStorage */
+    }
+  }
+  if (ls) {
+    try {
+      const lkey = `${LEGACY_CORRUPT_PREFIX}${now}-${origin}`;
+      ls.setItem(lkey, typeof raw === "string" ? raw : JSON.stringify(raw));
+      if (ls.getItem(lkey) !== null) return `localStorage:${lkey}`;
+    } catch {
+      /* failed */
+    }
+  }
+  return null;
+}
+
+/**
+ * - هر دو منبع خوانده می‌شوند؛ از بین نسخه‌های معتبر، جدیدتر (savedAt) انتخاب می‌شود (F2).
+ * - دادهٔ خراب قبل از باز شدن قفل ذخیره در کلید جداگانه کپی می‌شود؛ اگر نشد saveLocked=true (F1).
+ * - localStorage فقط پس از نوشتن+بازخوانی موفق IndexedDB پاک می‌شود.
+ */
+export async function loadProject(
+  kv: KV | null,
+  ls: LegacyStorage | null = legacyStorage(),
+  now: number = Date.now(),
+): Promise<LoadResult> {
+  let idb: Slot = { kind: "empty" };
+  let useKV = !!kv;
+  let idbUnreadable = false;
+  if (kv) {
+    try {
+      idb = classify(await kv.get(IDB_KEY));
+    } catch {
+      idb = { kind: "unreadable" };
+      useKV = false; // نخواندیم؛ پس رویش هم نمی‌نویسیم
+      // F6: ممکن است پروژهٔ واقعی در IDB باشد؛ هیچ ذخیره‌ای (حتی در localStorage) مجاز نیست
+      // تا ذخیرهٔ این نشست در نشست بعد روی پروژهٔ واقعی منتقل نشود.
+      idbUnreadable = true;
+    }
+  }
+  const legacy = readLegacySlot(ls);
+
+  const quarantined: string[] = [];
+  let saveLocked = idbUnreadable;
+  const errors: string[] = [];
+  for (const [origin, slot] of [["idb", idb], ["legacy", legacy]] as const) {
+    if (slot.kind !== "corrupt") continue;
+    errors.push(slot.error);
+    const where = await quarantine(useKV ? kv : null, ls, origin, slot.raw, now);
+    if (where) quarantined.push(where);
+    else saveLocked = true;
+  }
+
+  let chosen: { data: Persist; from: "idb" | "legacy" } | null = null;
+  if (idb.kind === "valid" && legacy.kind === "valid") {
+    // F6: ذخیرهٔ «موقت» (بدون IDB در آن نشست) هرگز روی IDB معتبر برنده نمی‌شود.
+    chosen = !legacy.provisional && legacy.savedAt > idb.savedAt ? { data: legacy.data, from: "legacy" } : { data: idb.data, from: "idb" };
+  } else if (idb.kind === "valid") chosen = { data: idb.data, from: "idb" };
+  else if (legacy.kind === "valid") chosen = { data: legacy.data, from: "legacy" };
+
+  let source: LoadSource = "none";
+  if (chosen?.from === "idb") {
+    source = "idb";
+    if (!saveLocked && useKV && kv) {
+      try {
+        await kv.set(IDB_KEY, { ...chosen.data, savedAt: idb.kind === "valid" ? idb.savedAt : now }); // نسخهٔ ترمیم‌شده
+      } catch {
+        /* بعداً */
+      }
+    }
+  } else if (chosen?.from === "legacy") {
+    source = "legacy-fallback";
+    if (!saveLocked && useKV && kv) {
+      try {
+        const stamp = legacy.kind === "valid" && legacy.savedAt ? legacy.savedAt : now;
+        await kv.set(IDB_KEY, { ...chosen.data, savedAt: stamp });
+        const check = classify(await kv.get(IDB_KEY));
+        if (check.kind === "valid" && check.data.shots.length === chosen.data.shots.length) {
+          try {
+            ls?.removeItem(LEGACY_KEY);
+          } catch {
+            /* بی‌خطر */
+          }
+          source = "migrated";
+        }
+      } catch {
+        /* localStorage دست‌نخورده */
+      }
+    }
+  }
+
+  let notice: string | undefined;
+  if (quarantined.length) {
+    notice = "بخشی از دادهٔ ذخیره‌شده خراب بود. یک نسخه از آن جداگانه نگه داشته شد و پاک نشده است.";
+  }
+  if (idbUnreadable) {
+    notice =
+      "حافظهٔ اصلی پروژه (IndexedDB) خوانده نشد؛ برای جلوگیری از بازنویسی پروژهٔ شما، ذخیرهٔ خودکار در این نشست متوقف شد. صفحه را دوباره باز کنید.";
+  } else if (saveLocked) {
+    notice = "دادهٔ ذخیره‌شده خراب است و نسخهٔ امن از آن ساخته نشد؛ برای جلوگیری از پاک شدن، ذخیرهٔ خودکار متوقف شد. لطفاً از پروژه پشتیبان بگیرید.";
+  } else if (source === "legacy-fallback" && useKV) {
+    notice ??= "انتقال پروژه به حافظهٔ جدید انجام نشد؛ دادهٔ قبلی سر جایش ماند.";
+  }
+  return {
+    data: chosen?.data ?? null,
+    source,
+    notice,
+    error: errors.length ? errors.join(" ") : undefined,
+    saveLocked,
+    useKV,
+    quarantined,
+  };
+}
+
+/** ذخیره در IndexedDB با savedAt؛ در صورت شکست (یا نبود IDB) به localStorage برمی‌گردد. */
+export async function saveProject(
+  kv: KV | null,
+  data: Persist,
+  ls: LegacyStorage | null = legacyStorage(),
+  now: number = Date.now(),
+): Promise<"idb" | "legacy" | "failed"> {
+  // اگر IDB در این نشست در دسترس نبود، رکورد localStorage «موقت» علامت می‌خورد (F6).
+  const record = kv ? { ...data, savedAt: now } : { ...data, savedAt: now, provisional: true };
+  if (kv) {
+    try {
+      await kv.set(IDB_KEY, record);
+      return "idb";
+    } catch {
+      /* fallback */
+    }
+  }
+  try {
+    ls?.setItem(LEGACY_KEY, JSON.stringify(record));
+    return ls ? "legacy" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+
+export function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/* ---------- backup ---------- */
+
+export type BackupFile = {
+  format: typeof BACKUP_FORMAT;
+  version: number;
+  exportedAt: string;
+  project: Persist;
+};
+
+export function exportBackup(data: Persist, now: Date = new Date()): string {
+  const file: BackupFile = { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: now.toISOString(), project: data };
+  return JSON.stringify(file, null, 2);
+}
+
+/** متن فایل پشتیبان را اعتبارسنجی می‌کند. هرگز throw نمی‌کند. */
+export function importBackup(text: unknown): ParseResult {
+  if (typeof text !== "string" || text.trim() === "") return { ok: false, error: "فایل خالی است." };
+  // هر واحد UTF-16 حداقل ۱ بایت است؛ پس اول بررسی ارزان، بعد اندازهٔ واقعی UTF-8.
+  if (text.length > MAX_BACKUP_BYTES || byteLength(text) > MAX_BACKUP_BYTES) return { ok: false, error: "فایل پشتیبان بیش از حد بزرگ است." };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "فایل JSON معتبر نیست." };
+  }
+  if (!raw || typeof raw !== "object") return { ok: false, error: "ساختار فایل نامعتبر است." };
+  const f = raw as Record<string, unknown>;
+  if (f.format !== BACKUP_FORMAT) return { ok: false, error: "این فایل پشتیبان BEHIX نیست." };
+  if (typeof f.version !== "number" || f.version > BACKUP_VERSION) {
+    return { ok: false, error: "نسخهٔ فایل پشتیبان پشتیبانی نمی‌شود." };
+  }
+  return parseProject(f.project);
+}
