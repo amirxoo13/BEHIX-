@@ -2,7 +2,7 @@
 // این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
 import { CAST } from "./characters.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
-import type { ActorSlot, Aspect, Shot } from "./types.ts";
+import { VARIANTS, type ActorSlot, type Aspect, type Shot } from "./types.ts";
 
 export type Persist = {
   shots: Shot[];
@@ -24,7 +24,15 @@ export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 /* ---------- normalize (T04-v3) ---------- */
 
 const DEFAULT_CHAR = { a: CAST[0].id, b: CAST[1]?.id ?? CAST[0].id };
-const BG_IDS = ["living", "kitchen", "yard", "cafe", "streetDay", "streetNight", "park", "car"];
+const BG_IDS = [
+  "living", "kitchen", "bedroom", "bathroom", "toilet", "parking", "yard", "car",
+  "street", "park", "cafe", "coffee", "bazaar", "milad", "azadi", "saadatabad", "fereshteh",
+];
+/** شناسه‌های پروژه‌های قدیمی که دیگر وجود ندارند. */
+const LEGACY_BG: Record<string, { background: string; night: boolean }> = {
+  streetDay: { background: "street", night: false },
+  streetNight: { background: "street", night: true },
+};
 const CAMERA_IDS = ["wide", "medium", "closeLeft", "closeRight", "push", "comic"];
 const SPEAKERS = ["a", "b", "none"];
 const SFX_IDS = ["none", "beep", "slap", "shock", "crickets", "rimshot", "horn", "clink", "door"];
@@ -59,12 +67,16 @@ function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
 // PERS-01c: همهٔ فیلدهای متنی/شمارشی با پیش‌فرض پر می‌شوند.
 export function normalize(shot: Shot): Shot {
   const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
+  const legacy = LEGACY_BG[shot.background as string];
+  const variant = Number.isInteger(shot.variant) && shot.variant >= 0 && shot.variant < VARIANTS ? shot.variant : 0;
   return {
     ...shot,
+    variant,
+    night: legacy ? legacy.night : shot.night === true,
     heading: str(shot.heading, "") || "داخلی. مکان — روز",
     actionLine: str(shot.actionLine, ""),
     dialogue: str(shot.dialogue, ""),
-    background: oneOf(shot.background, BG_IDS, "living"),
+    background: oneOf(legacy ? legacy.background : shot.background, BG_IDS, "living"),
     camera: oneOf(shot.camera, CAMERA_IDS, "wide"),
     speaker: oneOf(shot.speaker, SPEAKERS, "a"),
     sfx: oneOf(shot.sfx, SFX_IDS, "none"),

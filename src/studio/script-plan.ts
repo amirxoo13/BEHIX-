@@ -21,13 +21,16 @@ import {
 } from "./catalog.ts";
 import { WORLD } from "./labels.ts";
 import { newId } from "./project.ts";
-import type { Action, BgId, CameraId, Emotion, SfxId, Shot, Speaker } from "./types.ts";
+import { VARIANTS, type Action, type BgId, type CameraId, type Emotion, type SfxId, type Shot, type Speaker } from "./types.ts";
 
 export type PlanShot = {
   /** شمارهٔ صحنه؛ نماهای پشت‌سرهم با شمارهٔ یکسان در یک مکان‌اند. */
   scene: number;
   heading: string;
   background: BgId;
+  /** طرح آمادهٔ مکان (۰ تا ۲) و شب/روز، از روی سرصحنه. */
+  variant: number;
+  night: boolean;
   actionLine: string;
   /** شناسهٔ شخصیت گوینده، یا null برای نمای بدون دیالوگ. */
   speaker: string | null;
@@ -70,13 +73,43 @@ export function isHeader(line: string): string | null {
   if (m) return m[1].trim();
   const n = normalizeFa(line);
   if (HEADER_WORDS.some((w) => n === w || n.startsWith(`${w} `))) return line.trim();
+  // سرصحنه بدون کروشه: خط کوتاهِ بدون «:» که اسم یک مکان دارد و اسم هیچ شخصیتی ندارد.
+  if (!/[:：]/.test(line) && n.split(" ").length <= 6 && findAll(line, BACKGROUNDS).length > 0) {
+    if (findAll(line, CHARACTERS).length === 0) return line.trim();
+  }
   return null;
 }
 
-function backgroundOf(text: string): BgId | undefined {
-  const bg = findFirst(text, BACKGROUNDS);
-  if (bg === "streetDay" && normalizeFa(text).split(" ").includes("شب")) return "streetNight";
-  return bg;
+/** اولویت وقتی چند مکان در یک خط آمده: مکان‌های تهران و کافه‌ها از «خیابان/خانه» دقیق‌ترند. */
+const GROUP_RANK: Record<string, number> = { tehran: 0, venue: 1, home: 2, out: 3 };
+
+export function backgroundOf(text: string): BgId | undefined {
+  const found = findAll(text, BACKGROUNDS);
+  if (found.length === 0) return undefined;
+  return [...found].sort(
+    (a, b) => (GROUP_RANK[WORLD[a.id].group] ?? 9) - (GROUP_RANK[WORLD[b.id].group] ?? 9) || a.at - b.at,
+  )[0].id;
+}
+
+const NIGHT_WORDS = ["شب", "نیمه شب", "شبانه", "نیمه‌شب"];
+
+/**
+ * از سرصحنه: مکان، شب/روز، و شمارهٔ طرح (اگر بلافاصله بعد از اسم مکان آمده باشد: «آشپزخانه ۲»).
+ */
+export function sceneTraits(heading: string): { background?: BgId; night: boolean; variant?: number } {
+  const n = ` ${normalizeFa(heading)} `;
+  const night = NIGHT_WORDS.some((w) => n.includes(` ${normalizeFa(w)} `));
+  const background = backgroundOf(heading);
+  let variant: number | undefined;
+  if (background) {
+    const m = findAll(heading, BACKGROUNDS).find((x) => x.id === background);
+    if (m) {
+      const after = n.slice(m.at + m.alias.length + 1).trim().split(" ")[0];
+      const num = Number(after);
+      if (Number.isInteger(num) && num >= 1 && num <= VARIANTS) variant = num - 1;
+    }
+  }
+  return { background, night, variant };
 }
 
 /** حالت/حرکت‌های یک خط توضیح را به نزدیک‌ترین شخصیتِ قبل از آن نسبت می‌دهد. */
@@ -96,8 +129,10 @@ type SceneDraft = {
   heading: string;
   background?: BgId;
   backgroundFromText?: BgId;
+  night: boolean;
+  variant?: number;
   cast: string[];
-  shots: Omit<PlanShot, "cast" | "background" | "scene" | "heading">[];
+  shots: Omit<PlanShot, "cast" | "background" | "scene" | "heading" | "night" | "variant">[];
 };
 
 /** روش ۱: فهم سناریو با دیکشنری کاتالوگ. همیشه در دسترس، بدون اینترنت. */
@@ -113,9 +148,10 @@ export function planFromDictionary(script: string): Plan {
   let uncertain = 0;
 
   const open = (heading: string) => {
-    scene = { heading, cast: [], shots: [] };
+    const traits = sceneTraits(heading);
+    scene = { heading, cast: [], shots: [], night: traits.night, variant: traits.variant };
     scenes.push(scene);
-    const bg = backgroundOf(heading);
+    const bg = traits.background;
     if (bg) scene.background = bg;
     else if (heading) {
       warnings.push(`مکانِ «${heading}» در کاتالوگ پیدا نشد.`);
@@ -205,6 +241,8 @@ export function planFromDictionary(script: string): Plan {
 
   const shots: PlanShot[] = [];
   let lastBg: BgId | undefined;
+  // هر مکان در کل سناریو یک طرح ثابت دارد، مگر سرصحنه شمارهٔ طرح دیگری بدهد.
+  const placeVariant = new Map<BgId, number>();
   scenes.forEach((s, i) => {
     let background = s.background ?? s.backgroundFromText ?? lastBg;
     if (!background) {
@@ -213,9 +251,11 @@ export function planFromDictionary(script: string): Plan {
       warnings.push(`صحنهٔ ${i + 1}: مکان مشخص نبود؛ «${WORLD.living.place}» گذاشته شد.`);
     }
     lastBg = background;
+    const variant = s.variant ?? placeVariant.get(background) ?? 0;
+    placeVariant.set(background, variant);
     const heading = s.heading || WORLD[background].place;
     for (const shot of s.shots) {
-      shots.push({ ...shot, scene: i, heading, background, cast: [...s.cast] });
+      shots.push({ ...shot, scene: i, heading, background, variant, night: s.night, cast: [...s.cast] });
     }
   });
 
@@ -304,6 +344,8 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
       actionLine: p.actionLine,
       duration: durationFor(p),
       background: p.background,
+      variant: p.variant,
+      night: p.night,
       camera,
       dialogue: side === "none" ? "" : p.dialogue,
       speaker: side,

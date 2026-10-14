@@ -1,14 +1,27 @@
 export type Aspect = "wide" | "square" | "story";
 
+/** مکان‌ها. داخل ساختمان: living..parking. «streetDay/streetNight» فقط برای خواندن پروژه‌های قدیمی است. */
 export type BgId =
   | "living"
   | "kitchen"
+  | "bedroom"
+  | "bathroom"
+  | "toilet"
+  | "parking"
   | "yard"
-  | "cafe"
-  | "streetDay"
-  | "streetNight"
+  | "car"
+  | "street"
   | "park"
-  | "car";
+  | "cafe"
+  | "coffee"
+  | "bazaar"
+  | "milad"
+  | "azadi"
+  | "saadatabad"
+  | "fereshteh";
+
+/** تعداد طرح آماده برای هر مکان. */
+export const VARIANTS = 3;
 
 export type CameraId =
   | "wide"
@@ -87,6 +100,10 @@ export type Shot = {
   actionLine: string;
   duration: number;
   background: BgId;
+  /** کدام طرحِ آماده از این مکان (۰ تا VARIANTS-۱). */
+  variant: number;
+  /** شب یا روز. */
+  night: boolean;
   camera: CameraId;
   dialogue: string;
   speaker: Speaker;

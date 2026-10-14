@@ -17,12 +17,12 @@ import { useStudio } from "@/studio/store";
 
 const DRAFT_KEY = "behix-auto-script-draft";
 
-const SAMPLE = `[داخلی. قهوه‌خانه — شب]
+const SAMPLE = `قهوه‌خانه، شب
 پرویز وارد می‌شود، استکان در دست. پهلوان اژدر با تعجب نگاهش می‌کند.
 پرویز: سلام پهلوان! (خندان، اشاره)
 پهلوان: دیر کردی. (اخم، دست به کمر)
 
-[خارجی. خیابان — شب]
+آشپزخانه ۲، صبح
 سارا: کجا می‌روی؟ (گریه)
 کیان: من هم میام!`;
 
@@ -106,7 +106,8 @@ export function AutoScript() {
         چیدن خودکار از روی سناریو
       </h2>
       <p className="mt-1 text-sm text-muted">
-        کل سناریو را بنویسید. سرصحنه داخل [ ] بیاید، هر دیالوگ به شکل «اسم: جمله» و حالت یا حرکت داخل پرانتز.
+        کل سناریو را بنویسید. هر صحنه با اسم مکان و زمان شروع شود (مثلاً «آشپزخانه، شب»)؛ شمارهٔ بعد از اسم مکان،
+        طرح آن را انتخاب می‌کند («آشپزخانه ۲»). هر دیالوگ به شکل «اسم: جمله» و حالت یا حرکت داخل پرانتز.
         خط‌های دیگر توضیح صحنه‌اند.
       </p>
 
@@ -218,7 +219,7 @@ export function AutoScript() {
                   <span className="latin text-cyan">{fa(i + 1)}</span>
                   <span>
                     <span className="block text-sm text-muted">
-                      {WORLD[s.background].place} · {findChar(s.actorA.charId).name} و {findChar(s.actorB.charId).name}
+                      {WORLD[s.background].place} ({WORLD[s.background].variants[s.variant]}، {s.night ? "شب" : "روز"}) · {findChar(s.actorA.charId).name} و {findChar(s.actorB.charId).name}
                     </span>
                     <span className="block">
                       {who ? `${findChar(who.charId).name} (${emotionLabel(who.emotion)}): ${s.dialogue}` : s.actionLine}

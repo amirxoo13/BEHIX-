@@ -1,6 +1,6 @@
 import { findChar } from "./characters";
 import { drawActor, type FaceDraw } from "./draw-actor";
-import { drawBackground } from "./draw-bg";
+import { SCROLLING, drawBackground } from "./draw-bg";
 import { readMouth } from "./audio";
 import {
   blinkAt,
@@ -120,8 +120,7 @@ function caption(
 }
 
 export function scrollFor(now: number, shot: Shot, scale: number) {
-  const exterior = shot.background === "streetDay" || shot.background === "streetNight" || shot.background === "park";
-  if (!exterior) return 0;
+  if (!SCROLLING.has(shot.background)) return 0;
   const a = shot.actorA.action === "walk";
   const b = shot.actorB.action === "walk";
   const phase = now / 1000 / CYCLE_SEC;
@@ -155,7 +154,10 @@ export function renderFrame(
   ctx.clearRect(0, 0, w, h);
   ctx.save();
   applyCamera(ctx, shot, opts.local, w, h);
-  drawBackground(ctx, shot.background, w, h, scrollFor(opts.now, shot, scale), time);
+  drawBackground(ctx, shot.background, w, h, scrollFor(opts.now, shot, scale), time, {
+    variant: shot.variant,
+    night: shot.night,
+  });
 
   const slots = [
     { slot: "a" as const, actor: shot.actorA, x: w * 0.3, inner: 1, pulse: opts.pulses.a },

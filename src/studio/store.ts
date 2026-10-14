@@ -76,6 +76,8 @@ type Studio = {
   setMeta: (partial: Partial<Meta>) => void;
   addShot: () => void;
   removeShot: (i: number) => void;
+  /** تغییر طرح یا شب/روز برای همهٔ نماهایی که در این مکان‌اند. */
+  patchPlace: (background: Shot["background"], partial: Partial<Pick<Shot, "variant" | "night">>) => void;
   /** همهٔ نماها را با نماهای تازه (مثلاً از چیدن خودکار سناریو) جایگزین می‌کند. */
   replaceShots: (shots: Shot[]) => boolean;
   moveShot: (i: number, dir: -1 | 1) => void;
@@ -256,6 +258,13 @@ export const useStudio = create<Studio>((set, get) => ({
     delete urls[s.shots[i].id];
     const selected = Math.max(0, Math.min(s.selected, next.length - 1));
     set({ shots: next, selected, audioUrls: urls });
+    saveOf(persistFrom({ ...s, shots: next }));
+  },
+  patchPlace: (background, partial) => {
+    if (booting) return;
+    const s = get();
+    const next = s.shots.map((shot) => (shot.background === background ? { ...shot, ...partial } : shot));
+    set({ shots: next });
     saveOf(persistFrom({ ...s, shots: next }));
   },
   replaceShots: (shots) => {

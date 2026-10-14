@@ -62,7 +62,7 @@ describe("migration localStorage → IndexedDB", () => {
     const res = await loadProject(kv, ls);
     assert.equal(res.source, "migrated");
     assert.equal(res.data?.shots.length, 2);
-    assert.deepEqual(res.data?.shots[0], goodShot); // valid data untouched
+    assert.deepEqual(res.data?.shots[0], { ...goodShot, variant: 0, night: false }); // valid data untouched; new fields get defaults
     const repaired = res.data!.shots[1];
     assert.equal(repaired.dialogue, "");
     assert.equal(repaired.speaker, "a");
@@ -477,5 +477,27 @@ describe("T07-v4 mixed valid + invalid shots", () => {
     const res = await loadProject(kv, ls, 99);
     assert.equal(ls.data[LEGACY_KEY], raw);
     assert.equal(res.source, "legacy-fallback");
+  });
+});
+
+describe("places upgrade", () => {
+  it("UT-BG-01 old streetDay/streetNight shots become street with day/night", async () => {
+    const old = {
+      shots: [
+        { ...goodShot, id: "a", background: "streetDay" },
+        { ...goodShot, id: "b", background: "streetNight" },
+        { ...goodShot, id: "c", background: "cafe", variant: 2, night: true },
+        { ...goodShot, id: "d", background: "moon", variant: 9 },
+      ],
+    };
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject(old);
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const [a, b, c, d] = r.data.shots;
+    assert.deepEqual([a.background, a.night], ["street", false]);
+    assert.deepEqual([b.background, b.night], ["street", true]);
+    assert.deepEqual([c.background, c.variant, c.night], ["cafe", 2, true]);
+    assert.deepEqual([d.background, d.variant], ["living", 0]);
   });
 });

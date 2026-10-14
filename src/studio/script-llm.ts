@@ -14,6 +14,7 @@ import {
   DIALOGUE,
   MAX_SHOTS,
   isHeader,
+  sceneTraits,
   splitDirections,
   type Plan,
   type PlanShot,
@@ -105,10 +106,8 @@ export function planFromModelReply(
   if (rows.size > MAX_SHOTS) warnings.push(`فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
 
   // توضیحی که مستقیم قبل از یک دیالوگ آمده، جزء همان نماست نه نمای جدا (حتی اگر مدل جدا داده باشد).
-  const isSpoken = (n: number) => {
-    const sp = rows.get(n)?.[2];
-    return typeof sp === "string" && sp !== "";
-  };
+  // فقط خطی «دیالوگ» است که گوینده‌اش یک شخصیت معتبر باشد (مدل گاهی دو اسم یا متن نامعتبر می‌نویسد).
+  const isSpoken = (n: number) => pick(rows.get(n)?.[2], IDS.characters) !== undefined;
   const nextLine = (n: number) => {
     for (let i = n; i < lines.length; i++) if (lines[i]) return isHeader(lines[i]) === null ? i + 1 : -1;
     return -1;
@@ -118,6 +117,7 @@ export function planFromModelReply(
   const shots: PlanShot[] = [];
   let prev = 0;
   let lastBg: BgId | undefined;
+  const placeVariant = new Map<BgId, number>();
   for (const n of order) {
     const row = rows.get(n)!;
     if (!isSpoken(n)) {
@@ -146,7 +146,8 @@ export function planFromModelReply(
     }
     scene = Math.max(0, scene);
 
-    let background = pick<BgId>(rawBg, IDS.backgrounds);
+    // مکانِ سرصحنه از خود سناریو دقیق‌تر است (مثلاً «خیابان فرشته»)؛ اگر پیدا شد، بر جواب مدل مقدم است.
+    let background = sceneTraits(heading).background ?? pick<BgId>(rawBg, IDS.backgrounds);
     if (!background) {
       if (rawBg) dropped.add(`مکان «${String(rawBg)}»`);
       background = lastBg ?? "living";
@@ -197,10 +198,16 @@ export function planFromModelReply(
     }
     prev = n;
 
+    // شب/روز و شمارهٔ طرح از خود سرصحنه خوانده می‌شود (بدون توکن اضافه).
+    const traits = sceneTraits(heading);
+    const variant = traits.variant ?? placeVariant.get(background) ?? 0;
+    placeVariant.set(background, variant);
     shots.push({
       scene,
       heading: heading.replace(/^\[\s*|\s*\]$/g, "") || WORLD[background].place,
       background,
+      variant,
+      night: traits.night,
       actionLine,
       speaker,
       dialogue,

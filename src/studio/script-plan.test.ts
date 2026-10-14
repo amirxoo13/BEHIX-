@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { findAll, findFirst, BACKGROUNDS, EMOTION_ENTRIES, SFX_ENTRIES, normalizeFa } from "./catalog.ts";
+import { isHeader, sceneTraits } from "./script-plan.ts";
 import { parseProject } from "./persist.ts";
 import { durationFor, layoutPlan, planFromDictionary } from "./script-plan.ts";
 
@@ -39,7 +40,8 @@ describe("dictionary understanding", () => {
     assert.equal(plan.shots.length, 5);
     assert.deepEqual(plan.shots.map((s) => s.scene), [0, 0, 0, 1, 1]);
     assert.equal(plan.shots[0].background, "cafe");
-    assert.equal(plan.shots[3].background, "streetNight");
+    assert.equal(plan.shots[3].background, "street");
+    assert.equal(plan.shots[3].night, true);
   });
   it("UT-AL-05 speakers, directions and descriptions", () => {
     const [a, b, c, d] = plan.shots;
@@ -106,5 +108,60 @@ describe("layout engine", () => {
     assert.equal(durationFor({ speaker: null, dialogue: "" }), 3.5);
     assert.equal(durationFor({ speaker: "a", dialogue: "سلام" }), 2.5);
     assert.equal(durationFor({ speaker: "a", dialogue: "کلمه ".repeat(100) }), 12);
+  });
+});
+
+describe("scene headings without brackets", () => {
+  it("UT-BG-02 a short place line is a heading; a sentence with a character is not", () => {
+    assert.equal(isHeader("آشپزخانه، شب"), "آشپزخانه، شب");
+    assert.equal(isHeader("اتاق خواب — صبح"), "اتاق خواب — صبح");
+    assert.equal(isHeader("داخلی. حمام"), "داخلی. حمام");
+    assert.equal(isHeader("سارا وارد آشپزخانه می‌شود."), null);
+    assert.equal(isHeader("پرویز: برویم پارک"), null);
+  });
+  it("UT-BG-03 every new place is recognised", () => {
+    const cases: [string, string][] = [
+      ["پذیرایی", "living"],
+      ["آشپزخانه", "kitchen"],
+      ["اتاق خواب", "bedroom"],
+      ["حمام", "bathroom"],
+      ["دستشویی", "toilet"],
+      ["پارکینگ", "parking"],
+      ["خیابان", "street"],
+      ["پارک", "park"],
+      ["قهوه‌خانه", "cafe"],
+      ["کافه", "coffee"],
+      ["بازار تهران", "bazaar"],
+      ["برج میلاد", "milad"],
+      ["میدان آزادی", "azadi"],
+      ["سعادت‌آباد", "saadatabad"],
+      ["خیابان فرشته", "fereshteh"],
+    ];
+    for (const [text, id] of cases) assert.equal(sceneTraits(text).background, id, text);
+  });
+  it("UT-BG-04 Tehran places win over generic words in the same heading", () => {
+    assert.equal(sceneTraits("خیابان، سعادت‌آباد").background, "saadatabad");
+    assert.equal(sceneTraits("کافه‌ای در فرشته").background, "fereshteh");
+  });
+  it("UT-BG-05 night and design number come from the heading", () => {
+    assert.deepEqual(sceneTraits("آشپزخانه ۲، شب"), { background: "kitchen", night: true, variant: 1 });
+    assert.deepEqual(sceneTraits("حمام، صبح"), { background: "bathroom", night: false, variant: undefined });
+    assert.equal(sceneTraits("سکانس ۳. پارک").variant, undefined, "a sequence number is not a design number");
+  });
+  it("UT-BG-06 a place keeps its design across scenes unless the heading changes it", () => {
+    const { shots } = layoutPlan(
+      planFromDictionary(
+        "آشپزخانه ۳، شب\nسارا: سلام\nپارک\nکیان: بیا\nآشپزخانه، صبح\nسارا: باز هم سلام\nآشپزخانه ۱\nکیان: خداحافظ",
+      ),
+    );
+    assert.deepEqual(
+      shots.map((s) => [s.background, s.variant, s.night]),
+      [
+        ["kitchen", 2, true],
+        ["park", 0, false],
+        ["kitchen", 2, false],
+        ["kitchen", 0, false],
+      ],
+    );
   });
 });

@@ -4,19 +4,20 @@ import { autoLayout, clearModelCache, type ModelCall } from "./auto-layout.ts";
 import { IDS } from "./catalog.ts";
 import { buildMessages, extractJson, maxOutputTokens, planFromModelReply } from "./script-llm.ts";
 
-const SCRIPT = `[داخلی. قهوه‌خانه — شب]
+const SCRIPT = `قهوه‌خانه، شب
 پرویز وارد می‌شود، استکان در دست. پهلوان اژدر با تعجب نگاهش می‌کند.
 پرویز: سلام پهلوان! (خندان، اشاره)
 پهلوان: دیر کردی. (اخم، دست به کمر)
 
-[خارجی. خیابان — شب]
+خیابان فرشته، شب
 سارا: کجا می‌روی؟ (گریه)
 کیان: من هم میام!`;
 
 // پاسخ واقعی qwen3.8-flash (Alibaba Model Studio، 2026-10-14) به همین SCRIPT با پرامپت فشرده؛
-// مصرف واقعی: ۴۶۱ توکن ورودی + ۸۸ توکن خروجی.
+// مصرف واقعی: ۵۱۷ توکن ورودی + ۱۱۵ توکن خروجی. عمداً بدون تغییر: ردیف ۲ دو گوینده دارد، ستون‌ها
+// جابه‌جا شده‌اند و «خیابان فرشته» را street گفته — کد باید همهٔ این‌ها را درست کند.
 const REAL_QWEN_REPLY =
-  '{"s":[[2,"cafe","","parviz:smile:tea,pahlavan:shock",""],[3,"cafe","parviz","parviz:laugh:point",""],[4,"cafe","pahlavan","pahlavan:angry:hips",""],[7,"streetNight","sara","sara:cry",""],[8,"streetNight","kian","",""]]}';
+  '{"s":[[1,"cafe","","", ""],[2,"cafe","parviz, pahlavan","pahlavan:shock:idle","", "door"],[3,"cafe","parviz","parviz:laugh:point","", ""],[4,"cafe","pahlavan","pahlavan:angry:hips","", ""],[6,"street","","","", ""],[7,"street","sara","sara:cry:idle","", ""],[8,"street","kian","kian:neutral:idle","", ""]]}';
 
 describe("compact prompt", () => {
   it("UT-LLM-01 lists every catalog id and numbers the script lines", () => {
@@ -24,7 +25,7 @@ describe("compact prompt", () => {
     for (const id of [...IDS.characters, ...IDS.backgrounds, ...IDS.emotions, ...IDS.actions]) {
       assert.ok(system.content.includes(id), id);
     }
-    assert.match(user.content, /^1\|\[داخلی/);
+    assert.match(user.content, /^1\|قهوه‌خانه، شب/);
     assert.match(user.content, /\n8\|کیان: من هم میام!$/);
     assert.ok(!user.content.includes("5|"), "empty lines are not sent");
   });
@@ -53,25 +54,27 @@ describe("compact reply → plan", () => {
     assert.equal(s[0].emotion.parviz, "laugh", "the spoken line's own emotion wins");
     assert.equal(s[0].action.parviz, "point");
     assert.equal(s[0].emotion.pahlavan, "shock", "description emotions are kept");
-    assert.equal(s[0].heading, "داخلی. قهوه‌خانه — شب");
+    assert.equal(s[0].heading, "قهوه‌خانه، شب");
     assert.deepEqual(s.map((x) => x.scene), [0, 0, 1, 1]);
-    assert.equal(s[2].background, "streetNight");
+    assert.equal(s[2].background, "fereshteh", "heading place beats the model's generic street");
+    assert.ok(s.every((x) => x.night));
     assert.equal(s[3].dialogue, "من هم میام!");
   });
-  it("UT-LLM-05 ids outside the catalog and bad line numbers are dropped", () => {
+  it("UT-LLM-05 ids outside the catalog, invalid speakers and bad line numbers are dropped", () => {
     const r = planFromModelReply(
       '{"s":[[3,"moon","batman","sara:dancing:fly,joker",""],[99,"cafe","parviz","",""],[1,"cafe","parviz","",""],[4,"cafe","pahlavan","","explosion"]]}',
       SCRIPT,
     );
     assert.ok(r.ok);
     if (!r.ok) return;
-    assert.equal(r.plan.shots.length, 2, "line 99 does not exist and line 1 is a header");
-    const [a, b] = r.plan.shots;
-    assert.equal(a.background, "living");
-    assert.equal(a.speaker, null);
-    assert.deepEqual(a.emotion, {});
-    assert.equal(b.sfx, "none");
-    for (const bad of ["moon", "batman", "dancing", "fly", "joker", "explosion"]) {
+    assert.equal(r.plan.shots.length, 1, "line 99 does not exist, line 1 is a heading, line 3 has no valid speaker");
+    const [only] = r.plan.shots;
+    assert.equal(only.speaker, "pahlavan");
+    assert.equal(only.background, "cafe", "the heading decides the place, not the model's 'moon'");
+    assert.equal(only.sfx, "none");
+    assert.ok(only.cast.includes("sara"), "people mentioned on the merged row stay in the scene");
+    assert.deepEqual(only.emotion, {});
+    for (const bad of ["dancing", "fly", "joker", "explosion"]) {
       assert.ok(r.plan.warnings.some((w) => w.includes(bad)), bad);
     }
   });
@@ -86,7 +89,7 @@ describe("method selection saves tokens", () => {
   const realModel: ModelCall = async (script) => {
     const p = planFromModelReply(REAL_QWEN_REPLY, script);
     if (!p.ok) throw new Error(p.error);
-    return { ok: true, plan: p.plan, model: "qwen3.8-flash", usage: { input: 461, output: 88 } };
+    return { ok: true, plan: p.plan, model: "qwen3.8-flash", usage: { input: 517, output: 115 } };
   };
   const counting = () => {
     let calls = 0;
@@ -109,7 +112,7 @@ describe("method selection saves tokens", () => {
     const m = counting();
     const first = await autoLayout(odd, "smart", m.fn);
     assert.equal(first.used, "model");
-    assert.deepEqual(first.usage, { input: 461, output: 88 });
+    assert.deepEqual(first.usage, { input: 517, output: 115 });
     const again = await autoLayout(odd, "smart", m.fn);
     assert.equal(m.calls(), 1, "same text is not paid for twice");
     assert.deepEqual(again.usage, { input: 0, output: 0 });
