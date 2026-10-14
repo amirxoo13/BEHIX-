@@ -287,20 +287,20 @@ export async function startMic() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   micStream = stream;
   chunks = [];
-  const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
   try {
+    const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
     recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    recorder.start();
   } catch (err) {
-    // BUG-06: اگر ضبط‌کننده ساخته نشد، میکروفون باز نماند.
+    // BUG-06 / CR-2: پشتیبانی، ساخت، یا start اگر شکست، میکروفون باز نماند.
     stream.getTracks().forEach((t) => t.stop());
     micStream = null;
     recorder = null;
     throw err;
   }
-  recorder.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-  recorder.start();
 }
 
 export function stopMic(): Promise<Blob> {
