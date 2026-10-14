@@ -181,8 +181,15 @@ export const useStudio = create<Studio>((set, get) => ({
     if (get().playing) finishPlayback();
     for (const url of Object.values(get().audioUrls)) revoke(url);
     set({ ...res.data, selected: 0, audioUrls: {} });
-    saveOf(res.data);
-    await saveChain;
+    const snapshot = structuredClone(res.data);
+    const pending = saveChain.then(() => saveProject(activeKV, snapshot));
+    saveChain = pending.catch(() => undefined);
+    const where = await pending.catch(() => "failed" as const);
+    if (where === "failed") {
+      ready = false;
+      set({ storageLocked: true, storageNotice: "پروژه بارگذاری شد اما ذخیره نشد." });
+      return { ok: false, error: "پروژه بارگذاری شد اما ذخیره نشد." };
+    }
     return { ok: true };
   },
   select: (i) => set({ selected: i }),
