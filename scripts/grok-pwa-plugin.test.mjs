@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as createHeadInjectorAt,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadAt,
   isDocumentPath,
   isInstallQuery,
   publicAppHost,
@@ -20,6 +20,13 @@ import {
 import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// The template-behaviour cases below must not read this project's own
+// src/lib/og/site.json (BEHIX customises it). Default them to an empty
+// temp workspace; cases that pass an explicit `cwd` keep it.
+const BLANK_ROOT = mkdtempSync(join(tmpdir(), "og-blank-"));
+const injectGrokPwaHead = (html, ctx = {}) => injectGrokPwaHeadAt(html, { cwd: BLANK_ROOT, ...ctx });
+const createHeadInjector = (ctx = {}) => createHeadInjectorAt({ cwd: BLANK_ROOT, ...ctx });
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");

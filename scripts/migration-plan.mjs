@@ -44,3 +44,17 @@ export function pendingMigrations(paths, applied) {
     .sort((a, b) => a.name.localeCompare(b.name))
     .filter(({ name }) => !done.has(name));
 }
+
+/**
+ * First expected migration number.
+ * With `0001_auth.sql` copied up, app migrations start at 2.
+ * Without that copy, they start at 1, or at 2 when `0002_auth_rate_limit.sql`
+ * is the retained first file (it must not be renumbered).
+ * @param {boolean} hasAuthCopy
+ * @param {number[]} numbers
+ */
+export function migrationNumberStart(hasAuthCopy, numbers) {
+  if (hasAuthCopy) return 2;
+  if (numbers[0] === 2) return 2;
+  return 1;
+}

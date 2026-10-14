@@ -208,7 +208,7 @@ export function visemeFromText(dialogue: string, local: number, duration: number
   return visemeFromChar(chars[i] ?? " ");
 }
 
-export function blinkAt(time: number, emotion: Emotion): number {
+export function blinkAt(time: number, emotion: Emotion, seed = 0): number {
   if (emotion === "laugh") {
     const m = time % 0.42;
     if (m < 0.08) return m / 0.08;
@@ -216,16 +216,29 @@ export function blinkAt(time: number, emotion: Emotion): number {
     if (m < 0.3) return 1 - (m - 0.22) / 0.08;
   }
   if (emotion === "shock") return 0;
-  const m = time % 3.4;
+  // T11: فاصلهٔ پلک تصادفی ولی قطعی (۲٫۲ تا ۵٫۲ ثانیه) تا رندر آفلاین تکرارپذیر بماند.
+  const slotLen = 3.7;
+  const k = Math.floor(time / slotLen);
+  const start = k * slotLen + hash01(k + seed * 7919) * (slotLen - 0.6);
+  const m = time - start;
+  if (m < 0) return 0;
   if (m < 0.06) return m / 0.06;
   if (m < 0.14) return 1;
   if (m < 0.2) return 1 - (m - 0.14) / 0.06;
   return 0;
 }
 
+/** عدد شبه‌تصادفی قطعی در [0,1). */
+export function hash01(n: number): number {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 export function pulseEnv(start: number, now: number, dur = 1400): number {
   if (!start) return 0;
   const u = (now - start) / dur;
   if (u < 0 || u > 1) return 0;
-  return 1 - u * u;
+  // T11: ورود نرم (smoothstep در ۱۰٪ اول) به‌جای پرش ناگهانی، سپس خروج مثل قبل.
+  const rise = u < 0.1 ? (u / 0.1) * (u / 0.1) * (3 - 2 * (u / 0.1)) : 1;
+  return rise * (1 - u * u);
 }

@@ -31,12 +31,26 @@ export function setRecordDest(node: MediaStreamAudioDestinationNode | null) {
 }
 
 function out(node: AudioNode) {
+  if (offline) {
+    node.connect(offline.ctx.destination);
+    return;
+  }
   const c = context();
   node.connect(c.destination);
   if (recDest) node.connect(recDest);
 }
 
 let voiceToken = 0;
+
+/**
+ * T08: offline render target. While set, `playSfx` schedules into this
+ * OfflineAudioContext at `at` seconds instead of playing live.
+ */
+let offline: { ctx: OfflineAudioContext; at: number } | null = null;
+
+function sfxCtx(): BaseAudioContext {
+  return offline ? offline.ctx : context();
+}
 
 export function stopAll() {
   voiceToken += 1;
@@ -52,7 +66,7 @@ export function stopAll() {
 }
 
 function noise(seconds: number) {
-  const c = context();
+  const c = sfxCtx();
   const buffer = c.createBuffer(1, Math.floor(c.sampleRate * seconds), c.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -61,8 +75,8 @@ function noise(seconds: number) {
 
 export function playSfx(id: SfxId) {
   if (id === "none") return;
-  const c = context();
-  const now = c.currentTime;
+  const c = sfxCtx();
+  const now = offline ? offline.at : c.currentTime;
   if (id === "beep") {
     const osc = c.createOscillator();
     const gain = c.createGain();
@@ -273,12 +287,20 @@ export async function startMic() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   micStream = stream;
   chunks = [];
-  const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
-  recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-  recorder.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-  recorder.start();
+  try {
+    const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined;
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    recorder.start();
+  } catch (err) {
+    // BUG-06 / CR-2: پشتیبانی، ساخت، یا start اگر شکست، میکروفون باز نماند.
+    stream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+    recorder = null;
+    throw err;
+  }
 }
 
 export function stopMic(): Promise<Blob> {
@@ -298,6 +320,62 @@ export function stopMic(): Promise<Blob> {
 }
 
 export function pickVideoMime() {
-  const types = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  // T08-v2: ask for H.264 explicitly — a bare "video/mp4" lets Chrome put VP9/Opus in MP4.
+  const types = [
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/mp4;codecs=avc1,opus",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
   return types.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+}
+
+/** One audio event of the film timeline (seconds from film start). */
+export type MixCue = { at: number; end: number; sfx: SfxId; url?: string; pitch: number };
+
+/**
+ * T08: render the film's whole soundtrack faster than real time with the same
+ * synth code as live playback. Voices stop at their shot's end, matching
+ * `stopAll()` on shot change during live playback.
+ */
+export async function renderMixOffline(
+  cues: MixCue[],
+  seconds: number,
+  sampleRate = 48_000,
+): Promise<AudioBuffer> {
+  const length = Math.max(1, Math.ceil(seconds * sampleRate));
+  const octx = new OfflineAudioContext(2, length, sampleRate);
+  const decoded = new Map<string, AudioBuffer>();
+  for (const cue of cues) {
+    if (!cue.url || decoded.has(cue.url)) continue;
+    try {
+      const res = await fetch(cue.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      decoded.set(cue.url, await octx.decodeAudioData(await res.arrayBuffer()));
+    } catch (err) {
+      console.warn("[mix] skipping voice clip", err);
+    }
+  }
+  try {
+    for (const cue of cues) {
+      if (cue.sfx !== "none") {
+        offline = { ctx: octx, at: cue.at };
+        playSfx(cue.sfx);
+        offline = null;
+      }
+      const buf = cue.url ? decoded.get(cue.url) : undefined;
+      if (buf) {
+        const src = octx.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = cue.pitch;
+        src.connect(octx.destination);
+        src.start(cue.at);
+        src.stop(Math.max(cue.at, cue.end));
+      }
+    }
+  } finally {
+    offline = null;
+  }
+  return octx.startRendering();
 }

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FLOW, PHASES } from "@/studio/flow";
 import { finishPlayback, useStudio } from "@/studio/store";
 
@@ -12,6 +12,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const boot = useStudio((s) => s.boot);
   const title = useStudio((s) => s.title);
   const path = useRouterState({ select: (s) => clean(s.location.pathname) });
+  const railRef = useRef<HTMLElement>(null);
+  const storageNotice = useStudio((s) => s.storageNotice);
+  const storageLocked = useStudio((s) => s.storageLocked);
 
   useEffect(() => {
     boot();
@@ -19,6 +22,12 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     finishPlayback();
+  }, [path]);
+
+  // On mobile the rail scrolls horizontally; keep the current step visible.
+  useEffect(() => {
+    const active = railRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [path]);
 
   const index = FLOW.findIndex((item) => item.to === path);
@@ -36,8 +45,9 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
         </Link>
       </header>
+      <StorageBar notice={storageNotice} locked={storageLocked} />
       <div className="layout">
-        <nav className="rail" aria-label="خط تولید">
+        <nav ref={railRef} className="rail" aria-label="خط تولید">
           <Link to="/" className="step-link" aria-current={path === "/" ? "page" : undefined}>
             <span className="step-no">00</span>
             پروژه
@@ -54,7 +64,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="work">
+        <main className="work">
           {children}
           <div className="pager">
             {prev ? (
@@ -72,8 +82,43 @@ export function Shell({ children }: { children: ReactNode }) {
               <span />
             )}
           </div>
-        </div>
+        </main>
       </div>
+    </div>
+  );
+}
+
+/**
+ * T02: نوار هشدار ذخیره‌سازی (storageNotice/storageLocked از T07).
+ * در حالت قفل دکمهٔ بستن ندارد؛ پیام غیرقفل فقط برای همین نشست و همین متن بسته می‌شود.
+ */
+// Shell در هر route دوباره mount می‌شود؛ بستن پیام در حافظهٔ ماژول (فقط همین نشست) نگه داشته می‌شود.
+let dismissedNotice: string | null = null;
+
+function StorageBar({ notice, locked }: { notice: string; locked: boolean }) {
+  const [dismissed, setDismissedState] = useState<string | null>(dismissedNotice);
+  const setDismissed = (v: string) => {
+    dismissedNotice = v;
+    setDismissedState(v);
+  };
+  if (!locked && (!notice || dismissed === notice)) return null;
+  if (locked) {
+    return (
+      <div role="alert" className="storage-bar storage-bar-locked" data-testid="storage-bar">
+        <p className="font-bold">⚠ تغییرات ذخیره نمی‌شود</p>
+        <p className="mt-1 text-sm leading-6">
+          {notice || "ذخیرهٔ خودکار برای محافظت از پروژهٔ شما متوقف شده است."} تا وقتی این پیام هست، هر تغییری با بستن
+          صفحه از بین می‌رود.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div role="status" className="storage-bar storage-bar-notice" data-testid="storage-bar">
+      <p className="min-w-0 flex-1 text-sm leading-6">{notice}</p>
+      <button type="button" className="btn btn-ghost" onClick={() => setDismissed(notice)}>
+        متوجه شدم
+      </button>
     </div>
   );
 }
@@ -90,12 +135,12 @@ export function PhaseHead({
   lede: string;
 }) {
   return (
-    <header className="mb-5">
+    <div className="mb-5">
       <p className="kicker">
         {no} · {en}
       </p>
       <h1 className="mt-1 text-2xl font-bold">{title}</h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{lede}</p>
-    </header>
+    </div>
   );
 }

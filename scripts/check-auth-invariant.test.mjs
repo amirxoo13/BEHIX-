@@ -91,8 +91,13 @@ test("only a divergence warns the smoke verdict", () => {
 });
 
 test("the build side resolves the template's shipped app-env", () => {
-  assert.equal(buildAuthEnabled(projectRoot(), {}), false);
+  // Owner decision: auth defaults ON; only the exact string "false" turns it off.
+  assert.equal(buildAuthEnabled(projectRoot(), {}), true);
   assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: "true" }), true);
+  assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: "false" }), false);
+  for (const other of ["", "0", "no", "FALSE", "off"]) {
+    assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: other }), true, other);
+  }
 });
 
 test("the CLI reports rather than silently passing when run via a symlink", async () => {

@@ -36,10 +36,11 @@ import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
-import { emailAndPasswordEnabled } from "./email-password";
+import { emailAndPasswordEnabled, emailAndPasswordOptions } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
+import { trustedOriginHosts } from "./trusted-hosts";
 import {
   GROK_ISSUER_DEFAULT,
   PREVIEW_ALLOWED_HOSTS,
@@ -95,6 +96,20 @@ const explicitBaseURL = env("BETTER_AUTH_URL");
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
 const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
+
+// T10: hosts of THIS Vercel project, from Vercel's system env vars (bare host,
+// no scheme), plus an optional owner list `BETTER_AUTH_TRUSTED_ORIGINS`
+// (comma-separated full origins, e.g. "https://behix.vercel.app"). Only exact
+// hosts — no wildcards — so another *.vercel.app site is never trusted.
+const deployHosts: string[] = [
+  env("VERCEL_PROJECT_PRODUCTION_URL"),
+  env("VERCEL_BRANCH_URL"),
+  env("VERCEL_URL"),
+].filter((h): h is string => Boolean(h) && !h!.includes("*") && !h!.includes("/"));
+const extraTrustedOrigins: string[] = (env("BETTER_AUTH_TRUSTED_ORIGINS") ?? "")
+  .split(",")
+  .map((o) => o.trim().replace(/\/+$/, ""))
+  .filter((o) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(o));
 // Local `npm run dev` (port 8080 contract). Browsers may send Origin as any of
 // these for the same server — trusting only `localhost` rejects `127.0.0.1` and
 // breaks email/password with "Invalid origin".
@@ -106,7 +121,7 @@ const LOCAL_DEV_ORIGINS: string[] = [
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
   // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
+  allowedHosts: [...previewAllowedHosts, ...deployHosts, ...trustedOriginHosts(extraTrustedOrigins), "localhost", "127.0.0.1", "[::1]"],
   // `auto` → trust both http:// and https:// expansions of allowedHosts
   // (preview is https; local dev is http).
   protocol: "auto" as const,
@@ -116,8 +131,10 @@ const baseURL = explicitBaseURL ?? {
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
 // Missing entries here surface as FORBIDDEN "Invalid origin".
 const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
+  ? [explicitBaseURL, ...extraTrustedOrigins, ...LOCAL_DEV_ORIGINS]
   : [
+      ...deployHosts.map((host) => `https://${host}`),
+      ...extraTrustedOrigins,
       // Host wildcards (matched against Origin's host)
       ...previewAllowedHosts,
       // Full-origin wildcards (matched against Origin)
@@ -211,7 +228,23 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  ...(emailAndPasswordEnabled ? { emailAndPassword: { ...emailAndPasswordOptions } } : {}),
+
+  // T10: rate limiting ON everywhere (Better Auth's default is production-only).
+  // With a real DB the counters live in the `rateLimit` table
+  // (migrations/0002_auth_rate_limit.sql) so they hold across serverless
+  // instances; without one (local PGLite) memory is fine. Stricter rules on the
+  // credential endpoints slow password guessing and sign-up spam.
+  rateLimit: {
+    enabled: true,
+    storage: databaseUrl ? "database" : "memory",
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 60, max: 3 },
+    },
+  },
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
@@ -221,6 +254,13 @@ export const auth = betterAuth({
   // Secure + the names ourselves. (Browsers allow Secure cookies on
   // `http://localhost`, so local dev still works.)
   advanced: {
+    // T10-v2 (M1): rate-limit key = client IP. On Vercel the edge sets
+    // `x-vercel-forwarded-for` / `x-real-ip` itself, so read those first and
+    // only fall back to `x-forwarded-for` (client-controllable off-Vercel).
+    // Kept in sync with scripts/auth-ip-headers.test.mjs.
+    ipAddress: {
+      ipAddressHeaders: ["x-vercel-forwarded-for", "x-real-ip", "x-forwarded-for"],
+    },
     useSecureCookies: false,
     defaultCookieAttributes: { secure: true, sameSite: "lax", path: "/" },
     cookies: {
