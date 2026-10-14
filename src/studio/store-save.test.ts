@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { useStudio } from "./store.ts";
 
+let writeAttempts = 0;
+
 Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
   value: {
@@ -9,7 +11,7 @@ Object.defineProperty(globalThis, "localStorage", {
       return null;
     },
     setItem() {
-      throw new Error("full");
+      if (++writeAttempts === 1) throw new Error("full");
     },
     removeItem() {},
   },
@@ -20,12 +22,14 @@ async function flush() {
 }
 
 describe("CR-7 failed autosave", () => {
-  it("UT-CR-07 a failed save locks storage and sets a notice", async () => {
+  it("UT-CR-07 a failed save locks storage, skips queued saves, and sets a notice", async () => {
     await useStudio.getState().boot();
     useStudio.getState().setMeta({ title: "UNSAVED" });
+    useStudio.getState().setMeta({ title: "QUEUED" });
     await flush();
     const s = useStudio.getState();
     assert.equal(s.storageLocked, true);
     assert.match(s.storageNotice, /ذخیره/);
+    assert.equal(writeAttempts, 1, "queued snapshots must not write after storage locks");
   });
 });

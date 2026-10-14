@@ -24,7 +24,7 @@ describe("CR-3 stale export", () => {
   it("UT-CR-03 deliver skips download when the snap changed", () => {
     const src = readFileSync(new URL("../routes/deliver.tsx", import.meta.url), "utf8");
     const download = src.indexOf("downloadFile(file)");
-    const guard = src.indexOf("exportSnapChanged");
+    const guard = src.indexOf("exportSnapChanged(");
     assert.ok(guard !== -1 && guard < download, "exportSnapChanged must run before downloadFile");
   });
 });
