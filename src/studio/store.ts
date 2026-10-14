@@ -103,6 +103,7 @@ function saveOf(state: Persist) {
   const snapshot = structuredClone(state);
   saveChain = saveChain
     .then(async () => {
+      if (!ready) return;
       const where = await saveProject(activeKV, snapshot);
       if (where === "failed") {
         ready = false;
