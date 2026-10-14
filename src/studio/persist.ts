@@ -256,6 +256,17 @@ async function quarantine(
   return null;
 }
 
+function samePersist(a: Persist, b: Persist): boolean {
+  return (
+    a.aspect === b.aspect &&
+    a.showRig === b.showRig &&
+    a.title === b.title &&
+    a.logline === b.logline &&
+    a.genre === b.genre &&
+    JSON.stringify(a.shots) === JSON.stringify(b.shots)
+  );
+}
+
 /**
  * - هر دو منبع خوانده می‌شوند؛ از بین نسخه‌های معتبر، جدیدتر (savedAt) انتخاب می‌شود (F2).
  * - دادهٔ خراب قبل از باز شدن قفل ذخیره در کلید جداگانه کپی می‌شود؛ اگر نشد saveLocked=true (F1).
@@ -326,7 +337,7 @@ export async function loadProject(
         const stamp = legacy.kind === "valid" && legacy.savedAt ? legacy.savedAt : now;
         await kv.set(IDB_KEY, { ...chosen.data, savedAt: stamp });
         const check = classify(await kv.get(IDB_KEY));
-        if (check.kind === "valid" && check.data.shots.length === chosen.data.shots.length) {
+        if (check.kind === "valid" && samePersist(check.data, chosen.data)) {
           try {
             ls?.removeItem(LEGACY_KEY);
           } catch {

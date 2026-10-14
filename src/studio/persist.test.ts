@@ -438,4 +438,30 @@ describe("T07-v4 mixed valid + invalid shots", () => {
     assert.deepEqual(res.quarantined, []);
     assert.equal(res.notice, undefined);
   });
+
+  it("UT-CR-06 legacy is kept when read-back differs beyond shot count", async () => {
+    const legacy = {
+      shots: [goodShot],
+      title: "LEGACY-TITLE",
+      aspect: "wide",
+      showRig: false,
+      logline: "L",
+      genre: "G",
+      savedAt: 50,
+    };
+    const raw = JSON.stringify(legacy);
+    const ls = fakeLS({ [LEGACY_KEY]: raw });
+    const store = memoryKV();
+    const kv: KV = {
+      async get(k) {
+        const v = await store.get(k);
+        if (k === IDB_KEY && v && typeof v === "object") return { ...(v as Record<string, unknown>), title: "TAMPERED" };
+        return v;
+      },
+      set: (k, v) => store.set(k, v),
+    };
+    const res = await loadProject(kv, ls, 99);
+    assert.equal(ls.data[LEGACY_KEY], raw);
+    assert.equal(res.source, "legacy-fallback");
+  });
 });
