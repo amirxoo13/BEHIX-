@@ -360,3 +360,64 @@ describe("T07-v3 F6: IDB read error", () => {
     assert.equal(res.data?.title, "ONLY");
   });
 });
+
+describe("T07-v4 mixed valid + invalid shots", () => {
+  const mixed = { shots: [goodShot, { id: "bad", heading: "BAD-NO-DURATION", dialogue: "user text" }], title: "T" };
+  const NOW = 1700000000000;
+
+  it("UT-V4-01 parseProject reports dropped count", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject(mixed);
+    assert.ok(r.ok);
+    assert.equal(r.ok && r.dropped, 1);
+    const clean = parseProject({ shots: [goodShot] });
+    assert.equal(clean.ok && clean.dropped, 0);
+  });
+
+  it("UT-V4-02 legacy mixed: byte-equal backup, notice, valid shots kept, migration ok after backup", async () => {
+    const raw = JSON.stringify(mixed);
+    const ls = fakeLS({ [LEGACY_KEY]: raw });
+    const kv = memoryKV();
+    const res = await loadProject(kv, ls, NOW);
+    assert.equal(kv.data[`corrupt-${NOW}-legacy`], raw);
+    assert.deepEqual(res.quarantined, [`idb:corrupt-${NOW}-legacy`]);
+    assert.match(res.notice ?? "", /1 نما خراب بود/);
+    assert.equal(res.data?.shots.length, 1);
+    assert.equal(res.data?.shots[0].id, "s1");
+    assert.equal(res.saveLocked, false);
+  });
+
+  it("UT-V4-03 IDB mixed: backup deep-equal to original before re-save", async () => {
+    const kv = memoryKV({ [IDB_KEY]: mixed });
+    const res = await loadProject(kv, fakeLS(), NOW);
+    assert.deepEqual(kv.data[`corrupt-${NOW}-idb`], mixed);
+    assert.ok(res.notice);
+    assert.equal(res.data?.shots.length, 1);
+  });
+
+  it("UT-V4-04 backup fails → legacy key kept, save locked, notice set", async () => {
+    const raw = JSON.stringify(mixed);
+    const data: Record<string, string> = { [LEGACY_KEY]: raw };
+    const ls: LegacyStorage = {
+      getItem: (k) => (k in data ? data[k] : null),
+      setItem: () => {
+        throw new Error("quota");
+      },
+      removeItem: (k) => {
+        delete data[k];
+      },
+    };
+    const res = await loadProject(failingKV(true), ls, NOW);
+    assert.equal(data[LEGACY_KEY], raw);
+    assert.equal(res.saveLocked, true);
+    assert.ok(res.notice);
+    assert.equal(res.data?.shots.length, 1);
+  });
+
+  it("UT-V4-05 clean project: no backup, no notice", async () => {
+    const kv = memoryKV({ [IDB_KEY]: { shots: [goodShot] } });
+    const res = await loadProject(kv, fakeLS(), NOW);
+    assert.deepEqual(res.quarantined, []);
+    assert.equal(res.notice, undefined);
+  });
+});

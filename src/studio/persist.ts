@@ -74,7 +74,7 @@ export function normalize(shot: Shot): Shot {
   };
 }
 
-export type ParseResult = { ok: true; data: Persist } | { ok: false; error: string };
+export type ParseResult = { ok: true; data: Persist; dropped: number } | { ok: false; error: string };
 
 /** دادهٔ خام (شیء) را اعتبارسنجی و ترمیم می‌کند. هرگز throw نمی‌کند. */
 export function parseProject(raw: unknown): ParseResult {
@@ -85,6 +85,8 @@ export function parseProject(raw: unknown): ParseResult {
   if (shots.length === 0) return { ok: false, error: "هیچ نمای معتبری در فایل نیست." };
   return {
     ok: true,
+    // T07-v4: تعداد نماهای نامعتبرِ کنارگذاشته‌شده؛ فراخوان باید قبل از بازنویسی از دادهٔ خام پشتیبان بگیرد.
+    dropped: d.shots.length - shots.length,
     data: {
       shots,
       aspect: oneOf(d.aspect, ASPECTS, "wide"),
@@ -193,7 +195,7 @@ export type LoadResult = {
   quarantined: string[];
 };
 
-type Slot = { kind: "empty" } | { kind: "unreadable" } | { kind: "valid"; data: Persist; savedAt: number; provisional: boolean } | { kind: "corrupt"; raw: unknown; error: string };
+type Slot = { kind: "empty" } | { kind: "unreadable" } | { kind: "valid"; data: Persist; savedAt: number; provisional: boolean; dropped: number; raw: unknown } | { kind: "corrupt"; raw: unknown; error: string };
 
 function savedAtOf(raw: unknown): number {
   const t = raw && typeof raw === "object" ? (raw as { savedAt?: unknown }).savedAt : undefined;
@@ -204,7 +206,7 @@ function classify(raw: unknown): Slot {
   if (raw === undefined || raw === null) return { kind: "empty" };
   const p = parseProject(raw);
   const provisional = !!raw && typeof raw === "object" && (raw as { provisional?: unknown }).provisional === true;
-  return p.ok ? { kind: "valid", data: p.data, savedAt: savedAtOf(raw), provisional } : { kind: "corrupt", raw, error: p.error };
+  return p.ok ? { kind: "valid", data: p.data, savedAt: savedAtOf(raw), provisional, dropped: p.dropped, raw } : { kind: "corrupt", raw, error: p.error };
 }
 
 function readLegacySlot(ls: LegacyStorage | null): Slot {
@@ -219,7 +221,7 @@ function readLegacySlot(ls: LegacyStorage | null): Slot {
   try {
     const parsed: unknown = JSON.parse(raw);
     const slot = classify(parsed);
-    return slot.kind === "corrupt" ? { ...slot, raw } : slot.kind === "empty" ? { kind: "corrupt", raw, error: "دادهٔ قدیمی خالی است." } : slot;
+    return slot.kind === "corrupt" ? { ...slot, raw } : slot.kind === "empty" ? { kind: "corrupt", raw, error: "دادهٔ قدیمی خالی است." } : slot.kind === "valid" ? { ...slot, raw } : slot;
   } catch {
     return { kind: "corrupt", raw, error: "دادهٔ قدیمی localStorage خراب است." };
   }
@@ -290,6 +292,15 @@ export async function loadProject(
     if (where) quarantined.push(where);
     else saveLocked = true;
   }
+  // T07-v4: نماهای نامعتبر در کنار نماهای معتبر — قبل از هر بازنویسی/حذف کلید legacy، کپی خام گرفته می‌شود.
+  let droppedTotal = 0;
+  for (const [origin, slot] of [["idb", idb], ["legacy", legacy]] as const) {
+    if (slot.kind !== "valid" || slot.dropped === 0) continue;
+    droppedTotal += slot.dropped;
+    const where = await quarantine(useKV ? kv : null, ls, origin, slot.raw, now);
+    if (where) quarantined.push(where);
+    else saveLocked = true; // پشتیبان نشد: نه بازنویسی IDB، نه حذف کلید legacy
+  }
 
   let chosen: { data: Persist; from: "idb" | "legacy" } | null = null;
   if (idb.kind === "valid" && legacy.kind === "valid") {
@@ -330,7 +341,9 @@ export async function loadProject(
   }
 
   let notice: string | undefined;
-  if (quarantined.length) {
+  if (droppedTotal > 0 && !saveLocked) {
+    notice = `${droppedTotal} نما خراب بود و کنار گذاشته شد؛ یک نسخه از دادهٔ اصلی جداگانه نگه داشته شد و پاک نشده است.`;
+  } else if (quarantined.length) {
     notice = "بخشی از دادهٔ ذخیره‌شده خراب بود. یک نسخه از آن جداگانه نگه داشته شد و پاک نشده است.";
   }
   if (idbUnreadable) {
