@@ -18,6 +18,8 @@ import {
 } from "./audio";
 import { canvasSize, locate, renderFrame, totalDuration } from "./frame";
 import { finishPlayback, resetArmed, setPlayDone, useStudio } from "./store";
+import { buildMouthTrack, monoOf, mouthAt, type MouthTrack } from "./lipsync";
+import type { Shot } from "./types";
 
 /** Result of rendering a film; the frontend (T09) shares or downloads it. */
 export type FilmResult = {
@@ -91,6 +93,23 @@ function buildCues(): MixCue[] {
   return cues;
 }
 
+/** T11: برای هر نمای دارای صدای ضبط‌شده، مسیر دهان را یک‌بار از AudioBuffer دیکدشده می‌سازد. */
+async function buildShotTracks(shots: Shot[], urls: Record<string, string>): Promise<Map<string, MouthTrack>> {
+  const out = new Map<string, MouthTrack>();
+  const ctx = new OfflineAudioContext(1, 1, SAMPLE_RATE);
+  for (const shot of shots) {
+    const url = shot.speaker !== "none" ? urls[shot.id] : undefined;
+    if (!url) continue;
+    try {
+      const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      out.set(shot.id, buildMouthTrack(monoOf(buf), buf.sampleRate, FPS));
+    } catch (err) {
+      console.warn("[export] lip-sync track failed; using text mouth", err);
+    }
+  }
+  return out;
+}
+
 /** Offline, faster-than-real-time render: draw every frame, encode MP4. */
 async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmResult> {
   const s = useStudio.getState();
@@ -103,6 +122,7 @@ async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmRe
   if (!ctx) throw new Error("ساخت بوم تصویر برای خروجی ممکن نشد.");
 
   const mix = await renderMixOffline(buildCues(), total, SAMPLE_RATE);
+  const tracks = await buildShotTracks(s.shots, s.audioUrls);
   const output = new Output({
     format: new Mp4OutputFormat({ fastStart: "in-memory" }),
     target: new BufferTarget(),
@@ -127,6 +147,8 @@ async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmRe
         showRig: s.showRig,
         pulses: noPulse,
         speakingLive: false,
+        // صدا با playbackRate=pitch پخش می‌شود؛ پس زمان فایل = زمان نما × pitch.
+        audioMouth: mouthAt(tracks.get(shot.id), loc.local * (shot.pitch || 1)),
       });
       await video.add(t, 1 / FPS);
       if (onProgress && i % FPS === 0) onProgress(i / frames);

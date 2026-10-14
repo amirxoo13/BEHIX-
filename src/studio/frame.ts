@@ -142,6 +142,8 @@ export function renderFrame(
     showRig: boolean;
     pulses: { a: number; b: number };
     speakingLive: boolean;
+    /** T11: دهان از مسیر صدای ضبط‌شده (رندر آفلاین). null/undefined = رفتار قبلی. */
+    audioMouth?: { viseme: Viseme; open: number } | null;
   },
 ) {
   const { w, h } = { w: ctx.canvas.width, h: ctx.canvas.height };
@@ -169,10 +171,10 @@ export function renderFrame(
       : poseFront(s.actor.action, s.actor.emotion, env, time, s.inner);
     const talking = shot.speaker === s.slot;
     const mouth = talking
-      ? live ?? visemeFromText(shot.dialogue, opts.local, shot.duration)
+      ? live ?? opts.audioMouth ?? visemeFromText(shot.dialogue, opts.local, shot.duration)
       : { viseme: "rest" as Viseme, open: 0 };
     const face: FaceDraw = {
-      blink: blinkAt(time + (s.slot === "b" ? 0.7 : 0), s.actor.emotion),
+      blink: blinkAt(time + (s.slot === "b" ? 0.7 : 0), s.actor.emotion, s.slot === "b" ? 1 : 0),
       viseme: mouth.viseme,
       open: mouth.open,
       emotion: s.actor.emotion,
