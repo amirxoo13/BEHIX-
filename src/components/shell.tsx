@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FLOW, PHASES } from "@/studio/flow";
 import { finishPlayback, useStudio } from "@/studio/store";
 
@@ -13,6 +13,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const title = useStudio((s) => s.title);
   const path = useRouterState({ select: (s) => clean(s.location.pathname) });
   const railRef = useRef<HTMLElement>(null);
+  const storageNotice = useStudio((s) => s.storageNotice);
+  const storageLocked = useStudio((s) => s.storageLocked);
 
   useEffect(() => {
     boot();
@@ -43,6 +45,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
         </Link>
       </header>
+      <StorageBar notice={storageNotice} locked={storageLocked} />
       <div className="layout">
         <nav ref={railRef} className="rail" aria-label="خط تولید">
           <Link to="/" className="step-link" aria-current={path === "/" ? "page" : undefined}>
@@ -81,6 +84,41 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+    </div>
+  );
+}
+
+/**
+ * T02: نوار هشدار ذخیره‌سازی (storageNotice/storageLocked از T07).
+ * در حالت قفل دکمهٔ بستن ندارد؛ پیام غیرقفل فقط برای همین نشست و همین متن بسته می‌شود.
+ */
+// Shell در هر route دوباره mount می‌شود؛ بستن پیام در حافظهٔ ماژول (فقط همین نشست) نگه داشته می‌شود.
+let dismissedNotice: string | null = null;
+
+function StorageBar({ notice, locked }: { notice: string; locked: boolean }) {
+  const [dismissed, setDismissedState] = useState<string | null>(dismissedNotice);
+  const setDismissed = (v: string) => {
+    dismissedNotice = v;
+    setDismissedState(v);
+  };
+  if (!locked && (!notice || dismissed === notice)) return null;
+  if (locked) {
+    return (
+      <div role="alert" className="storage-bar storage-bar-locked" data-testid="storage-bar">
+        <p className="font-bold">⚠ تغییرات ذخیره نمی‌شود</p>
+        <p className="mt-1 text-sm leading-6">
+          {notice || "ذخیرهٔ خودکار برای محافظت از پروژهٔ شما متوقف شده است."} تا وقتی این پیام هست، هر تغییری با بستن
+          صفحه از بین می‌رود.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div role="status" className="storage-bar storage-bar-notice" data-testid="storage-bar">
+      <p className="min-w-0 flex-1 text-sm leading-6">{notice}</p>
+      <button type="button" className="btn btn-ghost" onClick={() => setDismissed(notice)}>
+        متوجه شدم
+      </button>
     </div>
   );
 }
