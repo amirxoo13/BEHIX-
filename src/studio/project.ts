@@ -26,6 +26,7 @@ export const DEFAULT_SHOTS: Shot[] = [
     pitch: 1,
     actorA: { charId: "parviz", emotion: "neutral", action: "tea" },
     actorB: { charId: "pooneh", emotion: "poker", action: "hips" },
+    extras: [],
   },
   {
     id: "s2",
@@ -43,6 +44,7 @@ export const DEFAULT_SHOTS: Shot[] = [
     pitch: 1,
     actorA: { charId: "parviz", emotion: "poker", action: "idle" },
     actorB: { charId: "pahlavan", emotion: "poker", action: "tea" },
+    extras: [{ charId: "reza", emotion: "smile", action: "tea" }],
   },
   {
     id: "s3",
@@ -59,6 +61,7 @@ export const DEFAULT_SHOTS: Shot[] = [
     pitch: 1,
     actorA: { charId: "parviz", emotion: "neutral", action: "walk" },
     actorB: { charId: "reza", emotion: "neutral", action: "idle" },
+    extras: [],
   },
 ];
 

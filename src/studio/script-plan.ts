@@ -21,7 +21,7 @@ import {
 } from "./catalog.ts";
 import { WORLD } from "./labels.ts";
 import { newId } from "./project.ts";
-import { VARIANTS, type Action, type BgId, type CameraId, type Emotion, type SfxId, type Shot, type Speaker } from "./types.ts";
+import { MAX_EXTRAS, VARIANTS, type Action, type BgId, type CameraId, type Emotion, type SfxId, type Shot, type Speaker } from "./types.ts";
 
 export type PlanShot = {
   /** شمارهٔ صحنه؛ نماهای پشت‌سرهم با شمارهٔ یکسان در یک مکان‌اند. */
@@ -294,6 +294,7 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
   let lastSpeaker: string | null = null;
   let carried: Record<string, Emotion> = {};
   let firstInScene = true;
+  let sceneCast: string[] = [];
 
   for (const p of plan.shots) {
     if (p.scene !== sceneNo) {
@@ -312,6 +313,12 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
         );
       }
       pair = [present[0], present[1]];
+      sceneCast = present;
+      if (present.length > 2 + MAX_EXTRAS) {
+        warnings.push(
+          `صحنهٔ ${sceneNo + 1}: ${present.length} نفر داشت؛ در هر قاب حداکثر ${2 + MAX_EXTRAS} نفر دیده می‌شوند (دو گوینده جلو، بقیه عقب).`,
+        );
+      }
     } else {
       firstInScene = false;
     }
@@ -329,6 +336,10 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
     };
     const actorA = slot(pair[0]);
     const actorB = slot(pair[1]);
+    const extras = sceneCast
+      .filter((id) => !pair.includes(id))
+      .slice(0, MAX_EXTRAS)
+      .map((id) => slot(id));
 
     let camera: CameraId;
     if (p.camera) camera = p.camera;
@@ -353,6 +364,7 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
       pitch: 1,
       actorA,
       actorB,
+      extras,
     });
     if (p.speaker) lastSpeaker = p.speaker;
   }

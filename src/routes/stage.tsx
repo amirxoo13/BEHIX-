@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
 import { Bone } from "lucide-react";
+import { ExtrasPanel } from "@/components/extras-panel";
 import { SceneBar } from "@/components/scene-bar";
 import { PhaseHead, Shell } from "@/components/shell";
 import { StageCanvas } from "@/components/stage-canvas";
@@ -63,6 +64,7 @@ function StagePage() {
         <Perform title="چپ قاب" slot="a" charId={shot.actorA.charId} emotion={shot.actorA.emotion} action={shot.actorA.action} busy={busy} />
         <Perform title="راست قاب" slot="b" charId={shot.actorB.charId} emotion={shot.actorB.emotion} action={shot.actorB.action} busy={busy} />
       </div>
+      <ExtrasPanel shot={shot} busy={busy} />
     </Shell>
   );
 }

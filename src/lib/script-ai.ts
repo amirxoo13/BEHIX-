@@ -12,6 +12,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { MAX_SCRIPT_CHARS, type Plan } from "@/studio/script-plan";
+import { createLimiter, positiveInt } from "./rate-limit";
 
 export type ScriptAiStatus = { configured: boolean; model: string | null };
 
@@ -42,6 +43,20 @@ async function config() {
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, model, extra };
 }
 
+// سقف‌ها از متغیر محیطی (اختیاری): SCRIPT_AI_PER_HOUR (پیش‌فرض ۱۰ درخواست در ساعت برای هر IP)
+// و SCRIPT_AI_DAILY_TOKENS (پیش‌فرض ۳۰٬۰۰۰ توکن در روز برای کل سرور).
+let shared: ReturnType<typeof createLimiter> | null = null;
+async function limiter() {
+  if (!shared) {
+    const { env } = await import("./env.server.ts");
+    shared = createLimiter({
+      perHour: positiveInt(env("SCRIPT_AI_PER_HOUR"), 10),
+      dailyTokens: positiveInt(env("SCRIPT_AI_DAILY_TOKENS"), 30_000),
+    });
+  }
+  return shared;
+}
+
 export const getScriptAiStatus = createServerFn({ method: "POST" }).handler(
   async (): Promise<ScriptAiStatus> => {
     const c = await config();
@@ -61,6 +76,10 @@ export const understandScript = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<UnderstandResult> => {
     const c = await config();
     if (!c) return { ok: false, error: "مدل زبانی تنظیم نشده است." };
+    const lim = await limiter();
+    const { getRequestIP } = await import("@tanstack/react-start/server");
+    const verdict = lim.check(getRequestIP({ xForwardedFor: true }) ?? "unknown");
+    if (!verdict.ok) return verdict;
     const { buildMessages, maxOutputTokens, planFromModelReply } = await import("@/studio/script-llm");
 
     let res: Response;
@@ -98,6 +117,7 @@ export const understandScript = createServerFn({ method: "POST" })
     } catch {
       return { ok: false, error: "پاسخ سرویس مدل خوانا نبود." };
     }
+    lim.record(usage ? usage.input + usage.output : maxOutputTokens(data.script));
     if (typeof content !== "string") return { ok: false, error: "پاسخ مدل متن نداشت." };
     const parsed = planFromModelReply(content, data.script);
     return parsed.ok ? { ok: true, plan: parsed.plan, model: c.model, usage } : parsed;

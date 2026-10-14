@@ -211,9 +211,13 @@ export const useStudio = create<Studio>((set, get) => ({
     const s = get();
     const next = s.shots.map((shot, i) => {
       if (i !== s.selected) return shot;
-      return slot === "a"
-        ? { ...shot, actorA: { ...shot.actorA, ...partial } }
-        : { ...shot, actorB: { ...shot.actorB, ...partial } };
+      const next =
+        slot === "a"
+          ? { ...shot, actorA: { ...shot.actorA, ...partial } }
+          : { ...shot, actorB: { ...shot.actorB, ...partial } };
+      // کسی که جلو آمد دیگر جزو حاضرین پشت قاب نیست (یک نفر دوبار دیده نشود).
+      const main = [next.actorA.charId, next.actorB.charId];
+      return { ...next, extras: next.extras.filter((e) => !main.includes(e.charId)) };
     });
     set({ shots: next });
     saveOf(persistFrom({ ...s, shots: next }));

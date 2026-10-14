@@ -31,6 +31,7 @@ async function main() {
     "src/lib/auth/sign-in-gate.test.ts",
     "src/lib/auth/trusted-hosts.test.ts",
     "src/lib/preview-path-prefix.test.ts",
+    "src/lib/rate-limit.test.ts",
     "src/studio/*.test.ts",
   ]);
   process.exit(combineStatus([scripts, ts]));

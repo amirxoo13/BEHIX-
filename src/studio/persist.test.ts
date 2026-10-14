@@ -62,7 +62,7 @@ describe("migration localStorage → IndexedDB", () => {
     const res = await loadProject(kv, ls);
     assert.equal(res.source, "migrated");
     assert.equal(res.data?.shots.length, 2);
-    assert.deepEqual(res.data?.shots[0], { ...goodShot, variant: 0, night: false }); // valid data untouched; new fields get defaults
+    assert.deepEqual(res.data?.shots[0], { ...goodShot, variant: 0, night: false, extras: [] }); // valid data untouched; new fields get defaults
     const repaired = res.data!.shots[1];
     assert.equal(repaired.dialogue, "");
     assert.equal(repaired.speaker, "a");
@@ -499,5 +499,37 @@ describe("places upgrade", () => {
     assert.deepEqual([b.background, b.night], ["street", true]);
     assert.deepEqual([c.background, c.variant, c.night], ["cafe", 2, true]);
     assert.deepEqual([d.background, d.variant], ["living", 0]);
+  });
+});
+
+describe("extra people in a shot", () => {
+  it("UT-EX-01 old projects get no extras; bad, duplicate and main-actor extras are dropped; max 3", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject({
+      shots: [
+        { ...goodShot, id: "old" },
+        {
+          ...goodShot,
+          id: "new",
+          extras: [
+            { charId: "parviz", emotion: "laugh", action: "idle" },
+            { charId: "ghost" },
+            { charId: "parviz" },
+            { charId: "sara" },
+            "junk",
+            { charId: "pahlavan" },
+            { charId: "doctor" },
+            { charId: "reza" },
+          ],
+        },
+      ],
+    });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.deepEqual(r.data.shots[0].extras, []);
+    const ex = r.data.shots[1].extras;
+    assert.deepEqual(ex.map((e) => e.charId), ["parviz", "pahlavan", "doctor"], "sara is actorA, ghost unknown");
+    assert.equal(ex[0].emotion, "laugh");
+    assert.equal(ex[1].emotion, "neutral");
   });
 });

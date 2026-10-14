@@ -111,4 +111,9 @@ export type Shot = {
   pitch: number;
   actorA: ActorSlot;
   actorB: ActorSlot;
+  /** بقیهٔ حاضرین صحنه (حداکثر MAX_EXTRAS نفر)؛ عقب‌تر از دو بازیگر اصلی ایستاده‌اند و حرف نمی‌زنند. */
+  extras: ActorSlot[];
 };
+
+/** با دو بازیگر اصلی، حداکثر ۵ نفر در قاب. */
+export const MAX_EXTRAS = 3;

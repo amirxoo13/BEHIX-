@@ -17,7 +17,7 @@ function DeskPage() {
   const audioUrls = useStudio((s) => s.audioUrls);
   const setMeta = useStudio((s) => s.setMeta);
   const names = [
-    ...new Set(shots.flatMap((s) => [findChar(s.actorA.charId).name, findChar(s.actorB.charId).name])),
+    ...new Set(shots.flatMap((s) => [s.actorA, s.actorB, ...s.extras].map((x) => findChar(x.charId).name))),
   ];
 
   return (

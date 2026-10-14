@@ -2,7 +2,7 @@
 // این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
 import { CAST } from "./characters.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
-import { VARIANTS, type ActorSlot, type Aspect, type Shot } from "./types.ts";
+import { MAX_EXTRAS, VARIANTS, type ActorSlot, type Aspect, type Shot } from "./types.ts";
 
 export type Persist = {
   shots: Shot[];
@@ -64,10 +64,26 @@ function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
   } as ActorSlot;
 }
 
+// حاضرین اضافه: نامعتبرها حذف می‌شوند (نه ترمیم) و تکراری‌ها و بازیگران اصلی کنار می‌روند.
+function repairExtras(v: unknown, main: string[]): ActorSlot[] {
+  if (!Array.isArray(v)) return [];
+  const out: ActorSlot[] = [];
+  for (const item of v) {
+    const o = item && typeof item === "object" ? (item as Partial<ActorSlot>) : null;
+    if (!o || typeof o.charId !== "string" || !CAST.some((c) => c.id === o.charId)) continue;
+    if (main.includes(o.charId) || out.some((x) => x.charId === o.charId)) continue;
+    out.push(repairActor(o, "a"));
+    if (out.length >= MAX_EXTRAS) break;
+  }
+  return out;
+}
+
 // PERS-01c: همهٔ فیلدهای متنی/شمارشی با پیش‌فرض پر می‌شوند.
 export function normalize(shot: Shot): Shot {
   const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
   const legacy = LEGACY_BG[shot.background as string];
+  const actorA = repairActor(shot.actorA, "a");
+  const actorB = repairActor(shot.actorB, "b");
   const variant = Number.isInteger(shot.variant) && shot.variant >= 0 && shot.variant < VARIANTS ? shot.variant : 0;
   return {
     ...shot,
@@ -81,8 +97,9 @@ export function normalize(shot: Shot): Shot {
     speaker: oneOf(shot.speaker, SPEAKERS, "a"),
     sfx: oneOf(shot.sfx, SFX_IDS, "none"),
     pitch,
-    actorA: repairActor(shot.actorA, "a"),
-    actorB: repairActor(shot.actorB, "b"),
+    actorA,
+    actorB,
+    extras: repairExtras(shot.extras, [actorA.charId, actorB.charId]),
   };
 }
 

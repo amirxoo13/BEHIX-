@@ -219,7 +219,7 @@ export function AutoScript() {
                   <span className="latin text-cyan">{fa(i + 1)}</span>
                   <span>
                     <span className="block text-sm text-muted">
-                      {WORLD[s.background].place} ({WORLD[s.background].variants[s.variant]}، {s.night ? "شب" : "روز"}) · {findChar(s.actorA.charId).name} و {findChar(s.actorB.charId).name}
+                      {WORLD[s.background].place} ({WORLD[s.background].variants[s.variant]}، {s.night ? "شب" : "روز"}) · {[s.actorA, s.actorB, ...s.extras].map((x) => findChar(x.charId).name).join("، ")}
                     </span>
                     <span className="block">
                       {who ? `${findChar(who.charId).name} (${emotionLabel(who.emotion)}): ${s.dialogue}` : s.actionLine}

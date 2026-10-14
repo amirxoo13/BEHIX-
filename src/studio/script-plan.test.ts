@@ -165,3 +165,22 @@ describe("scene headings without brackets", () => {
     );
   });
 });
+
+describe("more than two people", () => {
+  it("UT-EX-02 everyone present stays in frame: the pair talks, the rest stand behind", () => {
+    const { shots } = layoutPlan(planFromDictionary(SCRIPT));
+    assert.deepEqual(shots[0].extras.map((e) => e.charId), ["reza"]);
+    // وقتی رضا حرف می‌زند جای پرویز جلو می‌آید و پرویز عقب می‌رود، ولی از صحنه بیرون نمی‌رود.
+    assert.equal(shots[2].actorA.charId, "reza");
+    assert.deepEqual(shots[2].extras.map((e) => e.charId), ["parviz"]);
+    assert.deepEqual(shots[3].extras, [], "scene 2 has only Sara and Kian");
+  });
+  it("UT-EX-03 more than five people → five in frame and a warning", () => {
+    const r = layoutPlan(
+      planFromDictionary("قهوه‌خانه\nپرویز، پونه، پهلوان، خاله بتول، رضا و سارا نشسته‌اند.\nپرویز: سلام"),
+    );
+    const s = r.shots.at(-1)!;
+    assert.equal(2 + s.extras.length, 5);
+    assert.ok(r.warnings.some((w) => w.includes("حداکثر ۵") || w.includes("حداکثر 5")));
+  });
+});

@@ -67,7 +67,7 @@ export function phaseStatus(to: string, shots: Shot[], audioUrls: Record<string,
   }
   if (to === "/cast") {
     const names = [
-      ...new Set(shots.flatMap((s) => [findChar(s.actorA.charId).name, findChar(s.actorB.charId).name])),
+      ...new Set(shots.flatMap((s) => [s.actorA, s.actorB, ...s.extras].map((x) => findChar(x.charId).name))),
     ];
     return names.join("، ");
   }

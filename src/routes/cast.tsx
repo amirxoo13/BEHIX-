@@ -44,7 +44,7 @@ function CastPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CAST.map((c) => {
           const on = actor.charId === c.id;
-          const uses = shots.filter((s) => s.actorA.charId === c.id || s.actorB.charId === c.id).length;
+          const uses = shots.filter((s) => [s.actorA, s.actorB, ...s.extras].some((x) => x.charId === c.id)).length;
           return (
             <button
               key={c.id}
