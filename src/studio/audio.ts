@@ -349,8 +349,13 @@ export async function renderMixOffline(
   const decoded = new Map<string, AudioBuffer>();
   for (const cue of cues) {
     if (!cue.url || decoded.has(cue.url)) continue;
-    const arr = await (await fetch(cue.url)).arrayBuffer();
-    decoded.set(cue.url, await octx.decodeAudioData(arr));
+    try {
+      const res = await fetch(cue.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      decoded.set(cue.url, await octx.decodeAudioData(await res.arrayBuffer()));
+    } catch (err) {
+      console.warn("[mix] skipping voice clip", err);
+    }
   }
   try {
     for (const cue of cues) {
