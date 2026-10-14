@@ -341,6 +341,8 @@ export async function loadProject(
   }
 
   let notice: string | undefined;
+  const newerProvisional =
+    idb.kind === "valid" && legacy.kind === "valid" && legacy.provisional && legacy.savedAt > idb.savedAt;
   if (droppedTotal > 0 && !saveLocked) {
     notice = `${droppedTotal} نما خراب بود و کنار گذاشته شد؛ یک نسخه از دادهٔ اصلی جداگانه نگه داشته شد و پاک نشده است.`;
   } else if (quarantined.length) {
@@ -353,6 +355,10 @@ export async function loadProject(
     notice = "دادهٔ ذخیره‌شده خراب است و نسخهٔ امن از آن ساخته نشد؛ برای جلوگیری از پاک شدن، ذخیرهٔ خودکار متوقف شد. لطفاً از پروژه پشتیبان بگیرید.";
   } else if (source === "legacy-fallback" && useKV) {
     notice ??= "انتقال پروژه به حافظهٔ جدید انجام نشد؛ دادهٔ قبلی سر جایش ماند.";
+  }
+  if (newerProvisional && !idbUnreadable && !saveLocked) {
+    const extra = "نسخهٔ موقت جدیدتری در حافظهٔ قدیمی ماند و جایگزین پروژهٔ اصلی نشد.";
+    notice = notice ? `${notice} ${extra}` : extra;
   }
   return {
     data: chosen?.data ?? null,

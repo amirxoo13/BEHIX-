@@ -359,6 +359,24 @@ describe("T07-v3 F6: IDB read error", () => {
     const res = await loadProject(memoryKV(), ls, 20);
     assert.equal(res.data?.title, "ONLY");
   });
+
+  it("UT-CR-05 newer provisional legacy is not applied but is announced", async () => {
+    const idbProject = {
+      shots: [{ id: "r", duration: 2, dialogue: "REAL" }],
+      aspect: "wide",
+      showRig: false,
+      title: "REAL",
+      logline: "",
+      genre: "",
+      savedAt: 1000,
+    };
+    const legacy = { ...legacyProject, title: "TEMP", savedAt: 5000, provisional: true };
+    const kv = memoryKV({ [IDB_KEY]: idbProject });
+    const ls = fakeLS({ [LEGACY_KEY]: JSON.stringify(legacy) });
+    const res = await loadProject(kv, ls, 6000);
+    assert.equal(res.data?.title, "REAL");
+    assert.match(res.notice ?? "", /موقت/);
+  });
 });
 
 describe("T07-v4 mixed valid + invalid shots", () => {
