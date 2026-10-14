@@ -41,6 +41,10 @@ describe("T11 analysis", () => {
     const tr = buildMouthTrack(concat(new Float32Array(SR / 4), tone(0.5, 200, 0.02)), SR, 30);
     assert.ok((mouthAt(tr, 0.5)?.open ?? 0) > 0.6);
   });
+  it("UT-CR-13 amplitude 0.001 still opens the mouth", () => {
+    const tr = buildMouthTrack(tone(0.5, 200, 0.001), SR, 30);
+    assert.ok((mouthAt(tr, 0.4)?.open ?? 0) > 0.2);
+  });
 });
 
 describe("T11 mapping + fallback", () => {

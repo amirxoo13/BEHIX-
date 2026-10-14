@@ -44,7 +44,7 @@ export function buildMouthTrack(samples: Float32Array, sampleRate: number, fps =
     zcr[f] = cross / len;
   }
   const sorted = Array.from(rms).sort((x, y) => x - y);
-  const ref = Math.max(sorted[Math.floor(sorted.length * 0.95)] ?? 0, 0.01);
+  const ref = Math.max(sorted[Math.floor(sorted.length * 0.95)] ?? 0, 1e-4);
   const gate = 0.12; // زیر ۱۲٪ مرجع = سکوت/نویز
   const open = new Float32Array(n);
   let prev = 0;
