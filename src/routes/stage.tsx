@@ -5,6 +5,7 @@ import { ExtrasPanel } from "@/components/extras-panel";
 import { SceneBar } from "@/components/scene-bar";
 import { PhaseHead, Shell } from "@/components/shell";
 import { StageCanvas } from "@/components/stage-canvas";
+import { Timeline } from "@/components/timeline";
 import { PlayButton } from "@/components/transport";
 import { findChar } from "@/studio/characters";
 import { PHASES } from "@/studio/flow";
@@ -39,6 +40,7 @@ function StagePage() {
           {showRig ? "ریگ روشن" : "نمایش ریگ"}
         </button>
       </div>
+      <Timeline />
       <div className="mt-4">
         <SceneBar />
       </div>

@@ -70,6 +70,12 @@ type Studio = {
   /** بازیابی از متن JSON؛ در خطا پروژه دست نمی‌خورد. */
   importBackup: (text: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   select: (i: number) => void;
+  /** زمان انتخاب‌شده روی تایم‌لاین (ثانیه از شروع فیلم)؛ null یعنی پیش‌نمایش زندهٔ نمای انتخاب‌شده. */
+  scrub: number | null;
+  /** رفتن به یک لحظه از فیلم: نمای آن لحظه انتخاب می‌شود و صحنه همان فریم را نشان می‌دهد. */
+  setScrub: (t: number | null) => void;
+  /** تغییر یک نمای مشخص (نه فقط نمای انتخاب‌شده). */
+  patchShotAt: (i: number, partial: Partial<Shot>) => void;
   selectDuringPlay: (i: number) => void;
   patchShot: (partial: Partial<Shot>) => void;
   patchActor: (slot: "a" | "b", partial: Partial<ActorSlot>) => void;
@@ -197,7 +203,35 @@ export const useStudio = create<Studio>((set, get) => ({
     }
     return { ok: true };
   },
-  select: (i) => set({ selected: i }),
+  select: (i) => set({ selected: i, scrub: null }),
+  scrub: null,
+  setScrub: (t) => {
+    if (t === null) {
+      set({ scrub: null });
+      return;
+    }
+    const s = get();
+    const total = s.shots.reduce((a, x) => a + x.duration, 0);
+    const clamped = Math.max(0, Math.min(t, Math.max(0, total - 0.001)));
+    let acc = 0;
+    let index = s.shots.length - 1;
+    for (let i = 0; i < s.shots.length; i++) {
+      if (clamped < acc + s.shots[i].duration) {
+        index = i;
+        break;
+      }
+      acc += s.shots[i].duration;
+    }
+    set({ scrub: clamped, selected: index });
+  },
+  patchShotAt: (i, partial) => {
+    if (booting) return;
+    const s = get();
+    if (!s.shots[i]) return;
+    const next = s.shots.map((shot, j) => (j === i ? { ...shot, ...partial } : shot));
+    set({ shots: next });
+    saveOf(persistFrom({ ...s, shots: next }));
+  },
   selectDuringPlay: (i) => set({ selected: i }),
   patchShot: (partial) => {
     if (booting) return;

@@ -9,7 +9,14 @@ export async function togglePlay() {
   }
   await resumeAudio();
   resetArmed();
-  useStudio.getState().setPlaying(true, performance.now());
+  // اگر روی تایم‌لاین لحظه‌ای انتخاب شده، پخش از شروع همان نما شروع می‌شود (صدای ضبط‌شده از اول نما است).
+  const s = useStudio.getState();
+  let from = 0;
+  if (s.scrub !== null) {
+    for (let i = 0; i < s.selected; i++) from += s.shots[i].duration;
+  }
+  s.setScrub(null);
+  s.setPlaying(true, performance.now() - from * 1000);
 }
 
 export function PlayButton({ label = "پخش کل فیلم" }: { label?: string }) {
