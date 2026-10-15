@@ -364,6 +364,15 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
       pair = keepLeft ? [pair[0], p.speaker] : [p.speaker, pair[1]];
     }
     const side: Speaker = !p.speaker ? "none" : p.speaker === pair[0] ? "a" : "b";
+    // حس تازه و شدیدِ شنونده (قبل از این‌که carried به‌روز شود)؛ برای نمای واکنش بعد از این دیالوگ.
+    const listener = side === "a" ? pair[1] : side === "b" ? pair[0] : null;
+    const listenerFeels = listener ? p.emotion[listener] : undefined;
+    const reacts =
+      !firstInScene &&
+      listener !== null &&
+      listenerFeels !== undefined &&
+      STRONG.has(listenerFeels) &&
+      listenerFeels !== (carried[listener] ?? "neutral");
 
     const slot = (id: string) => {
       const emotion = p.emotion[id] ?? carried[id] ?? "neutral";
@@ -403,7 +412,29 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
       extras,
       props: placeProps(p.props),
     });
+    // نمای واکنش: کلوزآپ کوتاه از شنونده‌ای که از این حرف شوکه/عصبانی/گریان/خندان شد.
+    if (reacts && listener) {
+      const prev = out[out.length - 1];
+      out.push({
+        ...prev,
+        id: newId(),
+        actionLine: `واکنش ${findChar(listener).name}`,
+        duration: REACTION_SEC,
+        camera: listener === pair[0] ? "closeLeft" : "closeRight",
+        dialogue: "",
+        speaker: "none",
+        sfx: listenerFeels === "shock" ? "shock" : "none",
+      });
+    }
     if (p.speaker) lastSpeaker = p.speaker;
+  }
+  if (out.length > MAX_SHOTS) {
+    out.length = MAX_SHOTS;
+    warnings.push(`با نماهای واکنش، فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
   }
   return { shots: out, warnings };
 }
+
+/** حس‌هایی که نمای واکنش جدا می‌گیرند. */
+const STRONG = new Set<Emotion>(["shock", "angry", "cry", "laugh"]);
+const REACTION_SEC = 1.4;

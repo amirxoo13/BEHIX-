@@ -88,6 +88,26 @@ export type CharacterDef = {
   eyeBags: boolean;
   scale: number;
   coat?: string;
+  /** هیکل: لاغر، معمولی یا درشت (پهنای بالاتنه). */
+  build?: Build;
+  /** سر از روی عکس (مثلاً کارتونی Canva)؛ اگر باشد به‌جای سر نقاشی‌شده کشیده می‌شود. */
+  head?: HeadImage;
+};
+
+export type Build = "slim" | "normal" | "heavy";
+
+export type HeadImage = {
+  /** تصویر PNG با پس‌زمینهٔ شفاف، به‌صورت data URL. */
+  src: string;
+  /** نسبت ارتفاع به عرض تصویر. */
+  aspect: number;
+  /** وسط دهان و چشم‌ها، نسبی (۰ تا ۱) روی تصویر. */
+  mouth: { x: number; y: number };
+  eyes?: { l: { x: number; y: number }; r: { x: number; y: number } };
+  /** پهنای سر در واحد بدن (سر نقاشی‌شده ≈ ۸۰). */
+  size: number;
+  /** رنگ پوست کنار دهان؛ برای پوشاندن دهان/چشم اصلی هنگام حرف زدن و پلک زدن. */
+  patch: string;
 };
 
 export type ActorSlot = {

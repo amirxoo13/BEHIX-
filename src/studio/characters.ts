@@ -124,6 +124,36 @@ export const CAST: CharacterDef[] = [
   },
 ];
 
+/** شخصیت‌های سفارشی همین پروژه (ساخته‌شده از عکس سر). */
+let custom: CharacterDef[] = [];
+const listeners: (() => void)[] = [];
+
+/** حداکثر شخصیت سفارشی در یک پروژه. */
+export const MAX_CUSTOM = 8;
+
+export function isCustomId(id: string): boolean {
+  return /^u-[a-z0-9]{3,24}$/.test(id);
+}
+
+export function setCustomCast(list: CharacterDef[]) {
+  custom = list.slice(0, MAX_CUSTOM);
+  for (const fn of listeners) fn();
+}
+
+export function customCast(): CharacterDef[] {
+  return custom;
+}
+
+/** همهٔ شخصیت‌ها: ثابت‌ها و بعد سفارشی‌ها. */
+export function allCast(): CharacterDef[] {
+  return [...CAST, ...custom];
+}
+
+/** وقتی فهرست شخصیت‌های سفارشی عوض شد (کاتالوگ سناریو خودش را به‌روز می‌کند). */
+export function onCastChange(fn: () => void) {
+  listeners.push(fn);
+}
+
 export function findChar(id: string): CharacterDef {
-  return CAST.find((c) => c.id === id) ?? CAST[0];
+  return custom.find((c) => c.id === id) ?? CAST.find((c) => c.id === id) ?? CAST[0];
 }

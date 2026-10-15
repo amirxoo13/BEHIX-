@@ -46,8 +46,11 @@ export function maxOutputTokens(script: string): number {
   return Math.min(3000, 60 + 40 * lineCount(script));
 }
 
-export function buildMessages(script: string): ChatMessage[] {
-  const chars = CHARACTERS.map((c) => `${c.id}=${c.label}`).join(", ");
+/** شخصیت سفارشی که مرورگر همراه سناریو می‌فرستد (سرور شخصیت‌های سفارشی را نمی‌شناسد). */
+export type ExtraCharacter = { id: string; name: string };
+
+export function buildMessages(script: string, extra: ExtraCharacter[] = []): ChatMessage[] {
+  const chars = [...CHARACTERS.map((c) => `${c.id}=${c.label}`), ...extra.map((c) => `${c.id}=${c.name}`)].join(", ");
   const places = BACKGROUNDS.map((b) => `${b.id}=${b.label}`).join(", ");
   const system = `Annotate a numbered Persian screenplay ("N|text"). Reply ONLY compact JSON, no spaces:
 {"s":[[N,"bg","speaker","id:emotion:action,id:emotion:action","sfx"]]}
@@ -80,7 +83,9 @@ function pick<T extends string>(v: unknown, allowed: readonly string[]): T | und
 export function planFromModelReply(
   reply: string,
   script: string,
+  extra: ExtraCharacter[] = [],
 ): { ok: true; plan: Plan } | { ok: false; error: string } {
+  const charIds = [...IDS.characters, ...extra.map((c) => c.id)];
   let data: unknown;
   try {
     data = extractJson(reply);
@@ -108,7 +113,7 @@ export function planFromModelReply(
 
   // توضیحی که مستقیم قبل از یک دیالوگ آمده، جزء همان نماست نه نمای جدا (حتی اگر مدل جدا داده باشد).
   // فقط خطی «دیالوگ» است که گوینده‌اش یک شخصیت معتبر باشد (مدل گاهی دو اسم یا متن نامعتبر می‌نویسد).
-  const isSpoken = (n: number) => pick(rows.get(n)?.[2], IDS.characters) !== undefined;
+  const isSpoken = (n: number) => pick(rows.get(n)?.[2], charIds) !== undefined;
   const nextLine = (n: number) => {
     for (let i = n; i < lines.length; i++) if (lines[i]) return isHeader(lines[i]) === null ? i + 1 : -1;
     return -1;
@@ -157,7 +162,7 @@ export function planFromModelReply(
     }
     lastBg = background;
 
-    const speaker: string | null = pick(rawSpeaker, IDS.characters) ?? null;
+    const speaker: string | null = pick(rawSpeaker, charIds) ?? null;
     if (rawSpeaker && !speaker) dropped.add(`شخصیت «${String(rawSpeaker)}»`);
 
     const cast: string[] = speaker ? [speaker] : [];
@@ -166,7 +171,7 @@ export function planFromModelReply(
     for (const part of String(rawChars ?? "").split(",")) {
       const [id, e, a] = part.trim().split(":");
       if (!id) continue;
-      if (!pick(id, IDS.characters)) {
+      if (!pick(id, charIds)) {
         dropped.add(`شخصیت «${id}»`);
         continue;
       }

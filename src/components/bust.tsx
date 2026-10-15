@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { findChar } from "@/studio/characters";
-import { drawActor } from "@/studio/draw-actor";
+import { drawActor, preloadHeads } from "@/studio/draw-actor";
 import { poseFront } from "@/studio/rig";
+import { useStudio } from "@/studio/store";
 import type { Action, Emotion } from "@/studio/types";
 
 export function Bust({
@@ -15,11 +16,22 @@ export function Bust({
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
+  const custom = useStudio((s) => s.characters);
+
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    let alive = true;
+    // سر عکسی: اول بارگذاری، بعد نقاشی (وگرنه یک لحظه سر پیش‌فرض دیده می‌شود).
+    void preloadHeads([findChar(charId)]).then(() => alive && paint(ctx, canvas));
+    return () => {
+      alive = false;
+    };
+  }, [charId, emotion, action, custom]);
+
+  function paint(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = 280;
     const h = 360;
@@ -47,7 +59,7 @@ export function Bust({
       gesture,
       1,
     );
-  }, [charId, emotion, action]);
+  }
 
   return <canvas ref={ref} className="bust" aria-hidden />;
 }

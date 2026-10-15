@@ -4,7 +4,7 @@
  * شناسه‌ها از همان منابعی خوانده می‌شوند که سایت با آن‌ها نقاشی می‌کند (CAST، labels)،
  * پس دارایی تازه با اضافه شدن به آن منابع، خودکار در کاتالوگ می‌آید.
  */
-import { CAST } from "./characters.ts";
+import { allCast, onCastChange } from "./characters.ts";
 import { ACTIONS, CAMERAS, EMOTIONS, SFXS, WORLD } from "./labels.ts";
 import { PROPS, type PropId } from "./props.ts";
 import type { Action, BgId, CameraId, Emotion, SfxId } from "./types.ts";
@@ -29,11 +29,15 @@ export function normalizeFa(text: string): string {
 /** کلمه‌های عمومی که به‌تنهایی اسم یک شخصیت نیستند. */
 const GENERIC_NAME_WORDS = new Set(["آقای", "آقا", "خانم"]);
 
-export const CHARACTERS: Entry<string>[] = CAST.map((c) => {
+/** اسم کامل و تک‌کلمه‌های اسم (بدون «آقای/خانم») به‌عنوان مترادف. */
+export function characterEntry(c: { id: string; name: string }): Entry<string> {
   const parts = c.name.split(/\s+/).filter((p) => p && !GENERIC_NAME_WORDS.has(p));
   const aliases = [c.name, ...(parts.length > 1 ? parts : [])];
   return { id: c.id, label: c.name, aliases: [...new Set(aliases)] };
-});
+}
+
+/** همهٔ شخصیت‌ها؛ با ساخته شدن شخصیت سفارشی، همین آرایه به‌روز می‌شود. */
+export const CHARACTERS: Entry<string>[] = allCast().map(characterEntry);
 
 const BG_ALIASES: Record<BgId, string[]> = {
   living: ["پذیرایی", "نشیمن", "اتاق نشیمن", "هال", "سالن", "خانه", "خونه"],
@@ -185,3 +189,8 @@ export const IDS = {
   cameras: CAMERA_ENTRIES.map((e) => e.id),
   props: PROP_ENTRIES.map((e) => e.id),
 };
+
+onCastChange(() => {
+  CHARACTERS.splice(0, CHARACTERS.length, ...allCast().map(characterEntry));
+  IDS.characters.splice(0, IDS.characters.length, ...CHARACTERS.map((e) => e.id));
+});

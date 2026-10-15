@@ -533,3 +533,48 @@ describe("extra people in a shot", () => {
     assert.equal(ex[1].emotion, "neutral");
   });
 });
+
+describe("custom characters (photo heads)", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+  const javad = {
+    id: "u-javad01",
+    name: " عمو جواد ",
+    shirt: "#112233",
+    pants: "red",
+    scale: 1.1,
+    build: "heavy",
+    head: { src: PNG, aspect: 1.2, mouth: { x: 0.5, y: 0.7 }, size: 120, patch: "#e0b07a", eyes: { l: { x: 0.35, y: 0.4 }, r: { x: 0.65, y: 0.4 } } },
+  };
+  it("UT-CC-01 valid custom characters survive, unsafe fields are repaired or dropped", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject({
+      shots: [{ ...goodShot, actorA: { charId: "u-javad01", emotion: "smile", action: "idle" } }],
+      characters: [
+        javad,
+        { ...javad, id: "u-javad01" }, // تکراری
+        { id: "parviz", name: "جعلی" }, // شناسهٔ ثابت‌ها
+        { id: "u-evil01", name: "x", head: { src: "javascript:alert(1)", aspect: 1, mouth: { x: 0.5, y: 0.5 } } },
+        { id: "u-noname", name: "  " },
+      ],
+    });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const cs = r.data.characters!;
+    assert.deepEqual(cs.map((c) => c.id), ["u-javad01", "u-evil01"]);
+    assert.equal(cs[0].name, "عمو جواد");
+    assert.equal(cs[0].pants, "#2c241c", "invalid colour falls back");
+    assert.equal(cs[0].build, "heavy");
+    assert.equal(cs[0].head?.size, 120);
+    assert.deepEqual(cs[0].head?.eyes, javad.head.eyes);
+    assert.equal(cs[1].head, undefined, "non-image src is never kept");
+    assert.equal(r.data.shots[0].actorA.charId, "u-javad01", "a shot may use a custom character");
+  });
+  it("UT-CC-02 a custom id without its character is repaired; old projects have no characters key", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject({ shots: [{ ...goodShot, actorA: { charId: "u-gone01", emotion: "smile", action: "idle" } }] });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.equal(r.data.shots[0].actorA.charId, "parviz");
+    assert.equal("characters" in r.data, false);
+  });
+});

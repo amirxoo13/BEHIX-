@@ -9,7 +9,9 @@ import { MAX_EXTRAS, type Action, type ActorSlot, type Emotion, type Shot } from
 export function ExtrasPanel({ shot, busy }: { shot: Shot; busy: boolean }) {
   const taken = (except?: string) =>
     new Set([shot.actorA.charId, shot.actorB.charId, ...shot.extras.map((e) => e.charId)].filter((id) => id !== except));
-  const free = CAST.filter((c) => !taken().has(c.id));
+  const custom = useStudio((s) => s.characters);
+  const everyone = [...CAST, ...custom];
+  const free = everyone.filter((c) => !taken().has(c.id));
 
   const set = (extras: ActorSlot[]) => useStudio.getState().patchShot({ extras });
   const patch = (i: number, partial: Partial<ActorSlot>) =>
@@ -35,7 +37,7 @@ export function ExtrasPanel({ shot, busy }: { shot: Shot; busy: boolean }) {
                 disabled={busy}
                 onChange={(ev) => patch(i, { charId: ev.target.value })}
               >
-                {CAST.filter((c) => !taken(e.charId).has(c.id)).map((c) => (
+                {everyone.filter((c) => !taken(e.charId).has(c.id)).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>

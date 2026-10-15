@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { playSfx, playUrl, stopAll } from "./audio.ts";
 import { exportBackup, idbKV, importBackup, loadProject, saveProject, type Persist } from "./persist.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, newId } from "./project.ts";
-import type { ActorSlot, Aspect, Emotion, Shot } from "./types.ts";
+import { CAST, MAX_CUSTOM, setCustomCast } from "./characters.ts";
+import type { ActorSlot, Aspect, CharacterDef, Emotion, Shot } from "./types.ts";
 
 
 let onDone: (() => void) | null = null;
@@ -45,6 +46,11 @@ type Meta = { title: string; logline: string; genre: string };
 
 type Studio = {
   shots: Shot[];
+  /** شخصیت‌های سفارشی این پروژه (سر از روی عکس). */
+  characters: CharacterDef[];
+  addCharacter: (c: CharacterDef) => boolean;
+  /** حذف شخصیت سفارشی؛ نماهایی که او را داشتند شخصیت پیش‌فرض می‌گیرند. */
+  removeCharacter: (id: string) => void;
   selected: number;
   aspect: Aspect;
   showRig: boolean;
@@ -128,6 +134,7 @@ function saveOf(state: Persist) {
 
 function persistFrom(s: {
   shots: Shot[];
+  characters: CharacterDef[];
   aspect: Aspect;
   showRig: boolean;
   title: string;
@@ -136,6 +143,7 @@ function persistFrom(s: {
 }): Persist {
   return {
     shots: s.shots,
+    characters: s.characters,
     aspect: s.aspect,
     showRig: s.showRig,
     title: s.title,
@@ -146,6 +154,33 @@ function persistFrom(s: {
 
 export const useStudio = create<Studio>((set, get) => ({
   shots: DEFAULT_SHOTS,
+  characters: [],
+  addCharacter: (c) => {
+    if (booting) return false;
+    const s = get();
+    if (s.characters.length >= MAX_CUSTOM || s.characters.some((x) => x.id === c.id)) return false;
+    const characters = [...s.characters, c];
+    setCustomCast(characters);
+    set({ characters });
+    saveOf(persistFrom({ ...s, characters }));
+    return true;
+  },
+  removeCharacter: (id) => {
+    if (booting) return;
+    const s = get();
+    const characters = s.characters.filter((c) => c.id !== id);
+    const fix = (a: ActorSlot, fallback: string): ActorSlot => (a.charId === id ? { ...a, charId: fallback } : a);
+    const shots = s.shots.map((shot) => {
+      const actorA = fix(shot.actorA, shot.actorB.charId === CAST[0].id ? CAST[1].id : CAST[0].id);
+      const actorB = fix(shot.actorB, actorA.charId === CAST[1].id ? CAST[0].id : CAST[1].id);
+      const main = [actorA.charId, actorB.charId];
+      const extras = shot.extras.filter((e) => e.charId !== id && !main.includes(e.charId));
+      return { ...shot, actorA, actorB, extras };
+    });
+    setCustomCast(characters);
+    set({ characters, shots });
+    saveOf(persistFrom({ ...s, characters, shots }));
+  },
   selected: 0,
   aspect: "wide",
   showRig: false,
@@ -172,7 +207,11 @@ export const useStudio = create<Studio>((set, get) => ({
       activeKV = res.useKV ? kv : null;
       locked = res.saveLocked;
       set({ storageNotice: res.notice ?? "", storageLocked: res.saveLocked });
-      if (res.data) set({ ...res.data, selected: 0 });
+      if (res.data) {
+        const characters = res.data.characters ?? [];
+        setCustomCast(characters);
+        set({ ...res.data, characters, selected: 0 });
+      }
     } catch {
       set({ storageNotice: "بارگذاری پروژه ناموفق بود؛ ذخیرهٔ خودکار متوقف شد.", storageLocked: true });
     } finally {
@@ -191,7 +230,9 @@ export const useStudio = create<Studio>((set, get) => ({
     }
     if (get().playing) finishPlayback();
     for (const url of Object.values(get().audioUrls)) revoke(url);
-    set({ ...res.data, selected: 0, audioUrls: {} });
+    const characters = res.data.characters ?? [];
+    setCustomCast(characters);
+    set({ ...res.data, characters, selected: 0, audioUrls: {} });
     const snapshot = structuredClone(res.data);
     const pending = saveChain.then(() => saveProject(activeKV, snapshot));
     saveChain = pending.catch(() => undefined);

@@ -13,6 +13,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { MAX_SCRIPT_CHARS, type Plan } from "@/studio/script-plan";
 import { createLimiter, positiveInt } from "./rate-limit";
+import type { ExtraCharacter } from "@/studio/script-llm";
 
 export type ScriptAiStatus = { configured: boolean; model: string | null };
 
@@ -65,13 +66,24 @@ export const getScriptAiStatus = createServerFn({ method: "POST" }).handler(
 );
 
 export const understandScript = createServerFn({ method: "POST" })
-  .validator((data: unknown): { script: string } => {
+  .validator((data: unknown): { script: string; cast: ExtraCharacter[] } => {
     const script = (data as { script?: unknown } | null)?.script;
+    const rawCast = (data as { cast?: unknown } | null)?.cast;
     if (typeof script !== "string" || !script.trim()) throw new Error("سناریو خالی است.");
     if (script.length > MAX_SCRIPT_CHARS) {
       throw new Error(`سناریو بیشتر از ${MAX_SCRIPT_CHARS} حرف است.`);
     }
-    return { script };
+    // شخصیت‌های سفارشی: فقط شناسه و اسم، با قالب و اندازهٔ محدود.
+    const cast: ExtraCharacter[] = [];
+    if (Array.isArray(rawCast)) {
+      for (const c of rawCast.slice(0, 8)) {
+        const o = c && typeof c === "object" ? (c as Record<string, unknown>) : null;
+        if (!o || typeof o.id !== "string" || !/^u-[a-z0-9]{3,24}$/.test(o.id)) continue;
+        if (typeof o.name !== "string" || !o.name.trim() || o.name.length > 30) continue;
+        cast.push({ id: o.id, name: o.name.trim().replace(/[\n\r=,]/g, " ") });
+      }
+    }
+    return { script, cast };
   })
   .handler(async ({ data }): Promise<UnderstandResult> => {
     const c = await config();
@@ -90,7 +102,7 @@ export const understandScript = createServerFn({ method: "POST" })
         body: JSON.stringify({
           ...c.extra,
           model: c.model,
-          messages: buildMessages(data.script),
+          messages: buildMessages(data.script, data.cast),
           temperature: 0,
           max_tokens: maxOutputTokens(data.script),
         }),
@@ -119,6 +131,6 @@ export const understandScript = createServerFn({ method: "POST" })
     }
     lim.record(usage ? usage.input + usage.output : maxOutputTokens(data.script));
     if (typeof content !== "string") return { ok: false, error: "پاسخ مدل متن نداشت." };
-    const parsed = planFromModelReply(content, data.script);
+    const parsed = planFromModelReply(content, data.script, data.cast);
     return parsed.ok ? { ok: true, plan: parsed.plan, model: c.model, usage } : parsed;
   });

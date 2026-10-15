@@ -5,6 +5,7 @@
  * «همیشه مدل»: مستقیم مدل (در خطا، دیکشنری).
  * جواب مدل برای یک متن یکسان در همین صفحه نگه داشته می‌شود تا دوباره هزینه نشود.
  */
+import { IDS } from "./catalog.ts";
 import { layoutPlan, planFromDictionary, type Plan } from "./script-plan.ts";
 import type { Shot } from "./types.ts";
 
@@ -58,7 +59,9 @@ export async function autoLayout(
     return dictionaryResult(dict, ["دیکشنری همه‌چیز را فهمید؛ مدل زبانی صدا زده نشد (۰ توکن)."]);
   }
 
-  const cached = cache.get(script);
+  // شخصیت‌های سفارشی هم جزو کلید است: با ساختن شخصیت تازه، همان متن دوباره فهمیده می‌شود.
+  const key = `${IDS.characters.join(",")}\u0000${script}`;
+  const cached = cache.get(key);
   if (cached) {
     const laid = layoutPlan(cached.plan);
     return {
@@ -77,7 +80,7 @@ export async function autoLayout(
       const laid = layoutPlan(res.plan);
       if (laid.shots.length > 0) {
         if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
-        cache.set(script, { plan: res.plan, model: res.model });
+        cache.set(key, { plan: res.plan, model: res.model });
         return { ...laid, used: "model", model: res.model, usage: res.usage ?? NO_USAGE };
       }
       failure = "مدل نمایی نساخت";

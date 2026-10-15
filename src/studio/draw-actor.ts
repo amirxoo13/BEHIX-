@@ -112,7 +112,19 @@ function drawArms(
   }
 }
 
+const BUILD_WIDTH = { slim: 0.82, normal: 1, heavy: 1.28 } as const;
+
 function torso(ctx: CanvasRenderingContext2D, char: CharacterDef, drop: number) {
+  const k = BUILD_WIDTH[char.build ?? "normal"] ?? 1;
+  if (k !== 1) {
+    ctx.save();
+    ctx.scale(k, 1);
+    torsoShape(ctx, char, drop);
+    ctx.restore();
+  } else torsoShape(ctx, char, drop);
+}
+
+function torsoShape(ctx: CanvasRenderingContext2D, char: CharacterDef, drop: number) {
   const top = RIG.shoulderY + drop + 6;
   const bot = RIG.hipY + drop + 18;
   ctx.beginPath();
@@ -577,6 +589,86 @@ function propAtHand(
   }
 }
 
+/* ---------- سر از روی عکس (شخصیت سفارشی) ---------- */
+
+const heads = new Map<string, HTMLImageElement>();
+
+/** تصویر سر، اگر بارگذاری شده باشد؛ اولین بار بارگذاری را شروع می‌کند. */
+export function headImage(src: string): HTMLImageElement | null {
+  if (typeof Image === "undefined") return null;
+  let img = heads.get(src);
+  if (!img) {
+    img = new Image();
+    img.decoding = "async";
+    img.src = src;
+    heads.set(src, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+/** قبل از رندر فیلم: همهٔ سرهای عکسی کامل بارگذاری شوند تا هیچ فریمی سر نقاشی‌شده نداشته باشد. */
+export async function preloadHeads(chars: CharacterDef[]): Promise<void> {
+  if (typeof Image === "undefined") return;
+  await Promise.all(
+    chars
+      .filter((c) => c.head)
+      .map(async (c) => {
+        headImage(c.head!.src);
+        await heads.get(c.head!.src)?.decode().catch(() => undefined);
+      }),
+  );
+}
+
+/** دهان سر نقاشی‌شده در این ارتفاع است؛ دهان عکس هم همین‌جا قرار می‌گیرد تا گردن درست وصل شود. */
+const MOUTH_DY = 22;
+
+function drawPhotoHead(
+  ctx: CanvasRenderingContext2D,
+  char: CharacterDef,
+  face: FaceDraw,
+  headY: number,
+  img: HTMLImageElement,
+) {
+  const h = char.head!;
+  const w = h.size;
+  const ih = w * h.aspect;
+  const left = -h.mouth.x * w;
+  const top = headY + MOUTH_DY - h.mouth.y * ih;
+  ctx.drawImage(img, left, top, w, ih);
+  const k = w / 92;
+  // پلک: روی چشم‌های عکس، پوست می‌کشیم و یک خط پلک.
+  if (h.eyes && face.blink > 0.5) {
+    for (const e of [h.eyes.l, h.eyes.r]) {
+      const ex = left + e.x * w;
+      const ey = top + e.y * ih;
+      ctx.fillStyle = h.patch;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, 11 * k, 8 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(ex - 9 * k, ey + 1);
+      ctx.quadraticCurveTo(ex, ey + 5 * k, ex + 9 * k, ey + 1);
+      ctx.stroke();
+    }
+  }
+  // دهان: وقتی ساکت است دهان خود عکس دیده می‌شود؛ وقتی حرف می‌زند دهان متحرک جایش می‌آید.
+  const talking = face.viseme !== "rest" || face.open > 0.08;
+  if (talking) {
+    const my = headY + MOUTH_DY;
+    ctx.fillStyle = h.patch;
+    ctx.beginPath();
+    ctx.ellipse(0, my, 19 * k, 12 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(0, my);
+    ctx.scale(k, k);
+    mouthFront(ctx, face, 0);
+    ctx.restore();
+  }
+}
+
 export function drawActor(
   ctx: CanvasRenderingContext2D,
   char: CharacterDef,
@@ -613,7 +705,9 @@ export function drawActor(
     ctx.translate(0, headY);
     ctx.rotate((pose.head * Math.PI) / 180);
     ctx.translate(0, -headY);
-    drawHeadSide(ctx, char, face, headY);
+    const photo = char.head ? headImage(char.head.src) : null;
+    if (photo) drawPhotoHead(ctx, char, face, headY, photo);
+    else drawHeadSide(ctx, char, face, headY);
     ctx.restore();
     drawArms(ctx, pose, char, showRig, "front");
   } else {
@@ -623,7 +717,9 @@ export function drawActor(
     ctx.translate(0, headY);
     ctx.rotate((pose.head * Math.PI) / 180);
     ctx.translate(0, -headY);
-    drawHeadFront(ctx, char, face, headY, slotId, dt);
+    const photo = char.head ? headImage(char.head.src) : null;
+    if (photo) drawPhotoHead(ctx, char, face, headY, photo);
+    else drawHeadFront(ctx, char, face, headY, slotId, dt);
     ctx.restore();
     drawArms(ctx, pose, char, showRig, "back");
     drawArms(ctx, pose, char, showRig, "front");

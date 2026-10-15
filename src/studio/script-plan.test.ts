@@ -215,3 +215,24 @@ describe("props from the scenario", () => {
     assert.ok(r.ok && r.dropped === 0);
   });
 });
+
+describe("automatic director", () => {
+  it("UT-DR-01 a strong new feeling in the listener adds a short reaction close-up", () => {
+    const { shots } = layoutPlan(
+      planFromDictionary("قهوه‌خانه\nپرویز: سلام\nپهلوان: سلام\nپهلوان از تعجب خشکش می‌زند.\nپرویز: من برنده شدم!"),
+    );
+    assert.equal(shots.length, 4);
+    const r = shots[3];
+    assert.equal(r.speaker, "none");
+    assert.equal(r.camera, "closeRight", "Pahlavan stands on the right");
+    assert.equal(r.actorB.emotion, "shock");
+    assert.equal(r.sfx, "shock");
+    assert.equal(r.duration, 1.4);
+    assert.match(r.actionLine, /واکنش پهلوان/);
+  });
+  it("UT-DR-02 no reaction shot on the opening wide shot or for calm listeners", () => {
+    const { shots } = layoutPlan(planFromDictionary(SCRIPT));
+    assert.equal(shots.length, 5);
+    assert.ok(shots.every((s) => !s.actionLine.startsWith("واکنش")));
+  });
+});

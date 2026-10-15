@@ -73,7 +73,8 @@ export function AutoScript() {
     setApplied("");
     setResult(null);
     try {
-      const callModel = ai?.configured ? (text: string) => understandScript({ data: { script: text } }) : null;
+      const cast = useStudio.getState().characters.map((c) => ({ id: c.id, name: c.name }));
+      const callModel = ai?.configured ? (text: string) => understandScript({ data: { script: text, cast } }) : null;
       const r = await autoLayout(script, method, callModel);
       if (r.shots.length === 0) setError("در این متن هیچ دیالوگ یا توضیح صحنه‌ای پیدا نشد.");
       else setResult(r);
