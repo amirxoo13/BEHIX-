@@ -1,16 +1,24 @@
+import { BatchExport } from "@/components/story/batch-export";
+import { dialogueText } from "@/studio/stick/deliverables";
+import { thumbnail } from "@/studio/stick/thumbnail";
+import { ProjectPanel } from "@/components/story/project-panel";
+import { TimelineEditor } from "@/components/story/timeline-editor";
+import { CharacterLibrary } from "@/components/story/character-library";
+import { useStoryWorkspace } from "@/studio/stick/use-workspace";
+import { compileProject, setEdit, type StoryProject } from "@/studio/stick/project";
+import { frameFor, FORMATS, type Format } from "@/studio/stick/layout";
+import { actorAt } from "@/studio/stick/animate";
+import { loadRenderFonts } from "@/studio/stick/fonts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fa } from "@/studio/format";
 import { makePaper } from "@/studio/stick/paper";
 import { PLACES, PLACE_IDS } from "@/studio/stick/places";
-import { cuesToSrt, directStory, type Directed } from "@/studio/stick/story-direct";
+import { cuesToSrt, type Directed } from "@/studio/stick/story-direct";
 import { canExportMp4, exportStoryFilm, type StoryFilm } from "@/studio/stick/story-export";
-import { parseStory } from "@/studio/stick/story-parse";
-import { FRAME, renderStory } from "@/studio/stick/story-render";
+import { FRAME, renderStory, cameraAt, sceneAt } from "@/studio/stick/story-render";
 
 export const Route = createFileRoute("/story")({ component: StoryPage });
-
-const STORE = "behix-story-v1";
 
 const SAMPLE = `صحنه ۱: پذیرایی خانه، شب
 علی (مرد، سمت راست، عینکی) و سارا (زن، سمت چپ، روسری) روی مبل نشسته‌اند. سارا چای در دست دارد.
@@ -28,23 +36,7 @@ const SAMPLE = `صحنه ۱: پذیرایی خانه، شب
 سارا (نگران): علی، آروم‌تر برو!
 علی می‌خندد.`;
 
-const KIND_FA = { man: "مرد", woman: "زن", boy: "پسربچه", girl: "دختربچه", oldMan: "پیرمرد", oldWoman: "پیرزن" } as const;
-
-function loadStory(): string {
-  try {
-    return localStorage.getItem(STORE) ?? SAMPLE;
-  } catch {
-    return SAMPLE;
-  }
-}
-
-function saveStory(text: string) {
-  try {
-    localStorage.setItem(STORE, text);
-  } catch {
-    /* حالت خصوصی مرورگر: فقط ذخیره نمی‌شود */
-  }
-}
+const KIND_FA = { baby: "نوزاد", man: "مرد", woman: "زن", boy: "پسربچه", girl: "دختربچه", oldMan: "پیرمرد", oldWoman: "پیرزن" } as const;
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -64,33 +56,21 @@ const clock = (sec: number) => {
 };
 
 function StoryPage() {
-  const [text, setText] = useState(SAMPLE);
-  const [ready, setReady] = useState(false);
-  const [directed, setDirected] = useState<Directed | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setText(loadStory());
-    setReady(true);
-  }, []);
-
-  // ساخت دوباره با کمی تأخیر بعد از تایپ
-  useEffect(() => {
-    if (!ready) return;
-    saveStory(text);
-    const id = setTimeout(() => {
-      try {
-        setDirected(directStory(parseStory(text)));
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    }, 450);
-    return () => clearTimeout(id);
-  }, [text, ready]);
+  const workspace=useStoryWorkspace(SAMPLE);
+  const { project,commit }=workspace;
+  const [selected,setSelected]=useState("");
+  const text=project?.text??SAMPLE;
+  const setText=workspace.setText;
+  const result=useMemo(()=>{
+    if(!project)return {directed:null,error:null};
+    try{return {directed:compileProject(project),error:null};}
+    catch(error){return {directed:null,error:error instanceof Error?error.message:String(error)};}
+  },[project]);
+  const {directed,error}=result;
+  const selectedId=directed?.beats.some(b=>b.id===selected)?selected:directed?.beats[0]?.id??"";
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="min-h-screen bg-bg text-fg" dir="rtl">
       <header className="topbar">
         <Link to="/" className="flex min-w-0 items-center gap-3">
           <img src="/brand/app-icon.png" alt="" className="brand-mark" />
@@ -109,6 +89,7 @@ function StoryPage() {
             هر صحنه با «صحنه: مکان، شب/روز» شروع می‌شود. شخصیت‌ها را بار اول با پرانتز معرفی کنید، دیالوگ را با «اسم (حالت): جمله» بنویسید. فیلم بی‌صداست؛ زیرنویس زمان‌دار
             دیالوگ‌ها برای صداپیشه آماده می‌شود.
           </p>
+          <ProjectPanel workspace={workspace} />
           <label className="lbl" htmlFor="story">
             سناریو
           </label>
@@ -117,6 +98,8 @@ function StoryPage() {
             className="field story-text"
             dir="rtl"
             value={text}
+            maxLength={20000}
+            disabled={!project}
             spellCheck={false}
             onChange={(e) => setText(e.target.value)}
           />
@@ -134,10 +117,15 @@ function StoryPage() {
             </p>
           )}
           {directed && <Understood directed={directed} />}
+          {project && directed && <>
+            <TimelineEditor project={project} directed={directed} selected={selectedId} onSelect={setSelected} commit={commit} unresolved={directed.unresolved}/>
+            <CharacterLibrary project={project} cast={directed.timeline.cast} commit={commit}/>
+          </>}
+          <BatchExport projects={workspace.projects}/>
           <Guide />
         </section>
         <section className="story-player" aria-label="پیش‌نمایش فیلم">
-          {directed ? <Player directed={directed} /> : <div className="story-canvas-box" />}
+          {directed && project ? <Player directed={directed} project={project} selected={selectedId} commit={commit} /> : <div className="story-canvas-box" />}
         </section>
       </main>
     </div>
@@ -151,8 +139,8 @@ function Understood({ directed }: { directed: Directed }) {
     <div className="mt-4 grid gap-3">
       {warnings.length > 0 && (
         <ul className="story-warn" aria-label="هشدارها">
-          {warnings.map((w) => (
-            <li key={w}>{w}</li>
+          {warnings.map((w, i) => (
+            <li key={`${i}-${w}`}>{w}</li>
           ))}
         </ul>
       )}
@@ -202,7 +190,7 @@ function Guide() {
           می‌کند، با تلفن صحبت می‌کند، شانه بالا می‌اندازد، هورا، می‌پرد، شوت می‌زند، رانندگی، می‌خورد، می‌نویسد
         </li>
         <li>
-          <b className="text-fg">در دست:</b> گوشی، چای/قهوه، کتاب، کیف، توپ، دسته گل، شیرینی
+          <b className="text-fg">در دست:</b> گوشی، چای/قهوه، کتاب، کیف، توپ، دسته گل، شیرینی، کنترل، بشقاب، کیسهٔ خرید، چتر، لپ‌تاپ
         </li>
         <li>
           <b className="text-fg">حالت چهره:</b> لبخند، می‌خندد، ذوق، پوزخند، عصبانی، فریاد، قهر، ناراحت، گریه، تعجب، شوکه، نگران، می‌ترسد، آرام، چپ‌چپ، کلافه، خجالت،
@@ -216,20 +204,27 @@ function Guide() {
   );
 }
 
-function Player({ directed }: { directed: Directed }) {
+function Player({ directed,project,selected,commit }: { directed: Directed;project:StoryProject;selected:string;commit:(f:(p:StoryProject)=>StoryProject)=>void }) {
   const { timeline } = directed;
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const paper = useMemo(() => (typeof document === "undefined" ? null : makePaper(FRAME.w, FRAME.h, 7)), []);
+  const format=project.settings.format;
+  const frame=useMemo(()=>frameFor(format),[format]);
+  const paper=useMemo(()=>typeof document==="undefined"?null:makePaper(frame.w,frame.h,7),[frame]);
+  const scaleRef=useRef(0.65);
+  const costs=useRef<number[]>([]);
+  const drag=useRef<{actor:string;start:number;moved:boolean;x:number}|null>(null);
+  const dragged=useRef(false);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [captions, setCaptions] = useState(true);
+  const captions=project.settings.captions;
+  const setCaptions=(value:boolean)=>commit(p=>({...p,settings:{...p.settings,captions:value}}));
   const [fontReady, setFontReady] = useState(false);
   const tRef = useRef(0);
   const duration = timeline.duration;
 
   useEffect(() => {
     let alive = true;
-    (document.fonts?.load("800 60px Vazirmatn") ?? Promise.resolve())
+    loadRenderFonts()
       .catch(() => undefined)
       .then(() => alive && setFontReady(true));
     return () => {
@@ -241,9 +236,20 @@ function Player({ directed }: { directed: Directed }) {
     (time: number) => {
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx || !paper) return;
-      renderStory(ctx, timeline, Math.min(time, Math.max(0, duration - 0.001)), paper, { captions });
+      const canvas=canvasRef.current!;
+      const scale=scaleRef.current;
+      if(canvas.width!==Math.round(frame.w*scale)||canvas.height!==Math.round(frame.h*scale)){canvas.width=Math.round(frame.w*scale);canvas.height=Math.round(frame.h*scale);}
+      ctx.setTransform(scale,0,0,scale,0,0);
+      const start=performance.now();
+      renderStory(ctx, timeline, Math.min(time, Math.max(0, duration - 0.001)), paper, { captions,format,positions:drag.current?{[drag.current.actor]:drag.current.x}:undefined });
+      costs.current.push(performance.now()-start);
+      if(costs.current.length===120){
+        const p95=[...costs.current].sort((a,b)=>a-b)[113];
+        if(p95>16.7)scaleRef.current=Math.max(0.3,scaleRef.current-0.1);
+        canvas.dataset.renderP95=p95.toFixed(2);costs.current=[];
+      }
     },
-    [timeline, paper, captions, duration],
+    [timeline, paper, captions, duration,format,frame],
   );
 
   // داستان عوض شد: اگر زمان فعلی از فیلم بیرون است برگرد اول
@@ -259,6 +265,7 @@ function Player({ directed }: { directed: Directed }) {
     if (!playing) return;
     let raf = 0;
     const start = performance.now() - tRef.current * 1000;
+    let lastUi=0;
     const tick = (now: number) => {
       const time = (now - start) / 1000;
       if (time >= duration) {
@@ -270,14 +277,26 @@ function Player({ directed }: { directed: Directed }) {
       }
       tRef.current = time;
       draw(time);
-      setT(time);
+      if(now-lastUi>=100){setT(time);lastUi=now;}
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, draw, duration]);
 
+  useEffect(()=>{
+    const beat=directed.beats.find(b=>b.id===selected);
+    if(beat){setPlaying(false);tRef.current=(beat.from+beat.to)/2;setT(tRef.current);draw(tRef.current);}
+  },[selected,directed.beats,draw]);
+  const pointerX=(event:React.PointerEvent<HTMLCanvasElement>)=>{
+    const rect=event.currentTarget.getBoundingClientRect();
+    const screen=(event.clientX-rect.left)/rect.width*frame.w;
+    const scene=sceneAt(timeline,tRef.current),cam=cameraAt(scene.cameras,tRef.current-scene.start);
+    const cx=cam.cx*frame.w/FRAME.w;
+    return Math.max(0.08,Math.min(0.92,((screen-cx)/cam.zoom+cx)/frame.w));
+  };
   const toggle = () => {
+    if(dragged.current){dragged.current=false;return;}
     if (!playing && tRef.current >= duration - 0.05) {
       tRef.current = 0;
       setT(0);
@@ -288,7 +307,18 @@ function Player({ directed }: { directed: Directed }) {
   return (
     <div className="grid gap-3">
       <div className="story-canvas-box">
-        <canvas ref={canvasRef} width={FRAME.w} height={FRAME.h} className="story-canvas" aria-label="فیلم" onClick={toggle} />
+        <canvas ref={canvasRef} width={Math.round(frame.w*0.65)} height={Math.round(frame.h*0.65)} data-render-ready={fontReady} className="story-canvas" style={{aspectRatio:`${frame.w} / ${frame.h}`,objectFit:"contain"}} aria-label="فیلم" onClick={toggle}
+          onPointerDown={e=>{
+            if(!selected)return;
+            const scene=sceneAt(timeline,tRef.current),x=pointerX(e);
+            const nearest=scene.actors.map(a=>({a,x:actorAt(a.track,tRef.current-scene.start,null).x})).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x))[0];
+            if(!nearest||Math.abs(nearest.x-x)>0.15)return;
+            setPlaying(false);drag.current={actor:nearest.a.cast,start:e.clientX,moved:false,x:nearest.x};e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={e=>{if(drag.current){drag.current.x=pointerX(e);drag.current.moved ||= Math.abs(e.clientX-drag.current.start)>4;draw(tRef.current);}}}
+          onPointerUp={e=>{const d=drag.current;drag.current=null;if(d?.moved){dragged.current=true;commit(p=>setEdit(p,selected,{actor:d.actor,x:d.x}));}if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
+          onPointerCancel={()=>{drag.current=null;draw(tRef.current);}}
+        />
       </div>
       <div className="flex items-center gap-3">
         <button type="button" className="btn btn-primary min-w-24" onClick={toggle}>
@@ -318,13 +348,15 @@ function Player({ directed }: { directed: Directed }) {
         <input type="checkbox" checked={captions} onChange={(e) => setCaptions(e.target.checked)} />
         نمایش زیرنویس روی تصویر
       </label>
-      <Exporter directed={directed} captions={captions} />
+      <label>قاب خروجی<select className="field" value={format} onChange={e=>commit(p=>({...p,settings:{...p.settings,format:e.target.value as Format}}))}>{Object.entries(FORMATS).map(([id,f])=><option key={id} value={id}>{f.label}</option>)}</select></label>
+      <Exporter directed={directed} captions={captions} project={project} commit={commit} />
     </div>
   );
 }
 
-function Exporter({ directed, captions }: { directed: Directed; captions: boolean }) {
-  const [fps, setFps] = useState<30 | 60>(30);
+function Exporter({ directed, captions,project,commit }: { directed: Directed; captions: boolean;project:StoryProject;commit:(f:(p:StoryProject)=>StoryProject)=>void }) {
+  const {fps,format}=project.settings;
+  const setFps=(fps:30|60)=>commit(p=>({...p,settings:{...p.settings,fps}}));
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [film, setFilm] = useState<StoryFilm | null>(null);
@@ -334,16 +366,18 @@ function Exporter({ directed, captions }: { directed: Directed; captions: boolea
 
   useEffect(() => {
     let alive = true;
-    void canExportMp4(fps).then((ok) => alive && setFast(ok));
+    void canExportMp4(fps,format).then((ok) => alive && setFast(ok));
     return () => {
       alive = false;
     };
-  }, [fps]);
+  }, [fps,format]);
 
   // داستان یا تنظیم عوض شد ← فیلم قبلی دیگر مال این داستان نیست
   useEffect(() => {
     setFilm(null);
-  }, [directed, captions, fps]);
+    abort.current?.abort();
+  }, [directed, captions, fps,format]);
+  useEffect(()=>()=>abort.current?.abort(),[]);
 
   const run = async () => {
     setBusy(true);
@@ -353,7 +387,7 @@ function Exporter({ directed, captions }: { directed: Directed; captions: boolea
     const ctrl = new AbortController();
     abort.current = ctrl;
     try {
-      const result = await exportStoryFilm(directed.timeline, { fps, captions, onProgress: setProgress, signal: ctrl.signal });
+      const result = await exportStoryFilm(directed.timeline, { fps, captions, format, onProgress: setProgress, signal: ctrl.signal });
       setFilm(result);
       setMessage(result.notice);
     } catch (err) {
@@ -384,12 +418,16 @@ function Exporter({ directed, captions }: { directed: Directed; captions: boolea
           </button>
         ) : (
           <button type="button" className="btn btn-primary" onClick={run} disabled={directed.timeline.duration <= 0}>
-            ساخت فیلم بی‌صدا (۱۰۸۰×۱۹۲۰)
+            ساخت فیلم بی‌صدا ({FORMATS[format].label})
           </button>
         )}
         <button type="button" className="btn btn-ghost" onClick={srt} disabled={directed.cues.length === 0}>
           زیرنویس برای صداپیشه (SRT)
         </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-ghost" disabled={!directed.cues.length} onClick={()=>download(new Blob(["\uFEFF",dialogueText(directed.cues,project.title)],{type:"text/plain;charset=utf-8"}),`${project.title}.txt`)}>متن کامل صداپیشه</button>
+        <button className="btn btn-ghost" onClick={()=>{void thumbnail(directed,format).then(blob=>download(blob,`${project.title}.png`)).catch(err=>setMessage(String(err)));}}>تصویر کوچک</button>
       </div>
       {busy && (
         <div className="story-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>

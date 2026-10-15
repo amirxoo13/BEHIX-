@@ -3,7 +3,12 @@
  * تیره‌تر از کاغذ‌اند (مثل سطح‌های چین‌خورده)، چند خط چین روشن/تیره و کمی دانه.
  * با بذر ثابت ساخته می‌شود تا هر فریم و هر بار خروجی یکسان باشد.
  */
-import type { Ctx } from "./figure.ts";
+import type { Ctx, RenderCanvas } from "./figure-base.ts";
+
+export function makeCanvas(w: number, h: number): RenderCanvas {
+  const c = typeof document === "undefined" ? new OffscreenCanvas(w, h) : document.createElement("canvas");
+  c.width = w; c.height = h; return c;
+}
 
 /** عدد شبه‌تصادفی قطعی (mulberry32). */
 export function rng(seed: number) {
@@ -18,13 +23,13 @@ export function rng(seed: number) {
 }
 
 /** کاغذ را روی یک بوم جدا می‌کشد (یک بار)؛ بعد هر فریم فقط کپی می‌شود. */
-export function makePaper(w: number, h: number, seed = 7): HTMLCanvasElement {
-  const c = document.createElement("canvas");
+export function makePaper(w: number, h: number, seed = 7): RenderCanvas {
+  const c = makeCanvas(w, h);
   // نقاشی با وضوح کم و بزرگ‌نمایی نرم، لبه‌های چین‌ها را نرم می‌کند.
   const k = 0.5;
   c.width = Math.round(w * k);
   c.height = Math.round(h * k);
-  const ctx = c.getContext("2d")!;
+  const ctx = c.getContext("2d")! as Ctx;
   const r = rng(seed);
   ctx.fillStyle = "#e8e8e6";
   ctx.fillRect(0, 0, c.width, c.height);
@@ -100,16 +105,16 @@ export function makePaper(w: number, h: number, seed = 7): HTMLCanvasElement {
     img.data[i + 2] += n;
   }
   ctx.putImageData(img, 0, 0);
-  const out = document.createElement("canvas");
+  const out = makeCanvas(w, h);
   out.width = w;
   out.height = h;
-  const o = out.getContext("2d")!;
+  const o = out.getContext("2d")! as Ctx;
   o.imageSmoothingQuality = "high";
   o.filter = "blur(1.2px)";
   o.drawImage(c, 0, 0, w, h);
   return out;
 }
 
-export function drawPaper(ctx: Ctx, paper: HTMLCanvasElement) {
+export function drawPaper(ctx: Ctx, paper: RenderCanvas) {
   ctx.drawImage(paper, 0, 0);
 }

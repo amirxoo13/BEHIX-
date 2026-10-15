@@ -1,3 +1,5 @@
+import { frameFor, type Format } from "./layout.ts";
+import type { Ctx, RenderCanvas } from "./figure-base.ts";
 /**
  * کشیدن یک لحظه از فیلم داستانی: مکان، شخصیت‌ها، حباب فکر، دوربین و زیرنویس.
  * ورودی «خط زمان» است که کارگردان خودکار (story-direct.ts) از روی داستان می‌سازد.
@@ -40,7 +42,14 @@ export type Timeline = { scenes: SceneTimeline[]; cast: CastMember[]; duration: 
 /** پایین‌ترین نقطهٔ پا نسبت به لگن. */
 export function footDrop(p: Pose) {
   const j = joints(p);
-  return Math.max(j.legL.end.y, j.legR.end.y);
+  return Math.max(j.legL.end.y, j.legR.end.y) - p.py;
+}
+
+/** Blend the support height continuously during sit/stand transitions. */
+export function hipHeight(p:Pose,scale:number,floor:number,seatTop:number,hasSeat=true){
+  const standing=floor-footDrop(p)*scale;
+  const amount=hasSeat?Math.max(0,Math.min(1,(1-p.thigh)/(1-POSES.sit.thigh))):0;
+  return standing+(seatTop-10*scale-standing)*amount;
 }
 
 /** ارتفاع روی نشیمن صندلی/مبل (هم‌ارتفاع لگن بزرگسالِ نشسته). */
@@ -50,7 +59,7 @@ export function sceneAt(tl: Timeline, t: number): SceneTimeline {
   return tl.scenes.find((s) => t >= s.start && t < s.end) ?? tl.scenes[tl.scenes.length - 1];
 }
 
-function cameraAt(keys: CameraKey[], t: number): CameraKey {
+export function cameraAt(keys: CameraKey[], t: number): CameraKey {
   if (keys.length === 0) return { t: 0, zoom: 1, cx: FRAME.w / 2, cy: 1000 };
   let i = 0;
   while (i + 1 < keys.length && keys[i + 1].t <= t) i++;
@@ -67,26 +76,32 @@ function cameraAt(keys: CameraKey[], t: number): CameraKey {
   };
 }
 
-export function renderStory(ctx: CanvasRenderingContext2D, tl: Timeline, t: number, paper: HTMLCanvasElement, opts: { captions: boolean } = { captions: true }) {
-  const { w, h, floor, scale } = FRAME;
+export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanvas, opts: { captions: boolean; format?: Format; positions?: Record<string,number> } = { captions: true }) {
+  const frame = frameFor(opts.format);
+  const { w, h, floor, scale } = frame;
+  if (!tl.scenes.length) { ctx.clearRect(0, 0, w, h); return; }
+  const seatTop = SEAT_TOP * h / FRAME.h;
   const scene = sceneAt(tl, t);
   const lt = t - scene.start;
   const place = PLACES[scene.place];
-  const env: Env = { w, h, floor, seatTop: SEAT_TOP, night: scene.night, t: lt, fill: scene.night ? NIGHT_FILL : PAPER };
+  const env: Env = { w: FRAME.w, h: FRAME.h, floor: FRAME.floor, seatTop: SEAT_TOP, night: scene.night, t: lt, fill: scene.night ? NIGHT_FILL : PAPER };
 
   ctx.save();
   ctx.clearRect(0, 0, w, h);
   drawPaper(ctx, paper);
   if (scene.night) nightPaper(ctx, w, h);
 
-  const cam = cameraAt(scene.cameras, lt);
+  const rawCam = cameraAt(scene.cameras, lt);
+  const cam = { ...rawCam, cx: rawCam.cx * w / FRAME.w, cy: rawCam.cy * h / FRAME.h };
   // لرزش خیلی ریز دوربین دستی برای زنده بودن
   const sway = Math.sin(lt * 0.9) * 2;
   ctx.translate(cam.cx + sway, cam.cy);
   ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-cam.cx, -cam.cy);
 
+  ctx.save(); ctx.scale(w / FRAME.w, h / FRAME.h);
   place.back(ctx, env);
+  ctx.restore();
 
   const speaker = scene.speakers.find((s) => lt >= s.from && lt <= s.to);
   const frames = scene.actors.map((a) => {
@@ -103,16 +118,18 @@ export function renderStory(ctx: CanvasRenderingContext2D, tl: Timeline, t: numb
       const sitting = f.state.pose.thigh < 0.7;
       if (sitting !== sittingPass) continue;
       const sc = scale * kindScale(member.look.kind);
-      const px = w * f.x;
+      const px = w * (opts.positions?.[a.cast] ?? f.x);
       // نشسته: لگن روی نشیمن (پای بچه آویزان می‌ماند)؛ ایستاده: کف پا روی زمین
-      const py = sitting ? SEAT_TOP - 10 * scale : floor - footDrop(f.state.pose) * sc;
+      const py = hipHeight(f.state.pose,sc,floor,seatTop,place.seats.length>0);
       drawFigure(ctx, member.look, f.state, px, py, sc);
       const j = joints(f.state.pose);
       heads.set(a.cast, { x: px + j.headC.x * sc, y: py + (j.headC.y - BODY.headR) * sc });
     }
   };
   draw(true);
+  ctx.save(); ctx.scale(w / FRAME.w, h / FRAME.h);
   place.front?.(ctx, env);
+  ctx.restore();
   draw(false);
 
   for (const th of scene.thoughts) {
@@ -133,7 +150,7 @@ export function renderStory(ctx: CanvasRenderingContext2D, tl: Timeline, t: numb
 
   if (opts.captions) {
     const cap = scene.captions.find((c) => lt >= c.from && lt < c.to);
-    if (cap) drawCaption(ctx, cap.text, w, FRAME.captionY, lt - cap.from);
+    if (cap) drawCaption(ctx, cap.text, w, frame.captionY, lt - cap.from);
   }
 
   // محو کوتاه در شروع و پایان هر صحنه (برش نرم)
