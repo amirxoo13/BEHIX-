@@ -28,6 +28,14 @@ function DeskPage() {
         تولید را به ترتیب خط تولید جلو ببرید. سناریو، بعد شخصیت، بعد فضا، دکوپاژ، انیمیت، صدا و خروجی.
       </p>
 
+      <Link to="/story" className="panel mx-auto mt-6 flex max-w-xl items-center justify-between gap-3 no-underline">
+        <span>
+          <span className="block text-lg font-bold">داستان به فیلم ✦ آدمکی</span>
+          <span className="mt-1 block text-sm leading-6 text-muted">داستان را با همهٔ جزئیات بنویسید؛ فیلم بی‌صدای ۱۰۸۰×۱۹۲۰ و زیرنویس زمان‌دار برای صداپیشه ساخته می‌شود.</span>
+        </span>
+        <span className="btn btn-primary shrink-0">شروع</span>
+      </Link>
+
       <div className="mx-auto mt-6 grid max-w-xl gap-3">
         <label className="lbl" htmlFor="title">
           نام پروژه
