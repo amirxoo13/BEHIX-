@@ -46,3 +46,41 @@ describe("head image processing", () => {
     assert.deepEqual(fitSize(100, 50, 320), { w: 100, h: 50 });
   });
 });
+
+describe("automatic face points", () => {
+  it("UT-HD-05 mouth = middle of the lips, eyes = iris centres sorted left to right, mapped into the head box", async () => {
+    const { faceFromLandmarks } = await import("./head-image.ts");
+    const pts = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5 }));
+    pts[13] = { x: 0.5, y: 0.7 };
+    pts[14] = { x: 0.5, y: 0.8 };
+    pts[468] = { x: 0.65, y: 0.4 }; // چشم راستِ آدم = سمت راستِ تصویر نیست؛ ترتیب باید از روی x باشد
+    pts[473] = { x: 0.35, y: 0.42 };
+    const f = faceFromLandmarks(pts, { x: 0.1, y: 0.1, w: 0.8, h: 0.8 })!;
+    assert.deepEqual(f.mouth, { x: 0.5, y: (0.75 - 0.1) / 0.8 });
+    assert.ok(f.eyes.l.x < f.eyes.r.x);
+    assert.equal(Math.round(f.eyes.l.x * 1000), Math.round(((0.35 - 0.1) / 0.8) * 1000));
+  });
+  it("UT-HD-06 without iris points the eye corners are used; too few points = no face", async () => {
+    const { faceFromLandmarks } = await import("./head-image.ts");
+    const pts = Array.from({ length: 468 }, () => ({ x: 0.5, y: 0.5 }));
+    pts[33] = { x: 0.2, y: 0.4 };
+    pts[133] = { x: 0.4, y: 0.4 };
+    pts[362] = { x: 0.6, y: 0.4 };
+    pts[263] = { x: 0.8, y: 0.4 };
+    const f = faceFromLandmarks(pts)!;
+    assert.equal(Math.round(f.eyes.l.x * 100), 30);
+    assert.equal(Math.round(f.eyes.r.x * 100), 70);
+    assert.equal(faceFromLandmarks(pts.slice(0, 100)), null);
+  });
+});
+
+describe("background check", () => {
+  it("UT-HD-07 only a near single-colour border counts as removable background", async () => {
+    const { isFlatBorder } = await import("./head-image.ts");
+    assert.equal(isFlatBorder(face()), true);
+    const busy = face();
+    for (let x = 0; x < 10; x++) busy.data.set([20, 120, 30, 255], x * 4); // لبهٔ بالا سبز
+    for (let y = 0; y < 10; y++) busy.data.set([200, 30, 30, 255], (y * 10) * 4); // لبهٔ چپ قرمز
+    assert.equal(isFlatBorder(busy), false);
+  });
+});

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { MAX_CUSTOM } from "@/studio/characters";
 import { drawActor, preloadHeads } from "@/studio/draw-actor";
 import { fa } from "@/studio/format";
-import { contentBox, fitSize, hasTransparency, removeFlatBackground, sampleSkin, type Pixels, type Pt } from "@/studio/head-image";
+import { contentBox, fitSize, hasTransparency, isFlatBorder, removeFlatBackground, sampleSkin, type Pixels, type Pt } from "@/studio/head-image";
 import { poseFront } from "@/studio/rig";
 import { useStudio } from "@/studio/store";
 import type { Build, CharacterDef, Viseme } from "@/studio/types";
@@ -35,7 +35,9 @@ function newCustomId() {
 }
 
 /** فایل → تصویر کوچک‌شده با پس‌زمینهٔ شفاف و بریده‌شده دور سر. */
-async function prepareHead(file: File, removeBg: boolean): Promise<{ src: string; aspect: number; pixels: Pixels; hadAlpha: boolean }> {
+type Head = { src: string; aspect: number; pixels: Pixels; hadAlpha: boolean; flat: boolean };
+
+async function prepareHead(file: File, removeBg: boolean): Promise<Head> {
   const bitmap = await createImageBitmap(file);
   const size = fitSize(bitmap.width, bitmap.height, HEAD_MAX * 2);
   const c = document.createElement("canvas");
@@ -47,7 +49,9 @@ async function prepareHead(file: File, removeBg: boolean): Promise<{ src: string
   bitmap.close();
   let px: Pixels = ctx.getImageData(0, 0, size.w, size.h);
   const hadAlpha = hasTransparency(px);
-  if (!hadAlpha && removeBg) px = removeFlatBackground(px);
+  // فقط پس‌زمینهٔ تقریباً یک‌رنگ حذف می‌شود؛ پس‌زمینهٔ شلوغ (عکس واقعی) دست نمی‌خورد.
+  const flat = isFlatBorder(px);
+  if (!hadAlpha && removeBg && flat) px = removeFlatBackground(px);
   const box = contentBox(px) ?? { x: 0, y: 0, w: size.w, h: size.h };
   const out = fitSize(box.w, box.h, HEAD_MAX);
   const crop = document.createElement("canvas");
@@ -60,7 +64,7 @@ async function prepareHead(file: File, removeBg: boolean): Promise<{ src: string
   const fctx = fin.getContext("2d", { willReadFrequently: true })!;
   fctx.drawImage(crop, 0, 0, out.w, out.h);
   const pixels = fctx.getImageData(0, 0, out.w, out.h);
-  return { src: fin.toDataURL("image/png"), aspect: out.h / out.w, pixels, hadAlpha };
+  return { src: fin.toDataURL("image/png"), aspect: out.h / out.w, pixels, hadAlpha, flat };
 }
 
 /** ساخت شخصیت از عکس سر (مثلاً کارتونی‌شده در Canva). */
@@ -69,7 +73,7 @@ export function CharacterMaker() {
   const busy = useStudio((s) => s.playing || s.exporting || s.booting);
   const [file, setFile] = useState<File | null>(null);
   const [removeBg, setRemoveBg] = useState(true);
-  const [head, setHead] = useState<{ src: string; aspect: number; pixels: Pixels; hadAlpha: boolean } | null>(null);
+  const [head, setHead] = useState<Head | null>(null);
   const [step, setStep] = useState<Step>("mouth");
   const [mouth, setMouth] = useState<Pt | null>(null);
   const [eyeL, setEyeL] = useState<Pt | null>(null);
@@ -83,6 +87,7 @@ export function CharacterMaker() {
   const [shoe, setShoe] = useState("#3b2418");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [auto, setAuto] = useState("");
   const pickRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
 
@@ -91,13 +96,31 @@ export function CharacterMaker() {
     let alive = true;
     setError("");
     prepareHead(file, removeBg)
-      .then((h) => {
+      .then(async (h) => {
         if (!alive) return;
         setHead(h);
         setStep("mouth");
         setMouth(null);
         setEyeL(null);
         setEyeR(null);
+        // تشخیص خودکار؛ اگر صورتی پیدا نشد کاربر با کلیک مشخص می‌کند.
+        setAuto("در حال پیدا کردن خودکار دهان و چشم‌ها…");
+        try {
+          const { detectFace } = await import("@/studio/face-detect");
+          const f = await detectFace(h.src);
+          if (!alive) return;
+          if (f) {
+            setMouth(f.mouth);
+            setEyeL(f.eyes.l);
+            setEyeR(f.eyes.r);
+            setStep("done");
+            setAuto("دهان و چشم‌ها خودکار پیدا شد (دایره‌های رنگی). اگر درست نیست، «از اول» را بزنید و دستی کلیک کنید.");
+          } else {
+            setAuto("صورت خودکار پیدا نشد (در چهره‌های خیلی کارتونی پیش می‌آید)؛ لطفاً با کلیک مشخص کنید.");
+          }
+        } catch {
+          if (alive) setAuto("تشخیص خودکار در این مرورگر کار نکرد؛ لطفاً با کلیک مشخص کنید.");
+        }
       })
       .catch((err: unknown) => alive && setError(err instanceof Error ? err.message : "این فایل خوانده نشد."));
     return () => {
@@ -224,7 +247,11 @@ export function CharacterMaker() {
       setEyeL(p);
       setStep("r");
     } else if (step === "r") {
-      setEyeR(p);
+      // چشم «l» همیشه چشم سمت چپ تصویر است، به هر ترتیبی که کلیک شده باشد.
+      if (eyeL && p.x < eyeL.x) {
+        setEyeR(eyeL);
+        setEyeL(p);
+      } else setEyeR(p);
       setStep("done");
     }
   };
@@ -314,6 +341,11 @@ export function CharacterMaker() {
       {head && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
+            {auto && (
+              <p className="mb-1 text-sm text-cyan" aria-live="polite">
+                {auto}
+              </p>
+            )}
             <p className="text-sm font-bold" aria-live="polite">
               {STEP_TEXT[step]}
             </p>
@@ -333,6 +365,7 @@ export function CharacterMaker() {
                   setMouth(null);
                   setEyeL(null);
                   setEyeR(null);
+                  setAuto("");
                   setStep("mouth");
                 }}
               >
@@ -344,11 +377,17 @@ export function CharacterMaker() {
                 </button>
               )}
             </div>
-            {!head.hadAlpha && (
+            {!head.hadAlpha && head.flat && (
               <label className="mt-2 flex min-h-11 items-center gap-2 text-sm">
                 <input type="checkbox" checked={removeBg} onChange={(e) => setRemoveBg(e.target.checked)} />
                 حذف خودکار پس‌زمینهٔ یک‌رنگ
               </label>
+            )}
+            {!head.hadAlpha && !head.flat && (
+              <p className="mt-2 text-sm text-muted">
+                پس‌زمینهٔ این عکس یک‌رنگ نیست و خودکار حذف نمی‌شود. برای نتیجهٔ تمیز، اول در Canva با «حذف پس‌زمینه»
+                (Background Remover) آن را PNG شفاف کنید و دوباره آپلود کنید.
+              </p>
             )}
           </div>
 

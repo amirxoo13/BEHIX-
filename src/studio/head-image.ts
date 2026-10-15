@@ -131,3 +131,73 @@ export function fitSize(w: number, h: number, max: number): { w: number; h: numb
   const k = Math.min(1, max / Math.max(w, h));
   return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
 }
+
+/** نقطه‌های صورت از خروجی MediaPipe Face Landmarker (۴۷۸ نقطه، نسبی ۰ تا ۱). */
+export type Landmark = { x: number; y: number };
+
+// شمارهٔ نقطه‌ها طبق نقشهٔ Face Mesh: ۱۳ و ۱۴ وسط لب بالا و پایین؛ ۴۶۸ و ۴۷۳ مرکز دو عنبیه؛
+// اگر نقطه‌های عنبیه نبود، وسط گوشه‌های هر چشم (۳۳/۱۳۳ و ۳۶۲/۲۶۳).
+const LIP_TOP = 13;
+const LIP_BOTTOM = 14;
+const IRIS = [468, 473];
+const EYE_CORNERS: [number, number][] = [
+  [33, 133],
+  [362, 263],
+];
+
+/**
+ * جای دهان و دو چشم از نقطه‌های صورت. `box` کادری است که تصویر سر در تصویرِ داده‌شده به مدل
+ * گرفته (برای وقتی که دورِ سر حاشیه اضافه شده). خروجی نسبی به خودِ تصویر سر است.
+ * چشم «l» همیشه چشمِ سمت چپ تصویر است.
+ */
+export function faceFromLandmarks(
+  pts: Landmark[],
+  box: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: 1, h: 1 },
+): { mouth: Pt; eyes: { l: Pt; r: Pt } } | null {
+  if (pts.length < 468) return null;
+  const map = (p: Landmark): Pt => ({
+    x: Math.min(1, Math.max(0, (p.x - box.x) / box.w)),
+    y: Math.min(1, Math.max(0, (p.y - box.y) / box.h)),
+  });
+  const mid = (a: Landmark, b: Landmark): Landmark => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const mouth = map(mid(pts[LIP_TOP], pts[LIP_BOTTOM]));
+  const eyes = (pts.length >= 478 ? IRIS.map((i) => pts[i]) : EYE_CORNERS.map(([a, b]) => mid(pts[a], pts[b]))).map(map);
+  eyes.sort((a, b) => a.x - b.x);
+  return { mouth, eyes: { l: eyes[0], r: eyes[1] } };
+}
+
+/**
+ * آیا لبه‌های تصویر تقریباً یک‌رنگ است؟ (یعنی حذف خودکار پس‌زمینه امن است)
+ * دست‌کم `share` از پیکسل‌های لبه باید به میانگین چهار گوشه نزدیک باشند.
+ */
+export function isFlatBorder(img: Pixels, tolerance = 42, share = 0.8): boolean {
+  const { width: w, height: h, data: d } = img;
+  const corners = [0, w - 1, (h - 1) * w, h * w - 1];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const c of corners) {
+    r += d[c * 4];
+    g += d[c * 4 + 1];
+    b += d[c * 4 + 2];
+  }
+  r /= 4;
+  g /= 4;
+  b /= 4;
+  const tol2 = tolerance * tolerance;
+  let near = 0;
+  let total = 0;
+  const check = (p: number) => {
+    total++;
+    if (dist2(d, p * 4, r, g, b) <= tol2) near++;
+  };
+  for (let x = 0; x < w; x++) {
+    check(x);
+    check((h - 1) * w + x);
+  }
+  for (let y = 1; y < h - 1; y++) {
+    check(y * w);
+    check(y * w + w - 1);
+  }
+  return total > 0 && near / total >= share;
+}
