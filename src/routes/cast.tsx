@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bust } from "@/components/bust";
+import { CharacterMaker } from "@/components/character-maker";
 import { SceneBar } from "@/components/scene-bar";
 import { PhaseHead, Shell } from "@/components/shell";
 import { CAST, findChar } from "@/studio/characters";
+
+const roleOf = (id: string) => ROLES[id] ?? "شخصیت سفارشی، ساخته‌شده از عکس سر.";
 import { PHASES } from "@/studio/flow";
 import { fa } from "@/studio/format";
 import { ROLES } from "@/studio/labels";
@@ -19,6 +22,7 @@ function CastPage() {
   const shot = shots[selected] ?? shots[0];
   const busy = useStudio((s) => s.playing || s.exporting);
   const [slot, setSlot] = useState<"a" | "b">("a");
+  const custom = useStudio((s) => s.characters);
   const actor = slot === "a" ? shot.actorA : shot.actorB;
 
   return (
@@ -42,9 +46,9 @@ function CastPage() {
         انتخاب، روی {slot === "a" ? "قاب چپ" : "قاب راست"} نمای {fa(selected + 1)} می‌نشیند. بازی چهره در انیمیت است.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {CAST.map((c) => {
+        {[...CAST, ...custom].map((c) => {
           const on = actor.charId === c.id;
-          const uses = shots.filter((s) => s.actorA.charId === c.id || s.actorB.charId === c.id).length;
+          const uses = shots.filter((s) => [s.actorA, s.actorB, ...s.extras].some((x) => x.charId === c.id)).length;
           return (
             <button
               key={c.id}
@@ -55,12 +59,13 @@ function CastPage() {
             >
               <Bust charId={c.id} />
               <span className="mt-2 block font-bold">{c.name}</span>
-              <span className="mt-1 block text-sm leading-6 text-muted">{ROLES[c.id]}</span>
+              <span className="mt-1 block text-sm leading-6 text-muted">{roleOf(c.id)}</span>
               <span className="mt-2 block text-sm text-cyan">{uses ? `در ${fa(uses)} نما` : "خارج از این پروژه"}</span>
             </button>
           );
         })}
       </div>
+      <CharacterMaker />
     </Shell>
   );
 }
@@ -82,7 +87,7 @@ function SlotCard({
       <Bust charId={charId} />
       <span className="mt-2 block text-sm text-muted">{title}</span>
       <span className="mt-1 block text-lg font-bold">{c.name}</span>
-      <span className="mt-1 block text-sm leading-6 text-muted">{ROLES[c.id]}</span>
+      <span className="mt-1 block text-sm leading-6 text-muted">{roleOf(c.id)}</span>
     </button>
   );
 }

@@ -112,7 +112,19 @@ function drawArms(
   }
 }
 
+const BUILD_WIDTH = { slim: 0.82, normal: 1, heavy: 1.28 } as const;
+
 function torso(ctx: CanvasRenderingContext2D, char: CharacterDef, drop: number) {
+  const k = BUILD_WIDTH[char.build ?? "normal"] ?? 1;
+  if (k !== 1) {
+    ctx.save();
+    ctx.scale(k, 1);
+    torsoShape(ctx, char, drop);
+    ctx.restore();
+  } else torsoShape(ctx, char, drop);
+}
+
+function torsoShape(ctx: CanvasRenderingContext2D, char: CharacterDef, drop: number) {
   const top = RIG.shoulderY + drop + 6;
   const bot = RIG.hipY + drop + 18;
   ctx.beginPath();
@@ -187,7 +199,7 @@ function hairFront(ctx: CanvasRenderingContext2D, char: CharacterDef, y: number)
     ctx.strokeRect(28, y - 8, 10, 22);
   } else if (char.hairStyle === "bob" || char.hairStyle === "bowl") {
     ctx.beginPath();
-    ctx.arc(0, y - 8, 40, Math.PI * 1.05, Math.PI * 1.95, true);
+    ctx.arc(0, y - 8, 40, Math.PI * 1.05, Math.PI * 1.95, false);
     ctx.quadraticCurveTo(36, y + 18, 24, y + (char.hairStyle === "bob" ? 10 : 2));
     ctx.quadraticCurveTo(0, y - 20, -24, y + (char.hairStyle === "bob" ? 10 : 2));
     ctx.quadraticCurveTo(-36, y + 18, -40, y - 8);
@@ -577,6 +589,155 @@ function propAtHand(
   }
 }
 
+/* ---------- سر از روی عکس (شخصیت سفارشی) ---------- */
+
+const heads = new Map<string, HTMLImageElement>();
+
+/** تصویر سر، اگر بارگذاری شده باشد؛ اولین بار بارگذاری را شروع می‌کند. */
+export function headImage(src: string): HTMLImageElement | null {
+  if (typeof Image === "undefined") return null;
+  let img = heads.get(src);
+  if (!img) {
+    img = new Image();
+    img.decoding = "async";
+    img.src = src;
+    heads.set(src, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+/** قبل از رندر فیلم: همهٔ سرهای عکسی کامل بارگذاری شوند تا هیچ فریمی سر نقاشی‌شده نداشته باشد. */
+export async function preloadHeads(chars: CharacterDef[]): Promise<void> {
+  if (typeof Image === "undefined") return;
+  await Promise.all(
+    chars
+      .filter((c) => c.head)
+      .map(async (c) => {
+        headImage(c.head!.src);
+        await heads.get(c.head!.src)?.decode().catch(() => undefined);
+      }),
+  );
+}
+
+/** دهان سر نقاشی‌شده در این ارتفاع است؛ دهان عکس هم همین‌جا قرار می‌گیرد تا گردن درست وصل شود. */
+const MOUTH_DY = 22;
+
+function drawPhotoHead(
+  ctx: CanvasRenderingContext2D,
+  char: CharacterDef,
+  face: FaceDraw,
+  headY: number,
+  img: HTMLImageElement,
+  id: string,
+  dt: number,
+) {
+  const h = char.head!;
+  const w = h.size;
+  const ih = w * h.aspect;
+  const left = -h.mouth.x * w;
+  const top = headY + MOUTH_DY - h.mouth.y * ih;
+  const my = headY + MOUTH_DY;
+  ctx.drawImage(img, left, top, w, ih);
+  const k = w / 92;
+  const eyes = h.eyes ? [h.eyes.l, h.eyes.r].map((e) => ({ x: left + e.x * w, y: top + e.y * ih })) : null;
+  const emo = face.emotion;
+
+  // خشم: سرخی ملایم روی صورت (بین چشم‌ها تا زیر دهان).
+  if (emo === "angry") {
+    const cy = eyes ? (eyes[0].y + my) / 2 : my - 18 * k;
+    ctx.save();
+    ctx.globalAlpha = 0.16 + 0.12 * face.env;
+    ctx.fillStyle = "#c2412d";
+    ctx.beginPath();
+    ctx.ellipse(0, cy, w * 0.28, (my - cy) * 1.5 + 10 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  // لپ گلی برای لبخند و خنده.
+  if ((emo === "smile" || emo === "laugh") && eyes) {
+    ctx.fillStyle = "rgba(214,72,72,0.30)";
+    for (const e of eyes) {
+      ctx.beginPath();
+      ctx.ellipse(e.x + (e.x < 0 ? -2 : 2) * k, (e.y + my) / 2 + 2 * k, 8 * k, 5 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // پلک: روی چشم‌های عکس، پوست می‌کشیم و یک خط پلک. در خنده چشم‌ها نیمه‌بسته می‌شوند.
+  if (eyes && (face.blink > 0.5 || emo === "laugh")) {
+    for (const e of eyes) {
+      ctx.fillStyle = h.patch;
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y, 11 * k, 8 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      if (emo === "laugh" && face.blink <= 0.5) {
+        // چشم خندان: قوس رو به بالا
+        ctx.moveTo(e.x - 9 * k, e.y + 2 * k);
+        ctx.quadraticCurveTo(e.x, e.y - 6 * k, e.x + 9 * k, e.y + 2 * k);
+      } else {
+        ctx.moveTo(e.x - 9 * k, e.y + 1);
+        ctx.quadraticCurveTo(e.x, e.y + 5 * k, e.x + 9 * k, e.y + 1);
+      }
+      ctx.stroke();
+    }
+  }
+  // ابرو برای خشم، گریه، شوک و بی‌احساس (فقط وقتی جای چشم‌ها معلوم است).
+  if (eyes && (emo === "angry" || emo === "cry" || emo === "shock" || emo === "poker")) {
+    ctx.strokeStyle = "#2a1a10";
+    ctx.lineWidth = 6 * k;
+    ctx.lineCap = "round";
+    for (const e of eyes) {
+      const inward = e.x < 0 ? 1 : -1; // سمت وسط صورت
+      const by = e.y - 15 * k;
+      const ix = e.x + inward * 9 * k;
+      const ox = e.x - inward * 10 * k;
+      ctx.beginPath();
+      if (emo === "angry") {
+        ctx.moveTo(ox, by - 5 * k);
+        ctx.lineTo(ix, by + 4 * k);
+      } else if (emo === "cry") {
+        ctx.moveTo(ox, by + 3 * k);
+        ctx.lineTo(ix, by - 5 * k);
+      } else if (emo === "shock") {
+        ctx.moveTo(ox, by - 6 * k);
+        ctx.quadraticCurveTo(e.x, by - 14 * k, ix, by - 6 * k);
+      } else {
+        ctx.moveTo(ox, by);
+        ctx.lineTo(ix, by);
+      }
+      ctx.stroke();
+    }
+  }
+  // دهان: ساکت و خنثی = دهان خود عکس؛ حرف زدن یا هر حس دیگر = دهان نقاشی‌شدهٔ همان حس.
+  const talking = face.viseme !== "rest" || face.open > 0.08;
+  if (talking || emo !== "neutral") {
+    ctx.fillStyle = h.patch;
+    ctx.beginPath();
+    ctx.ellipse(0, my, 19 * k, 12 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(0, my);
+    ctx.scale(k, k);
+    mouthFront(ctx, face, 0);
+    ctx.restore();
+  }
+  // اشک از زیر هر چشم.
+  const drops = updateTears(id, face, dt);
+  if (drops.length && eyes) {
+    ctx.fillStyle = "#7eb8d4";
+    for (const d of drops) {
+      const e = d.x < 0 ? eyes[0] : eyes[1];
+      ctx.globalAlpha = Math.max(0, d.life);
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y + 8 * k + d.y * k, 3.5 * k, 6 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
 export function drawActor(
   ctx: CanvasRenderingContext2D,
   char: CharacterDef,
@@ -613,7 +774,9 @@ export function drawActor(
     ctx.translate(0, headY);
     ctx.rotate((pose.head * Math.PI) / 180);
     ctx.translate(0, -headY);
-    drawHeadSide(ctx, char, face, headY);
+    const photo = char.head ? headImage(char.head.src) : null;
+    if (photo) drawPhotoHead(ctx, char, face, headY, photo, slotId, dt);
+    else drawHeadSide(ctx, char, face, headY);
     ctx.restore();
     drawArms(ctx, pose, char, showRig, "front");
   } else {
@@ -623,7 +786,9 @@ export function drawActor(
     ctx.translate(0, headY);
     ctx.rotate((pose.head * Math.PI) / 180);
     ctx.translate(0, -headY);
-    drawHeadFront(ctx, char, face, headY, slotId, dt);
+    const photo = char.head ? headImage(char.head.src) : null;
+    if (photo) drawPhotoHead(ctx, char, face, headY, photo, slotId, dt);
+    else drawHeadFront(ctx, char, face, headY, slotId, dt);
     ctx.restore();
     drawArms(ctx, pose, char, showRig, "back");
     drawArms(ctx, pose, char, showRig, "front");

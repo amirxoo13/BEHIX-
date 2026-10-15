@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Mic } from "lucide-react";
 import { SceneBar } from "@/components/scene-bar";
 import { PhaseHead, Shell } from "@/components/shell";
+import { VoicePanel } from "@/components/voice-panel";
 import { playSfx, resumeAudio, startMic, stopMic } from "@/studio/audio";
 import { PHASES } from "@/studio/flow";
 import { fa } from "@/studio/format";
@@ -129,6 +130,7 @@ function SoundPage() {
         </div>
         {status && <p className="mt-3 text-sm leading-6 text-cyan">{status}</p>}
       </section>
+      <VoicePanel />
     </Shell>
   );
 }

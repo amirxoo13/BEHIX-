@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PhaseHead, Shell } from "@/components/shell";
+import { AutoScript } from "@/components/auto-script";
 import { SceneBar } from "@/components/scene-bar";
 import { findChar } from "@/studio/characters";
 import { PHASES } from "@/studio/flow";
@@ -25,6 +26,7 @@ function ScenarioPage() {
   return (
     <Shell>
       <PhaseHead no={phase.no} en={phase.en} title={phase.label} lede={phase.lede} />
+      <AutoScript />
       <SceneBar onAdd={() => useStudio.getState().addShot()} />
       <article className="script mx-auto max-w-2xl">
         <label className="lbl" htmlFor="heading">

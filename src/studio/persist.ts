@@ -1,8 +1,9 @@
 // ذخیره‌سازی امن پروژه: IndexedDB با مهاجرت از localStorage و پشتیبان JSON.
 // این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
-import { CAST } from "./characters.ts";
+import { CAST, MAX_CUSTOM, isCustomId } from "./characters.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
-import type { ActorSlot, Aspect, Shot } from "./types.ts";
+import { MAX_PROPS, PROP_IDS, type PropPlacement } from "./props.ts";
+import { MAX_EXTRAS, VARIANTS, type ActorSlot, type Aspect, type CharacterDef, type Shot } from "./types.ts";
 
 export type Persist = {
   shots: Shot[];
@@ -11,6 +12,8 @@ export type Persist = {
   title: string;
   logline: string;
   genre: string;
+  /** شخصیت‌های سفارشی (سر از روی عکس). پروژه‌های قدیمی این فیلد را ندارند. */
+  characters?: CharacterDef[];
 };
 
 export const LEGACY_KEY = KEY;
@@ -24,7 +27,15 @@ export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 /* ---------- normalize (T04-v3) ---------- */
 
 const DEFAULT_CHAR = { a: CAST[0].id, b: CAST[1]?.id ?? CAST[0].id };
-const BG_IDS = ["living", "kitchen", "yard", "cafe", "streetDay", "streetNight", "park", "car"];
+const BG_IDS = [
+  "living", "kitchen", "bedroom", "bathroom", "toilet", "parking", "yard", "car",
+  "street", "park", "cafe", "coffee", "bazaar", "milad", "azadi", "saadatabad", "fereshteh",
+];
+/** شناسه‌های پروژه‌های قدیمی که دیگر وجود ندارند. */
+const LEGACY_BG: Record<string, { background: string; night: boolean }> = {
+  streetDay: { background: "street", night: false },
+  streetNight: { background: "street", night: true },
+};
 const CAMERA_IDS = ["wide", "medium", "closeLeft", "closeRight", "push", "comic"];
 const SPEAKERS = ["a", "b", "none"];
 const SFX_IDS = ["none", "beep", "slap", "shock", "crickets", "rimshot", "horn", "clink", "door"];
@@ -44,10 +55,88 @@ function oneOf<T extends string>(v: unknown, allowed: string[], fallback: T): T 
   return typeof v === "string" && allowed.includes(v) ? (v as T) : fallback;
 }
 
+/* ---------- شخصیت‌های سفارشی ---------- */
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const MAX_HEAD_SRC = 1_500_000;
+
+function color(v: unknown, fallback: string): string {
+  return typeof v === "string" && HEX.test(v) ? v : fallback;
+}
+
+function unit(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+}
+
+function point(v: unknown): { x: number; y: number } | null {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+  const x = unit(o?.x);
+  const y = unit(o?.y);
+  return x === null || y === null ? null : { x, y };
+}
+
+/** شخصیت سفارشی معتبر، یا null. تصویر فقط data URL تصویر و با اندازهٔ محدود پذیرفته می‌شود. */
+export function repairCharacter(v: unknown): CharacterDef | null {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+  if (!o || typeof o.id !== "string" || !isCustomId(o.id)) return null;
+  const name = typeof o.name === "string" ? o.name.trim().slice(0, 30) : "";
+  if (!name) return null;
+  const base = CAST[0];
+  const def: CharacterDef = {
+    id: o.id,
+    name,
+    skin: color(o.skin, base.skin),
+    hair: color(o.hair, "#1a1a1a"),
+    hairStyle: "bald",
+    brow: "thick",
+    facial: "none",
+    shirt: color(o.shirt, base.shirt),
+    pants: color(o.pants, base.pants),
+    shoe: color(o.shoe, base.shoe),
+    glasses: false,
+    eyeBags: false,
+    scale: typeof o.scale === "number" && o.scale >= 0.6 && o.scale <= 1.3 ? o.scale : 1,
+    build: o.build === "slim" || o.build === "heavy" ? o.build : "normal",
+  };
+  const h = o.head && typeof o.head === "object" ? (o.head as Record<string, unknown>) : null;
+  if (h && typeof h.src === "string" && /^data:image\/(png|webp|jpeg);base64,/.test(h.src) && h.src.length <= MAX_HEAD_SRC) {
+    const mouth = point(h.mouth);
+    const aspect = typeof h.aspect === "number" && h.aspect > 0.2 && h.aspect < 5 ? h.aspect : null;
+    if (mouth && aspect) {
+      const e = h.eyes && typeof h.eyes === "object" ? (h.eyes as Record<string, unknown>) : null;
+      const l = point(e?.l);
+      const r = point(e?.r);
+      def.head = {
+        src: h.src,
+        aspect,
+        mouth,
+        size: typeof h.size === "number" && h.size >= 50 && h.size <= 200 ? h.size : 110,
+        patch: color(h.patch, def.skin),
+        ...(l && r ? { eyes: { l, r } } : {}),
+      };
+    }
+  }
+  return def;
+}
+
+function repairCharacters(v: unknown): CharacterDef[] {
+  if (!Array.isArray(v)) return [];
+  const out: CharacterDef[] = [];
+  for (const item of v) {
+    const c = repairCharacter(item);
+    if (c && !out.some((x) => x.id === c.id)) out.push(c);
+    if (out.length >= MAX_CUSTOM) break;
+  }
+  return out;
+}
+
+/** شناسه‌های مجاز بازیگر هنگام ترمیم نماها (ثابت‌ها + سفارشی‌های همان پروژه). */
+let knownIds: Set<string> = new Set(CAST.map((c) => c.id));
+
 // نما حذف نمی‌شود: بازیگرِ نبود/نامعتبر با شخصیت پیش‌فرضِ موجود در CAST ترمیم می‌شود.
 function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
   const o = v && typeof v === "object" ? (v as Partial<ActorSlot>) : {};
-  const known = typeof o.charId === "string" && CAST.some((c) => c.id === o.charId);
+  const known = typeof o.charId === "string" && knownIds.has(o.charId);
   return {
     ...o,
     charId: known ? (o.charId as string) : DEFAULT_CHAR[slot],
@@ -56,21 +145,56 @@ function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
   } as ActorSlot;
 }
 
+// حاضرین اضافه: نامعتبرها حذف می‌شوند (نه ترمیم) و تکراری‌ها و بازیگران اصلی کنار می‌روند.
+function repairExtras(v: unknown, main: string[]): ActorSlot[] {
+  if (!Array.isArray(v)) return [];
+  const out: ActorSlot[] = [];
+  for (const item of v) {
+    const o = item && typeof item === "object" ? (item as Partial<ActorSlot>) : null;
+    if (!o || typeof o.charId !== "string" || !knownIds.has(o.charId)) continue;
+    if (main.includes(o.charId) || out.some((x) => x.charId === o.charId)) continue;
+    out.push(repairActor(o, "a"));
+    if (out.length >= MAX_EXTRAS) break;
+  }
+  return out;
+}
+
+function repairProps(v: unknown): PropPlacement[] {
+  if (!Array.isArray(v)) return [];
+  const out: PropPlacement[] = [];
+  for (const item of v) {
+    const o = item && typeof item === "object" ? (item as Partial<PropPlacement>) : null;
+    if (!o || typeof o.id !== "string" || !(PROP_IDS as string[]).includes(o.id)) continue;
+    const x = typeof o.x === "number" && Number.isFinite(o.x) ? Math.min(1, Math.max(0, o.x)) : 0.5;
+    out.push({ id: o.id, x, layer: o.layer === "front" ? "front" : "back" });
+    if (out.length >= MAX_PROPS) break;
+  }
+  return out;
+}
+
 // PERS-01c: همهٔ فیلدهای متنی/شمارشی با پیش‌فرض پر می‌شوند.
 export function normalize(shot: Shot): Shot {
   const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
+  const legacy = LEGACY_BG[shot.background as string];
+  const actorA = repairActor(shot.actorA, "a");
+  const actorB = repairActor(shot.actorB, "b");
+  const variant = Number.isInteger(shot.variant) && shot.variant >= 0 && shot.variant < VARIANTS ? shot.variant : 0;
   return {
     ...shot,
+    variant,
+    night: legacy ? legacy.night : shot.night === true,
     heading: str(shot.heading, "") || "داخلی. مکان — روز",
     actionLine: str(shot.actionLine, ""),
     dialogue: str(shot.dialogue, ""),
-    background: oneOf(shot.background, BG_IDS, "living"),
+    background: oneOf(legacy ? legacy.background : shot.background, BG_IDS, "living"),
     camera: oneOf(shot.camera, CAMERA_IDS, "wide"),
     speaker: oneOf(shot.speaker, SPEAKERS, "a"),
     sfx: oneOf(shot.sfx, SFX_IDS, "none"),
     pitch,
-    actorA: repairActor(shot.actorA, "a"),
-    actorB: repairActor(shot.actorB, "b"),
+    actorA,
+    actorB,
+    extras: repairExtras(shot.extras, [actorA.charId, actorB.charId]),
+    props: repairProps(shot.props),
   };
 }
 
@@ -81,7 +205,14 @@ export function parseProject(raw: unknown): ParseResult {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "ساختار پروژه نامعتبر است." };
   const d = raw as Record<string, unknown>;
   if (!Array.isArray(d.shots)) return { ok: false, error: "فهرست نماها در فایل نیست." };
-  const shots = d.shots.filter(isShotLike).map((s) => normalize(s));
+  const characters = repairCharacters(d.characters);
+  knownIds = new Set([...CAST.map((c) => c.id), ...characters.map((c) => c.id)]);
+  let shots: Shot[];
+  try {
+    shots = d.shots.filter(isShotLike).map((s) => normalize(s));
+  } finally {
+    knownIds = new Set(CAST.map((c) => c.id));
+  }
   if (shots.length === 0) return { ok: false, error: "هیچ نمای معتبری در فایل نیست." };
   return {
     ok: true,
@@ -94,6 +225,7 @@ export function parseProject(raw: unknown): ParseResult {
       title: str(d.title, "") || DEFAULT_TITLE,
       logline: str(d.logline, "") || DEFAULT_LOGLINE,
       genre: str(d.genre, "") || DEFAULT_GENRE,
+      ...(Array.isArray(d.characters) ? { characters } : {}),
     },
   };
 }
@@ -263,7 +395,8 @@ function samePersist(a: Persist, b: Persist): boolean {
     a.title === b.title &&
     a.logline === b.logline &&
     a.genre === b.genre &&
-    JSON.stringify(a.shots) === JSON.stringify(b.shots)
+    JSON.stringify(a.shots) === JSON.stringify(b.shots) &&
+    JSON.stringify(a.characters ?? []) === JSON.stringify(b.characters ?? [])
   );
 }
 

@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { playSfx, playUrl, stopAll } from "./audio.ts";
 import { exportBackup, idbKV, importBackup, loadProject, saveProject, type Persist } from "./persist.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_SHOTS, DEFAULT_TITLE, newId } from "./project.ts";
-import type { ActorSlot, Aspect, Emotion, Shot } from "./types.ts";
+import { CAST, MAX_CUSTOM, setCustomCast } from "./characters.ts";
+import type { ActorSlot, Aspect, CharacterDef, Emotion, Shot } from "./types.ts";
 
 
 let onDone: (() => void) | null = null;
@@ -45,6 +46,11 @@ type Meta = { title: string; logline: string; genre: string };
 
 type Studio = {
   shots: Shot[];
+  /** شخصیت‌های سفارشی این پروژه (سر از روی عکس). */
+  characters: CharacterDef[];
+  addCharacter: (c: CharacterDef) => boolean;
+  /** حذف شخصیت سفارشی؛ نماهایی که او را داشتند شخصیت پیش‌فرض می‌گیرند. */
+  removeCharacter: (id: string) => void;
   selected: number;
   aspect: Aspect;
   showRig: boolean;
@@ -70,12 +76,22 @@ type Studio = {
   /** بازیابی از متن JSON؛ در خطا پروژه دست نمی‌خورد. */
   importBackup: (text: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   select: (i: number) => void;
+  /** زمان انتخاب‌شده روی تایم‌لاین (ثانیه از شروع فیلم)؛ null یعنی پیش‌نمایش زندهٔ نمای انتخاب‌شده. */
+  scrub: number | null;
+  /** رفتن به یک لحظه از فیلم: نمای آن لحظه انتخاب می‌شود و صحنه همان فریم را نشان می‌دهد. */
+  setScrub: (t: number | null) => void;
+  /** تغییر یک نمای مشخص (نه فقط نمای انتخاب‌شده). */
+  patchShotAt: (i: number, partial: Partial<Shot>) => void;
   selectDuringPlay: (i: number) => void;
   patchShot: (partial: Partial<Shot>) => void;
   patchActor: (slot: "a" | "b", partial: Partial<ActorSlot>) => void;
   setMeta: (partial: Partial<Meta>) => void;
   addShot: () => void;
   removeShot: (i: number) => void;
+  /** تغییر طرح یا شب/روز برای همهٔ نماهایی که در این مکان‌اند. */
+  patchPlace: (background: Shot["background"], partial: Partial<Pick<Shot, "variant" | "night" | "props">>) => void;
+  /** همهٔ نماها را با نماهای تازه (مثلاً از چیدن خودکار سناریو) جایگزین می‌کند. */
+  replaceShots: (shots: Shot[]) => boolean;
   moveShot: (i: number, dir: -1 | 1) => void;
   setAspect: (a: Aspect) => void;
   setShowRig: (v: boolean) => void;
@@ -118,6 +134,7 @@ function saveOf(state: Persist) {
 
 function persistFrom(s: {
   shots: Shot[];
+  characters: CharacterDef[];
   aspect: Aspect;
   showRig: boolean;
   title: string;
@@ -126,6 +143,7 @@ function persistFrom(s: {
 }): Persist {
   return {
     shots: s.shots,
+    characters: s.characters,
     aspect: s.aspect,
     showRig: s.showRig,
     title: s.title,
@@ -136,6 +154,33 @@ function persistFrom(s: {
 
 export const useStudio = create<Studio>((set, get) => ({
   shots: DEFAULT_SHOTS,
+  characters: [],
+  addCharacter: (c) => {
+    if (booting) return false;
+    const s = get();
+    if (s.characters.length >= MAX_CUSTOM || s.characters.some((x) => x.id === c.id)) return false;
+    const characters = [...s.characters, c];
+    setCustomCast(characters);
+    set({ characters });
+    saveOf(persistFrom({ ...s, characters }));
+    return true;
+  },
+  removeCharacter: (id) => {
+    if (booting) return;
+    const s = get();
+    const characters = s.characters.filter((c) => c.id !== id);
+    const fix = (a: ActorSlot, fallback: string): ActorSlot => (a.charId === id ? { ...a, charId: fallback } : a);
+    const shots = s.shots.map((shot) => {
+      const actorA = fix(shot.actorA, shot.actorB.charId === CAST[0].id ? CAST[1].id : CAST[0].id);
+      const actorB = fix(shot.actorB, actorA.charId === CAST[1].id ? CAST[0].id : CAST[1].id);
+      const main = [actorA.charId, actorB.charId];
+      const extras = shot.extras.filter((e) => e.charId !== id && !main.includes(e.charId));
+      return { ...shot, actorA, actorB, extras };
+    });
+    setCustomCast(characters);
+    set({ characters, shots });
+    saveOf(persistFrom({ ...s, characters, shots }));
+  },
   selected: 0,
   aspect: "wide",
   showRig: false,
@@ -162,7 +207,11 @@ export const useStudio = create<Studio>((set, get) => ({
       activeKV = res.useKV ? kv : null;
       locked = res.saveLocked;
       set({ storageNotice: res.notice ?? "", storageLocked: res.saveLocked });
-      if (res.data) set({ ...res.data, selected: 0 });
+      if (res.data) {
+        const characters = res.data.characters ?? [];
+        setCustomCast(characters);
+        set({ ...res.data, characters, selected: 0 });
+      }
     } catch {
       set({ storageNotice: "بارگذاری پروژه ناموفق بود؛ ذخیرهٔ خودکار متوقف شد.", storageLocked: true });
     } finally {
@@ -181,7 +230,9 @@ export const useStudio = create<Studio>((set, get) => ({
     }
     if (get().playing) finishPlayback();
     for (const url of Object.values(get().audioUrls)) revoke(url);
-    set({ ...res.data, selected: 0, audioUrls: {} });
+    const characters = res.data.characters ?? [];
+    setCustomCast(characters);
+    set({ ...res.data, characters, selected: 0, audioUrls: {} });
     const snapshot = structuredClone(res.data);
     const pending = saveChain.then(() => saveProject(activeKV, snapshot));
     saveChain = pending.catch(() => undefined);
@@ -193,7 +244,35 @@ export const useStudio = create<Studio>((set, get) => ({
     }
     return { ok: true };
   },
-  select: (i) => set({ selected: i }),
+  select: (i) => set({ selected: i, scrub: null }),
+  scrub: null,
+  setScrub: (t) => {
+    if (t === null) {
+      set({ scrub: null });
+      return;
+    }
+    const s = get();
+    const total = s.shots.reduce((a, x) => a + x.duration, 0);
+    const clamped = Math.max(0, Math.min(t, Math.max(0, total - 0.001)));
+    let acc = 0;
+    let index = s.shots.length - 1;
+    for (let i = 0; i < s.shots.length; i++) {
+      if (clamped < acc + s.shots[i].duration) {
+        index = i;
+        break;
+      }
+      acc += s.shots[i].duration;
+    }
+    set({ scrub: clamped, selected: index });
+  },
+  patchShotAt: (i, partial) => {
+    if (booting) return;
+    const s = get();
+    if (!s.shots[i]) return;
+    const next = s.shots.map((shot, j) => (j === i ? { ...shot, ...partial } : shot));
+    set({ shots: next });
+    saveOf(persistFrom({ ...s, shots: next }));
+  },
   selectDuringPlay: (i) => set({ selected: i }),
   patchShot: (partial) => {
     if (booting) return;
@@ -207,9 +286,13 @@ export const useStudio = create<Studio>((set, get) => ({
     const s = get();
     const next = s.shots.map((shot, i) => {
       if (i !== s.selected) return shot;
-      return slot === "a"
-        ? { ...shot, actorA: { ...shot.actorA, ...partial } }
-        : { ...shot, actorB: { ...shot.actorB, ...partial } };
+      const next =
+        slot === "a"
+          ? { ...shot, actorA: { ...shot.actorA, ...partial } }
+          : { ...shot, actorB: { ...shot.actorB, ...partial } };
+      // کسی که جلو آمد دیگر جزو حاضرین پشت قاب نیست (یک نفر دوبار دیده نشود).
+      const main = [next.actorA.charId, next.actorB.charId];
+      return { ...next, extras: next.extras.filter((e) => !main.includes(e.charId)) };
     });
     set({ shots: next });
     saveOf(persistFrom({ ...s, shots: next }));
@@ -255,6 +338,22 @@ export const useStudio = create<Studio>((set, get) => ({
     const selected = Math.max(0, Math.min(s.selected, next.length - 1));
     set({ shots: next, selected, audioUrls: urls });
     saveOf(persistFrom({ ...s, shots: next }));
+  },
+  patchPlace: (background, partial) => {
+    if (booting) return;
+    const s = get();
+    const next = s.shots.map((shot) => (shot.background === background ? { ...shot, ...partial } : shot));
+    set({ shots: next });
+    saveOf(persistFrom({ ...s, shots: next }));
+  },
+  replaceShots: (shots) => {
+    if (booting || shots.length === 0) return false;
+    const s = get();
+    if (s.playing) finishPlayback();
+    for (const url of Object.values(s.audioUrls)) revoke(url);
+    set({ shots, selected: 0, audioUrls: {} });
+    saveOf(persistFrom({ ...s, shots }));
+    return true;
   },
   moveShot: (i, dir) => {
     if (booting) return;

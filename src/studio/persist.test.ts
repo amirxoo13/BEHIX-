@@ -62,7 +62,7 @@ describe("migration localStorage → IndexedDB", () => {
     const res = await loadProject(kv, ls);
     assert.equal(res.source, "migrated");
     assert.equal(res.data?.shots.length, 2);
-    assert.deepEqual(res.data?.shots[0], goodShot); // valid data untouched
+    assert.deepEqual(res.data?.shots[0], { ...goodShot, variant: 0, night: false, extras: [], props: [] }); // valid data untouched; new fields get defaults
     const repaired = res.data!.shots[1];
     assert.equal(repaired.dialogue, "");
     assert.equal(repaired.speaker, "a");
@@ -477,5 +477,104 @@ describe("T07-v4 mixed valid + invalid shots", () => {
     const res = await loadProject(kv, ls, 99);
     assert.equal(ls.data[LEGACY_KEY], raw);
     assert.equal(res.source, "legacy-fallback");
+  });
+});
+
+describe("places upgrade", () => {
+  it("UT-BG-01 old streetDay/streetNight shots become street with day/night", async () => {
+    const old = {
+      shots: [
+        { ...goodShot, id: "a", background: "streetDay" },
+        { ...goodShot, id: "b", background: "streetNight" },
+        { ...goodShot, id: "c", background: "cafe", variant: 2, night: true },
+        { ...goodShot, id: "d", background: "moon", variant: 9 },
+      ],
+    };
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject(old);
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const [a, b, c, d] = r.data.shots;
+    assert.deepEqual([a.background, a.night], ["street", false]);
+    assert.deepEqual([b.background, b.night], ["street", true]);
+    assert.deepEqual([c.background, c.variant, c.night], ["cafe", 2, true]);
+    assert.deepEqual([d.background, d.variant], ["living", 0]);
+  });
+});
+
+describe("extra people in a shot", () => {
+  it("UT-EX-01 old projects get no extras; bad, duplicate and main-actor extras are dropped; max 3", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject({
+      shots: [
+        { ...goodShot, id: "old" },
+        {
+          ...goodShot,
+          id: "new",
+          extras: [
+            { charId: "parviz", emotion: "laugh", action: "idle" },
+            { charId: "ghost" },
+            { charId: "parviz" },
+            { charId: "sara" },
+            "junk",
+            { charId: "pahlavan" },
+            { charId: "doctor" },
+            { charId: "reza" },
+          ],
+        },
+      ],
+    });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.deepEqual(r.data.shots[0].extras, []);
+    const ex = r.data.shots[1].extras;
+    assert.deepEqual(ex.map((e) => e.charId), ["parviz", "pahlavan", "doctor"], "sara is actorA, ghost unknown");
+    assert.equal(ex[0].emotion, "laugh");
+    assert.equal(ex[1].emotion, "neutral");
+  });
+});
+
+describe("custom characters (photo heads)", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+  const javad = {
+    id: "u-javad01",
+    name: " عمو جواد ",
+    shirt: "#112233",
+    pants: "red",
+    scale: 1.1,
+    build: "heavy",
+    head: { src: PNG, aspect: 1.2, mouth: { x: 0.5, y: 0.7 }, size: 120, patch: "#e0b07a", eyes: { l: { x: 0.35, y: 0.4 }, r: { x: 0.65, y: 0.4 } } },
+  };
+  it("UT-CC-01 valid custom characters survive, unsafe fields are repaired or dropped", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject({
+      shots: [{ ...goodShot, actorA: { charId: "u-javad01", emotion: "smile", action: "idle" } }],
+      characters: [
+        javad,
+        { ...javad, id: "u-javad01" }, // تکراری
+        { id: "parviz", name: "جعلی" }, // شناسهٔ ثابت‌ها
+        { id: "u-evil01", name: "x", head: { src: "javascript:alert(1)", aspect: 1, mouth: { x: 0.5, y: 0.5 } } },
+        { id: "u-noname", name: "  " },
+      ],
+    });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const cs = r.data.characters!;
+    assert.deepEqual(cs.map((c) => c.id), ["u-javad01", "u-evil01"]);
+    assert.equal(cs[0].name, "عمو جواد");
+    assert.equal(cs[0].pants, "#2c241c", "invalid colour falls back");
+    assert.equal(cs[0].build, "heavy");
+    assert.equal(cs[0].head?.size, 120);
+    assert.deepEqual(cs[0].head?.eyes, javad.head.eyes);
+    assert.equal(cs[1].head, undefined, "non-image src is never kept");
+    assert.equal(r.data.shots[0].actorA.charId, "u-javad01", "a shot may use a custom character");
+  });
+  it("UT-CC-02 a custom id without its character is repaired; old projects have no characters key", async () => {
+    const { parseProject } = await import("./persist.ts");
+    const r = parseProject({ shots: [{ ...goodShot, actorA: { charId: "u-gone01", emotion: "smile", action: "idle" } }] });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.equal(r.data.shots[0].actorA.charId, "parviz");
+    assert.equal("characters" in r.data, false);
   });
 });

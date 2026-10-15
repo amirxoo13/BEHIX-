@@ -40,38 +40,141 @@ export const SFXS: { id: SfxId; label: string }[] = [
   { id: "rimshot", label: "ضرب پایان" },
 ];
 
-export const WORLD: Record<BgId, { place: string; note: string }> = {
+export type PlaceGroup = "home" | "out" | "venue" | "tehran";
+
+export const PLACE_GROUPS: { id: PlaceGroup; label: string }[] = [
+  { id: "home", label: "داخل ساختمان" },
+  { id: "out", label: "بیرون" },
+  { id: "venue", label: "قهوه‌خانه و کافه" },
+  { id: "tehran", label: "تهران" },
+];
+
+/**
+ * همهٔ مکان‌ها. `interior` یعنی داخل ساختمان (روز/شب فقط نور پنجره و چراغ را عوض می‌کند).
+ * `variants` اسم سه طرح آمادهٔ هر مکان است، به همان ترتیبی که draw-bg.ts می‌کشد.
+ */
+export const WORLD: Record<
+  BgId,
+  { place: string; note: string; group: PlaceGroup; interior: boolean; variants: [string, string, string] }
+> = {
   living: {
-    place: "نشیمن",
-    note: "نور بستهٔ عصر، فرش و پرده. مناسب مکالمهٔ نزدیک و خداحافظی.",
+    place: "پذیرایی",
+    note: "اتاق نشیمن و پذیرایی خانه؛ برای گفت‌وگوی خانوادگی و مهمانی.",
+    group: "home",
+    interior: true,
+    variants: ["سنتی با پشتی", "مبل و فرش", "مدرن با تلویزیون"],
   },
   kitchen: {
     place: "آشپزخانه",
-    note: "فضای کار خانه. قاب شلوغ‌تر، حرکت کوتاه بین پیشخوان و در.",
+    note: "کار خانه، چای و غذا. قاب شلوغ‌تر.",
+    group: "home",
+    interior: true,
+    variants: ["قدیمی با کاشی و سماور", "مدرن سفید", "اوپن با جزیره"],
+  },
+  bedroom: {
+    place: "اتاق خواب",
+    note: "خلوت و حرف‌های خصوصی.",
+    group: "home",
+    interior: true,
+    variants: ["تخت دونفره", "اتاق ساده", "اتاق بچه"],
+  },
+  bathroom: {
+    place: "حمام",
+    note: "کاشی و آینهٔ بخارگرفته.",
+    group: "home",
+    interior: true,
+    variants: ["دوش و پرده", "وان", "حمام ایرانی"],
+  },
+  toilet: {
+    place: "دستشویی",
+    note: "روشویی و آینه؛ برای صحنه‌های کوتاه و کمیک.",
+    group: "home",
+    interior: true,
+    variants: ["ایرانی با آفتابه", "فرنگی", "روشویی و آینه"],
+  },
+  parking: {
+    place: "پارکینگ",
+    note: "پارکینگ ساختمان؛ ستون، ماشین و چراغ سقفی.",
+    group: "home",
+    interior: true,
+    variants: ["زیرزمینی", "حیاط پارکینگ", "کرکره‌ای کوچک"],
   },
   yard: {
     place: "حیاط",
-    note: "حوض و حیاط. فاصلهٔ فیزیکی بین دو نفر را نشان می‌دهد.",
-  },
-  cafe: {
-    place: "قهوه‌خانه",
-    note: "بخار، آینهٔ کدر، جمعیت کم. برای مواجههٔ بی‌تعارف.",
-  },
-  streetDay: {
-    place: "خیابان روز",
-    note: "پیاده‌رو و عبور ماشین. خروج از خانه را بیرونی می‌کند.",
-  },
-  streetNight: {
-    place: "خیابان شب",
-    note: "همان خیابان با نور سرد. مناسب تردید و برگشتن.",
-  },
-  park: {
-    place: "پارک",
-    note: "فضای باز و خلوت. قدم زدن بدون عجله.",
+    note: "حوض و حیاط خانه. فاصلهٔ فیزیکی بین دو نفر را نشان می‌دهد.",
+    group: "out",
+    interior: false,
+    variants: ["حوض آبی", "باغچه و درخت", "حیاط آجری"],
   },
   car: {
     place: "داخل ماشین",
     note: "قاب تنگ. گفت‌وگو بدون راه فرار.",
+    group: "out",
+    interior: true,
+    variants: ["پیکان قدیمی", "تاکسی", "ماشین مدرن"],
+  },
+  street: {
+    place: "خیابان",
+    note: "پیاده‌رو و عبور ماشین. با راه رفتن بازیگر، خیابان حرکت می‌کند.",
+    group: "out",
+    interior: false,
+    variants: ["خیابان آپارتمانی", "کوچهٔ قدیمی", "خیابان مغازه‌ها"],
+  },
+  park: {
+    place: "پارک",
+    note: "فضای باز و خلوت. قدم زدن بدون عجله.",
+    group: "out",
+    interior: false,
+    variants: ["درخت و نیمکت", "حوض و فواره", "زمین بازی"],
+  },
+  cafe: {
+    place: "قهوه‌خانه",
+    note: "قهوه‌خانهٔ سنتی: تخت، سماور، قلیان.",
+    group: "venue",
+    interior: true,
+    variants: ["تخت و قالیچه", "سماور و پرده", "آجری با فانوس"],
+  },
+  coffee: {
+    place: "کافه",
+    note: "کافهٔ مدرن و امروزی: بار قهوه، گلدان، پنجرهٔ بزرگ.",
+    group: "venue",
+    interior: true,
+    variants: ["صنعتی آجری", "روشن و چوبی", "سبز با گیاه"],
+  },
+  bazaar: {
+    place: "بازار تهران",
+    note: "راستهٔ سرپوشیدهٔ بازار با طاق‌های آجری و حجره‌ها.",
+    group: "tehran",
+    interior: true,
+    variants: ["راستهٔ فرش", "راستهٔ ادویه", "راستهٔ طلا"],
+  },
+  milad: {
+    place: "برج میلاد",
+    note: "برج میلاد در افق تهران.",
+    group: "tehran",
+    interior: false,
+    variants: ["از پارک", "از بزرگراه", "پای برج"],
+  },
+  azadi: {
+    place: "میدان آزادی",
+    note: "برج آزادی و میدان دورش.",
+    group: "tehran",
+    interior: false,
+    variants: ["روبه‌روی برج", "با فواره‌ها", "از دور با ترافیک"],
+  },
+  saadatabad: {
+    place: "سعادت‌آباد",
+    note: "برج‌های مسکونی، بلوار و مغازه‌های امروزی.",
+    group: "tehran",
+    interior: false,
+    variants: ["بلوار با سرو", "برج‌های مسکونی", "مغازه‌ها و کافه"],
+  },
+  fereshteh: {
+    place: "فرشته",
+    note: "خیابان شیک شمال شهر: نمای شیشه‌ای، درخت چنار، ماشین‌های گران.",
+    group: "tehran",
+    interior: false,
+    variants: ["خیابان چنار", "برج شیشه‌ای", "ویلا و دیوار سبز"],
   },
 };
 

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@fontsource/vazirmatn/400.css";
 @import "@fontsource/vazirmatn/700.css";
+@import "@fontsource/vazirmatn/800.css";
 @import "@fontsource/outfit/500.css";
 @import "@fontsource/outfit/700.css";
 
@@ -279,6 +280,136 @@
     width: min(82vw, 20rem);
     flex: 0 0 auto;
   }
+  /* تایم‌لاین */
+  .timeline {
+    margin-top: 1rem;
+  }
+  .tl-body {
+    display: flex;
+    margin-top: 0.75rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: var(--color-stage);
+  }
+  .tl-labels {
+    flex: 0 0 5.6rem;
+    border-inline-end: 1px solid var(--color-line);
+    background: var(--color-surface);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+  .tl-labels li {
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+    padding-inline: 0.5rem;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .tl-labels .tl-ruler-label {
+    height: 1.75rem;
+  }
+  .tl-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .tl-track {
+    position: relative;
+    min-width: 100%;
+  }
+  .tl-ruler {
+    position: relative;
+    height: 1.75rem;
+    border-bottom: 1px solid var(--color-line);
+    cursor: pointer;
+    touch-action: none;
+  }
+  .tl-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    padding-inline-start: 3px;
+    border-inline-start: 1px solid var(--color-line);
+    font-size: 0.68rem;
+    line-height: 1.75rem;
+    color: var(--color-muted);
+    font-family: var(--font-latin);
+  }
+  .tl-lane {
+    position: relative;
+    height: 2.25rem;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .tl-clip {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border-radius: 0.4rem;
+    padding-inline: 0.4rem;
+    font-size: 0.72rem;
+    line-height: calc(2.25rem - 6px);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    color: var(--color-fg);
+  }
+  .tl-shot {
+    padding: 0;
+    background: color-mix(in srgb, var(--color-violet) 22%, var(--color-surface));
+  }
+  .tl-shot.is-on {
+    border-color: var(--color-cyan);
+    box-shadow: inset 0 0 0 1px var(--color-cyan);
+  }
+  .tl-clip-btn {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding-inline: 0.4rem 0.9rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: start;
+    font-size: 0.72rem;
+    color: inherit;
+  }
+  .tl-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 0.7rem;
+    cursor: ew-resize;
+    touch-action: none;
+    background: color-mix(in srgb, var(--color-cyan) 45%, transparent);
+  }
+  .tl-handle:hover,
+  .tl-handle:focus-visible {
+    background: var(--color-cyan);
+  }
+  .tl-line {
+    background: color-mix(in srgb, var(--color-cyan) 16%, var(--color-surface));
+  }
+  .tl-voice {
+    background: color-mix(in srgb, #3ccf8e 22%, var(--color-surface));
+  }
+  .tl-sfx {
+    background: color-mix(in srgb, #e4b15a 22%, var(--color-surface));
+  }
+  .tl-head {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: #ff5c7a;
+    pointer-events: none;
+    will-change: transform;
+  }
   .sheet-row {
     display: grid;
     grid-template-columns: 2.4rem 1fr auto;
@@ -325,12 +456,92 @@
     color: var(--color-violet);
     margin-top: 0.4rem;
   }
+
+  /* صفحهٔ «داستان به فیلم» */
+  .story-page {
+    display: grid;
+    gap: 1.25rem;
+    padding: 1rem;
+    max-width: 78rem;
+    margin-inline: auto;
+  }
+  @media (min-width: 900px) {
+    .story-page {
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      align-items: start;
+      padding: 1.5rem;
+    }
+    .story-player {
+      position: sticky;
+      top: 1rem;
+    }
+  }
+  .story-text {
+    min-height: 22rem;
+    font-size: 1rem;
+    line-height: 2;
+    resize: vertical;
+  }
+  .story-canvas-box {
+    display: flex;
+    justify-content: center;
+    background: var(--color-stage);
+    border: 1px solid var(--color-line);
+    border-radius: 1rem;
+    padding: 0.5rem;
+    min-height: 12rem;
+  }
+  .story-canvas {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: min(68vh, 44rem);
+    aspect-ratio: 9 / 16;
+    border-radius: 0.6rem;
+    background: #fff;
+    cursor: pointer;
+  }
+  .story-range {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--color-violet);
+  }
+  .story-chip {
+    border: 1px solid var(--color-line);
+    background: var(--color-surface-2);
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+  }
+  .story-warn {
+    display: grid;
+    gap: 0.35rem;
+    border: 1px solid #8a6a1f;
+    background: #2a2210;
+    color: #ffe3a3;
+    border-radius: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    font-size: 0.88rem;
+    line-height: 1.7;
+  }
+  .story-progress {
+    height: 0.5rem;
+    border-radius: 999px;
+    background: var(--color-surface-2);
+    overflow: hidden;
+  }
+  .story-progress > span {
+    display: block;
+    height: 100%;
+    background: var(--color-cyan);
+    transition: width 200ms linear;
+  }
 }
 
 @media (min-width: 960px) {
   .layout {
     display: grid;
-    grid-template-columns: 15.5rem 1fr;
+    grid-template-columns: 15.5rem minmax(0, 1fr);
     align-items: start;
   }
   .rail {

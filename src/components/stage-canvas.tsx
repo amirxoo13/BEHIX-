@@ -24,7 +24,17 @@ export function StageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
       last = now;
       let current = s.shots[s.selected] ?? s.shots[0];
       let local = (now / 1000) % Math.max(0.4, current.duration);
+      let clock = now;
       let speakingLive = false;
+      if (!s.playing && s.scrub !== null) {
+        // فریم ثابتِ لحظهٔ انتخاب‌شده روی تایم‌لاین (مثل خروجی فیلم، قطعی).
+        const loc = locate(s.shots, s.scrub);
+        if (loc) {
+          current = s.shots[loc.index] ?? current;
+          local = loc.local;
+          clock = s.scrub * 1000;
+        }
+      }
       if (s.playing) {
         const loc = locate(s.shots, (now - s.playT0) / 1000);
         if (!loc) finishPlayback();
@@ -36,7 +46,7 @@ export function StageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
         }
       }
       renderFrame(ctx, current, {
-        now,
+        now: clock,
         local,
         dt,
         aspect: s.aspect,

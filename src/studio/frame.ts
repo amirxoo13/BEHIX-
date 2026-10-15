@@ -1,6 +1,7 @@
 import { findChar } from "./characters";
 import { drawActor, type FaceDraw } from "./draw-actor";
-import { drawBackground } from "./draw-bg";
+import { SCROLLING, drawBackground } from "./draw-bg";
+import { drawProps } from "./props";
 import { readMouth } from "./audio";
 import {
   blinkAt,
@@ -120,8 +121,7 @@ function caption(
 }
 
 export function scrollFor(now: number, shot: Shot, scale: number) {
-  const exterior = shot.background === "streetDay" || shot.background === "streetNight" || shot.background === "park";
-  if (!exterior) return 0;
+  if (!SCROLLING.has(shot.background)) return 0;
   const a = shot.actorA.action === "walk";
   const b = shot.actorB.action === "walk";
   const phase = now / 1000 / CYCLE_SEC;
@@ -155,26 +155,57 @@ export function renderFrame(
   ctx.clearRect(0, 0, w, h);
   ctx.save();
   applyCamera(ctx, shot, opts.local, w, h);
-  drawBackground(ctx, shot.background, w, h, scrollFor(opts.now, shot, scale), time);
+  const scroll = scrollFor(opts.now, shot, scale);
+  drawBackground(ctx, shot.background, w, h, scroll, time, {
+    variant: shot.variant,
+    night: shot.night,
+  });
+  drawProps(ctx, shot.props, "back", w, footY, scale, scroll);
 
-  const slots = [
-    { slot: "a" as const, actor: shot.actorA, x: w * 0.3, inner: 1, pulse: opts.pulses.a },
-    { slot: "b" as const, actor: shot.actorB, x: w * 0.72, inner: -1, pulse: opts.pulses.b },
-  ];
+  type Slot = {
+    id: string;
+    actor: Shot["actorA"];
+    x: number;
+    foot: number;
+    sc: number;
+    inner: number;
+    pulse: number;
+    talking: boolean;
+    seed: number;
+  };
+  // حاضرین اضافه عقب‌تر و کمی کوچک‌تر، اول کشیده می‌شوند تا پشت دو بازیگر اصلی باشند.
+  const depth = h * 0.05;
+  const extraX = [0.51, 0.12, 0.9];
+  const slots: Slot[] = shot.extras.map((actor, i) => ({
+    id: `x${i}`,
+    actor,
+    x: w * extraX[i % extraX.length],
+    foot: footY - depth,
+    sc: scale * 0.86,
+    inner: extraX[i % extraX.length] < 0.5 ? 1 : -1,
+    pulse: 0,
+    talking: false,
+    seed: 2 + i,
+  }));
+  slots.push(
+    { id: "a", actor: shot.actorA, x: w * 0.3, foot: footY, sc: scale, inner: 1, pulse: opts.pulses.a, talking: shot.speaker === "a", seed: 0 },
+    { id: "b", actor: shot.actorB, x: w * 0.72, foot: footY, sc: scale, inner: -1, pulse: opts.pulses.b, talking: shot.speaker === "b", seed: 1 },
+  );
   for (const s of slots) {
     const char = findChar(s.actor.charId);
     const env = pulseEnv(s.pulse, opts.now);
-    const phase = time / CYCLE_SEC;
+    // فاز متفاوت فقط برای حاضرین اضافه تا همه هم‌زمان تکان نخورند؛ دو بازیگر اصلی مثل قبل.
+    const off = s.seed >= 2 ? s.seed : 0;
+    const phase = time / CYCLE_SEC + off * 0.37;
     const walking = s.actor.action === "walk";
     const pose = walking
       ? poseWalk(phase, s.actor.emotion, env, time)
-      : poseFront(s.actor.action, s.actor.emotion, env, time, s.inner);
-    const talking = shot.speaker === s.slot;
-    const mouth = talking
+      : poseFront(s.actor.action, s.actor.emotion, env, time + off * 0.9, s.inner);
+    const mouth = s.talking
       ? live ?? opts.audioMouth ?? visemeFromText(shot.dialogue, opts.local, shot.duration)
       : { viseme: "rest" as Viseme, open: 0 };
     const face: FaceDraw = {
-      blink: blinkAt(time + (s.slot === "b" ? 0.7 : 0), s.actor.emotion, s.slot === "b" ? 1 : 0),
+      blink: blinkAt(time + s.seed * 0.7, s.actor.emotion, s.seed),
       viseme: mouth.viseme,
       open: mouth.open,
       emotion: s.actor.emotion,
@@ -188,16 +219,17 @@ export function renderFrame(
       pose,
       face,
       s.x + shake,
-      footY,
-      scale,
+      s.foot,
+      s.sc,
       walking ? s.inner : 1,
       opts.showRig,
-      `${shot.id}-${s.slot}`,
+      `${shot.id}-${s.id}`,
       opts.dt,
       walking ? "none" : gesture,
       s.inner,
     );
   }
+  drawProps(ctx, shot.props, "front", w, footY, scale, scroll);
   ctx.restore();
 
   if (shot.speaker !== "none" && shot.dialogue.trim()) {

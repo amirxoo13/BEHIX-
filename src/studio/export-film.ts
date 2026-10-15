@@ -16,6 +16,7 @@ import {
   stopAll,
   type MixCue,
 } from "./audio";
+import { preloadHeads } from "./draw-actor";
 import { canvasSize, locate, renderFrame, totalDuration } from "./frame";
 import { finishPlayback, resetArmed, setPlayDone, useStudio } from "./store";
 import { buildMouthTrack, monoOf, mouthAt, type MouthTrack } from "./lipsync";
@@ -215,6 +216,8 @@ export async function renderFilm(
   stopAll();
   useStudio.getState().setExporting(true);
   try {
+    // سرهای عکسی شخصیت‌های سفارشی قبل از اولین فریم کامل بارگذاری می‌شوند.
+    await preloadHeads(useStudio.getState().characters);
     const { w, h } = canvasSize(useStudio.getState().aspect);
     if (!opts.forceFallback && (await canRenderMp4(w, h))) {
       try {
