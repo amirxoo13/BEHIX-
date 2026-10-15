@@ -565,3 +565,11 @@
     transition: none;
   }
 }
+
+/* Story tools must remain usable in a 390px RTL viewport. */
+.story-page > *, .story-player > *, .story-editor > * { min-width: 0; }
+.story-page input, .story-page select, .story-page textarea { max-width: 100%; min-width: 0; }
+.story-page select { width: 100%; text-overflow: ellipsis; }
+.story-page .panel { overflow-wrap: anywhere; }
+.story-canvas { touch-action: pan-y; }
+.story-page .story-canvas-box { width: 100%; }

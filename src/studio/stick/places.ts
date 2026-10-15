@@ -1,3 +1,4 @@
+import { EXTRA_PLACES, type ExtraPlaceId } from "./places-extra.ts";
 /**
  * مکان‌ها به سبک خطی سیاه‌وسفید، برای قاب عمودی ۱۰۸۰×۱۹۲۰.
  * هر مکان سه لایه دارد: پشت (دیوار، پنجره، پشتی مبل)، جلو (دستهٔ مبل، میز، داشبورد ماشین)
@@ -6,7 +7,7 @@
 import { INK, PAPER, type Ctx } from "./figure-base.ts";
 import { rng } from "./paper.ts";
 
-export type PlaceId =
+export type PlaceId = ExtraPlaceId
   | "living"
   | "kitchen"
   | "bedroom"
@@ -387,6 +388,7 @@ function carGlass() {
 const W = 1080;
 
 export const PLACES: Record<PlaceId, PlaceDef> = {
+  ...EXTRA_PLACES,
   living: {
     id: "living",
     label: "پذیرایی خانه",
@@ -784,6 +786,11 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
         ctx.stroke();
       }
       ln(ctx, 30, bottom + 170, W - 30, bottom + 170, 4);
+      // Lower bumper, number plate and visible tyre edges complete the silhouette.
+      for (const x of [65, W - 65]) rr(ctx, x - 30, bottom + 250, 60, 75, 12, "#292929", 4);
+      rr(ctx, 25, bottom + 265, W - 50, 32, 12, "#bcbcbc", 4);
+      rr(ctx, W / 2 - 95, bottom + 263, 190, 42, 4, PAPER, 3);
+      text(ctx, "ب ه ی خ", W / 2, bottom + 284, 22);
       // چراغ‌ها و جلوپنجره
       for (const k of [-1, 1]) {
         ctx.beginPath();

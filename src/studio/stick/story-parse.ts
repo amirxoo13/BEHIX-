@@ -1,3 +1,4 @@
+import { actionClauses, conjugations, hasNegativeVerb, readDelay, textId } from "./persian-rules.ts";
 /**
  * فهم داستان فارسی با فرهنگ لغت (بدون هوش مصنوعی و بدون اینترنت):
  * - صحنه: خطی که با «صحنه/سکانس/پلان/مکان» شروع شود، یا خط کوتاهی که فقط اسم مکان دارد؛ شب/روز از همان خط.
@@ -37,6 +38,7 @@ export type Move = "enter" | "exit" | "approach" | "toLeft" | "toRight" | "toCen
 
 export type Act = {
   who: string;
+  x?: number;
   sit?: boolean;
   gesture?: Gesture;
   hold?: Hold;
@@ -49,10 +51,12 @@ export type Act = {
   thought?: boolean;
 };
 
-export type Beat =
+export type SourceSpan = { line:number; start:number; end:number; text:string };
+export type BeatMeta = { id?:string; source?:SourceSpan; duration?:number; delay?:number };
+export type Beat = BeatMeta & (
   | { kind: "action"; text: string; acts: Act[] }
   | { kind: "line"; speaker: string; text: string; acts: Act[] }
-  | { kind: "narration"; text: string };
+  | { kind: "narration"; text: string });
 
 export type StoryCastMember = { id: string; name: string; look: Look; side?: Side; guessed: boolean };
 
@@ -106,6 +110,11 @@ const MOMENTARY: ReadonlySet<Gesture> = new Set(["point", "wave", "explain", "fa
 export const isMomentary = (g: Gesture) => MOMENTARY.has(g);
 
 const HOLDS: Entry<Exclude<Hold, "none">>[] = stems([
+  e("remote", ["کنترل تلویزیون", "ریموت", "کنترل"]),
+  e("plate", ["بشقاب"]),
+  e("shopping", ["کیسه خرید", "کیسهٔ خرید", "کیسه"]),
+  e("umbrella", ["چتر"]),
+  e("laptop", ["لپ تاپ", "لپ‌تاپ", "لپتاپ"]),
   e("phone", ["گوشی", "موبایل", "تلفن همراه"]),
   e("cup", ["چای", "چایی", "قهوه", "فنجان", "لیوان", "استکان"]),
   e("book", ["کتاب", "دفتر", "مجله", "روزنامه"]),
@@ -152,6 +161,7 @@ const NOT_EXIT = ["ور می‌رود", "ور میره", "ور رفت", "راه 
 /* ---------- شخصیت‌ها ---------- */
 
 const ROLE: Entry<Kind>[] = [
+  e("baby", ["نوزاد", "نی نی", "نی‌نی"]),
   e("oldMan", ["پیرمرد", "پدربزرگ", "بابابزرگ", "آقابزرگ", "حاج آقا"]),
   e("oldWoman", ["پیرزن", "مادربزرگ", "مامان‌بزرگ", "مامان بزرگ", "حاج خانم", "بی‌بی"]),
   e("boy", ["پسربچه", "پسر بچه", "پسرک", "پسر"]),
@@ -208,13 +218,15 @@ export function parseAttrs(text: string): { kind?: Kind; side?: Side; look: Part
   const child = ["بچه", "کودک", "نوجوان", "کوچک", "کوچولو"].some((w) => hasWord(hay, w));
   const old = ["پیر", "مسن", "سالمند"].some((w) => hasWord(hay, w));
   const female = kind === "woman" || kind === "girl" || kind === "oldWoman";
-  if (child) kind = female ? "girl" : "boy";
+  if (child && kind !== "baby") kind = female ? "girl" : "boy";
   if (old) kind = female ? "oldWoman" : "oldMan";
   let side: Side | undefined;
   if (hasStem(hay, "چپ") && !hasStem(hay, "چپ چپ")) side = "left";
   else if (hasStem(hay, "راست")) side = "right";
   else if (hasWord(hay, "وسط")) side = "center";
   const look: Partial<Look> = {};
+  const clothes = [["چادر", "chador"], ["تی شرت", "tshirt"], ["تیشرت", "tshirt"], ["پیراهن بلند", "dress"], ["کت", "coat"], ["پیراهن", "shirt"]] as const;
+  for (const [word, clothing] of clothes) if (hasWord(hay, word)) { look.clothing = clothing; break; }
   if (hasStem(hay, "عینک")) look.glasses = true;
   if (hasStem(hay, "سبیل")) look.mustache = true;
   if (hasWord(hay, "ریش") || hasWord(hay, "ریشو") || hasWord(hay, "ریشی")) look.beard = true;
@@ -284,6 +296,7 @@ export function parseStory(story: string): StoryPlan {
   const warnings: string[] = [];
   const cast: StoryCastMember[] = [];
   const scenes: StoryScene[] = [];
+  if (story.length > MAX_STORY_CHARS) warnings.push(`متن بیش از ${MAX_STORY_CHARS} نویسه است؛ بخش بعد از این حد پردازش نشد.`);
   const lines = story
     .slice(0, MAX_STORY_CHARS)
     .split(/\r?\n/)
@@ -338,7 +351,7 @@ export function parseStory(story: string): StoryPlan {
       if (!NARRATOR.has(speaker)) addCast(speaker, d[2] && hasAnyAttr(parseAttrs(d[2])) ? d[2] : undefined);
     }
     const body = d ? d[3] : line;
-    for (const m of body.matchAll(DECL)) {
+    for (const m of (/[（(]/.test(body) ? body.matchAll(DECL) : [])) {
       if (!hasAnyAttr(parseAttrs(m[2]))) continue;
       const ws = normalizeFa(m[1]).split(" ");
       const two = ws.join(" ");
@@ -372,6 +385,13 @@ export function parseStory(story: string): StoryPlan {
     }
   }
 
+  for (const line of lines) {
+    if (DIALOGUE.test(line)) continue;
+    for (const m of line.matchAll(/(?:به طرف|به سمت|کنار)\s+([^\s،.]+)/g)) {
+      const name = normalizeFa(m[1]);
+      if (NAME_KIND.has(name) && !AMBIGUOUS.has(name) && !byId(name)) addCast(name);
+    }
+  }
   let scene: StoryScene | null = null;
   let placeSet = false;
   let nightSet = false;
@@ -391,6 +411,8 @@ export function parseStory(story: string): StoryPlan {
 
   /** حرکت‌های یک جمله. اگر `speaker` داده شود (توضیح داخل پرانتز دیالوگ)، همه مال گوینده است. */
   const actsFor = (text: string, speaker: string | null): Act[] => {
+    if (hasNegativeVerb(text)) return [];
+    text = conjugations(text);
     const names = findAll(text, castEntries());
     const n = normalizeFa(text);
     const acts = new Map<string, Act>();
@@ -461,8 +483,20 @@ export function parseStory(story: string): StoryPlan {
     return [...acts.values()];
   };
 
+  let previousSubjects: string[] = [];
+  const occurrences = new Map<string, number>();
+  let sourceCursor = 0;
+  const push = (sc:StoryScene, beat:Beat, raw:string, start:number) => {
+    const signature = `${sc.heading}|${beat.kind}|${beat.kind === "line" ? beat.speaker : ""}|${normalizeFa(raw)}`;
+    const count = occurrences.get(signature) ?? 0; occurrences.set(signature, count + 1);
+    const line = story.slice(0, start).split("\n").length;
+    sc.beats.push({...beat, id:`${textId(signature)}-${count}`, source:{line,start,end:start+raw.length,text:raw}});
+  };
   for (const line of lines) {
+    const lineStart = story.indexOf(line, sourceCursor);
+    sourceCursor = lineStart + line.length;
     if (isHeading(line)) {
+      previousSubjects = [];
       open(line);
       continue;
     }
@@ -480,14 +514,18 @@ export function parseStory(story: string): StoryPlan {
         .trim();
       const who = byId(speakerName);
       if (NARRATOR.has(speakerName) || !who) {
-        if (said) sc.beats.push({ kind: "narration", text: said });
+        if (said) push(sc, { kind: "narration", text: said }, line, lineStart);
         continue;
       }
       const dir = inner.join("، ");
-      sc.beats.push({ kind: "line", speaker: who.id, text: said, acts: dir ? actsFor(dir, who.id) : [] });
+      previousSubjects = [who.id];
+      push(sc, { kind: "line", speaker: who.id, text: said, acts: dir ? actsFor(dir, who.id) : [] }, line, lineStart);
       continue;
     }
+    let sentenceCursor = 0;
     for (const s of sentences(line)) {
+      const sentenceStart = line.indexOf(s, sentenceCursor);
+      sentenceCursor = sentenceStart + s.length;
       // جملهٔ توصیفی در صحنه‌ای که مکان/زمانش هنوز معلوم نیست، آن را معلوم می‌کند
       if (!placeSet) {
         const p = placeIn(s);
@@ -505,7 +543,33 @@ export function parseStory(story: string): StoryPlan {
       }
       // معرفی‌های داخل پرانتز («علی (مرد، سمت راست)») جزو حرکت جمله نیستند
       const plain = s.replace(/[(（][^)）]*[)）]/g, " ").replace(/\s+/g, " ").trim();
-      sc.beats.push({ kind: "action", text: plain, acts: actsFor(plain, null) });
+      let chainSubjects: string[] = [];
+      for (const clause of actionClauses(plain)) {
+        const delay = readDelay(clause.text);
+        let body = delay?.text ?? clause.text;
+        const pronoun = /^(او|اون)(?:\s|$)/.test(body);
+        const explicit = findAll(body, castEntries());
+        if (pronoun) {
+          if (previousSubjects.length === 1) body = body.replace(/^(اون|او)(?=\s|$)/, byId(previousSubjects[0])!.name);
+          else warnings.push(`خط ${story.slice(0,lineStart).split("\n").length}: مرجع «${clause.text}» روشن نیست؛ نام شخصیت را بنویسید.`);
+        } else if ((!explicit.length || /^(به|کنار|طرف)\s/.test(body)) && chainSubjects.length) body = `${chainSubjects.map(id=>byId(id)!.name).join(" و ")} ${body}`;
+        const acts = pronoun && previousSubjects.length !== 1 ? [] : actsFor(body, null);
+        if (acts.length) {
+          chainSubjects = [...new Set(acts.map(a=>a.who))];
+          previousSubjects = chainSubjects;
+        } else if (explicit.length && !/^(به|کنار|طرف)\s/.test(body)) {
+          previousSubjects = explicit.map(n=>n.id);
+          chainSubjects = previousSubjects;
+        }
+        // Attribute-only introductions and explicit negations are understood without a motion.
+        const declaration = /[(（]/.test(s) && !body.replace(/\S+\s*$/, "").trim();
+        if (!acts.length && body && !hasNegativeVerb(body) && !declaration && !pronoun) {
+          warnings.push(`خط ${story.slice(0,lineStart).split("\n").length}: از «${clause.text}» کاری فهمیده نشد؛ مثلاً بنویسید «علی دست تکان می‌دهد».`);
+        }
+        const relative = s.indexOf(clause.text);
+        const start = lineStart + Math.max(0,sentenceStart) + Math.max(0,relative);
+        push(sc, {kind:"action",text:clause.text,acts,...(delay?{delay:delay.seconds}:{})}, relative>=0?clause.text:s, start);
+      }
     }
     lastPlace = sc.place;
     lastNight = sc.night;

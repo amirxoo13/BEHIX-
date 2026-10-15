@@ -1,8 +1,10 @@
+import { clearGrip, drawExtraHold } from "./holds.ts";
 /**
  * آدمک خطی سیاه‌وسفید (سبک ویدیوهای روایی اینستاگرام): سر گرد بزرگ، بدن خطی، دست و پای خطی.
  * همه‌چیز با زاویه‌های مفصل تعریف می‌شود تا بین دو ژست به نرمی درون‌یابی شود.
  * واحدها «واحد بدن» است؛ مبدأ لگن (وسط باسن) و محور y رو به پایین.
  */
+import { drawInk, limbPoints } from "./ink.ts";
 import { drawFaceParams, FACES, type Expression, type FaceParams } from "./face.ts";
 import { INK, PAPER, type Ctx } from "./figure-base.ts";
 
@@ -42,11 +44,14 @@ export type Pose = {
   look: number;
 };
 
-export type Kind = "man" | "woman" | "boy" | "girl" | "oldMan" | "oldWoman";
+export type Kind = "man" | "woman" | "boy" | "girl" | "oldMan" | "oldWoman" | "baby";
 
 export type Hair = "tufts" | "short" | "bald" | "curly" | "long" | "bob" | "ponytail" | "scarf";
 
+export const CLOTHES = ["classic", "tshirt", "shirt", "coat", "dress", "chador"] as const;
+export type Clothing = typeof CLOTHES[number];
 export type Look = {
+  clothing?: Clothing;
   kind: Kind;
   hair?: Hair;
   glasses?: boolean;
@@ -55,7 +60,7 @@ export type Look = {
   cap?: boolean;
 };
 
-export type Hold = "none" | "phone" | "cup" | "cookie" | "book" | "bag" | "ball" | "flowers";
+export type Hold = "none" | "phone" | "cup" | "cookie" | "book" | "bag" | "ball" | "flowers" | "remote" | "plate" | "shopping" | "umbrella" | "laptop";
 
 export type FigureState = {
   pose: Pose;
@@ -75,7 +80,7 @@ export function isFemale(k: Kind) {
 }
 
 export function isChild(k: Kind) {
-  return k === "boy" || k === "girl";
+  return k === "boy" || k === "girl" || k === "baby";
 }
 
 export function isOld(k: Kind) {
@@ -84,7 +89,7 @@ export function isOld(k: Kind) {
 
 /** اندازهٔ کلی هر نوع شخصیت نسبت به بزرگسال. */
 export function kindScale(k: Kind) {
-  return isChild(k) ? 0.7 : isOld(k) ? 0.96 : 1;
+  return k === "baby" ? 0.48 : isChild(k) ? 0.7 : isOld(k) ? 0.96 : 1;
 }
 
 export function defaultHair(k: Kind): Hair {
@@ -147,13 +152,7 @@ export function joints(pose: Pose) {
 
 /** خط نرم از میان سه نقطه (مفصل گرد، نه زاویهٔ تیز). */
 function limbPath(ctx: Ctx, a: P, m: P, b: P, w = BODY.line) {
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  // نقطهٔ کنترل کمی آن‌طرف‌تر از مفصل تا خم مثل بازوی واقعی نرم باشد
-  const cx = m.x * 1.18 - (a.x + b.x) * 0.09;
-  const cy = m.y * 1.18 - (a.y + b.y) * 0.09;
-  ctx.quadraticCurveTo(cx, cy, b.x, b.y);
-  stroke(ctx, w);
+  drawInk(ctx, limbPoints(a, m, b), w);
 }
 
 function foot(ctx: Ctx, at: P, side: number, kid: boolean) {
@@ -169,6 +168,7 @@ function drawHold(ctx: Ctx, hold: Hold, at: P, side: number) {
   if (hold === "none") return;
   ctx.save();
   ctx.translate(at.x, at.y);
+  drawExtraHold(ctx, hold);
   if (hold === "phone") {
     // صفحهٔ گوشی رو به صورت خود شخصیت است؛ بیننده پشت گوشی را می‌بیند (قاب تیره و دوربین)
     ctx.rotate(side * -0.12);
@@ -480,10 +480,16 @@ function wrinkles(ctx: Ctx, r: number) {
  * ترتیب لایه‌ها: پا، پیراهن/بدن، مو پشت، سر، چهره، مو جلو، دست‌ها و اشیای دست.
  */
 export function drawFigure(ctx: Ctx, look: Look, st: FigureState, x: number, y: number, scale: number) {
-  const j = joints(st.pose);
+  let pose = st.pose;
+  const original = joints(pose);
+  for (const [key, side, hold] of [["armL", -1, st.holdL ?? "none"], ["armR", 1, st.holdR ?? "none"]] as const) {
+    const adjusted = clearGrip(hold, original[key].end, original.headC, original.shoulder, side);
+    if (adjusted) pose = { ...pose, [key]: adjusted };
+  }
+  const j = joints(pose);
   const kid = isChild(look.kind);
   const female = isFemale(look.kind);
-  const hair = look.hair ?? defaultHair(look.kind);
+  const hair = look.clothing === "chador" ? "scarf" : look.hair ?? defaultHair(look.kind);
   const t = st.time ?? 0;
   ctx.save();
   ctx.translate(x, y);
@@ -503,7 +509,15 @@ export function drawFigure(ctx: Ctx, look: Look, st: FigureState, x: number, y: 
   const L = rad(st.pose.lean);
   const down = { x: -Math.sin(L), y: Math.cos(L) };
   const across = { x: Math.cos(L), y: Math.sin(L) };
-  if (female) {
+  if (look.clothing === "chador") {
+    ctx.beginPath();
+    ctx.moveTo(j.headC.x - 37, j.headC.y + 12);
+    ctx.quadraticCurveTo(j.pelvis.x - 72, j.pelvis.y - 40, j.legL.mid.x - 20, j.legL.mid.y + 18);
+    ctx.quadraticCurveTo(j.pelvis.x, j.legL.mid.y + 34, j.legR.mid.x + 20, j.legR.mid.y + 18);
+    ctx.quadraticCurveTo(j.pelvis.x + 72, j.pelvis.y - 40, j.headC.x + 37, j.headC.y + 12);
+    ctx.closePath();
+    fillStroke(ctx, "#333");
+  } else if (look.clothing === "dress" || (female && (!look.clothing || look.clothing === "classic"))) {
     // پیراهن مثلثی از سرشانه تا زیر لگن
     const top = { x: j.shoulder.x - down.x * 8, y: j.shoulder.y - down.y * 8 };
     const sitting = st.pose.thigh < 0.7;
@@ -530,6 +544,22 @@ export function drawFigure(ctx: Ctx, look: Look, st: FigureState, x: number, y: 
     ctx.moveTo(j.pelvis.x, j.pelvis.y);
     ctx.lineTo(j.neck.x, j.neck.y);
     stroke(ctx);
+  }
+  if (look.clothing && ["tshirt", "shirt", "coat"].includes(look.clothing)) {
+    const coat = look.clothing === "coat";
+    const bottom = j.pelvis.y + (coat ? 28 : 8);
+    ctx.beginPath();
+    ctx.moveTo(j.shoulder.x - 20, j.shoulder.y - 8);
+    ctx.lineTo(j.shoulder.x + 20, j.shoulder.y - 8);
+    ctx.lineTo(j.pelvis.x + 24, bottom);
+    ctx.lineTo(j.pelvis.x - 24, bottom);
+    ctx.closePath(); fillStroke(ctx, coat ? "#dedede" : PAPER);
+    if (look.clothing !== "tshirt") {
+      ctx.beginPath(); ctx.moveTo(j.shoulder.x, j.shoulder.y + 8); ctx.lineTo(j.pelvis.x, bottom); stroke(ctx, 2);
+      for (let y = j.shoulder.y + 24; y < bottom; y += 18) {
+        ctx.beginPath(); ctx.arc(j.pelvis.x + 5, y, 1.8, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill();
+      }
+    }
   }
   // گردن تا زیر سر
   {
@@ -577,6 +607,9 @@ export function drawFigure(ctx: Ctx, look: Look, st: FigureState, x: number, y: 
     const end = { x: arm.end.x + o.x, y: arm.end.y + o.y };
     limbPath(ctx, sh, { x: arm.mid.x + o.x, y: arm.mid.y + o.y }, end);
     drawHold(ctx, hold, end, side);
+    if (hold !== "none") {
+      ctx.beginPath(); ctx.arc(end.x, end.y, 3.6, 0, Math.PI * 2); fillStroke(ctx, PAPER, 1.8);
+    }
   }
 
   ctx.restore();

@@ -56,17 +56,21 @@ describe("Persian story parser", () => {
     const phone = beats[2].kind === "action" ? beats[2].acts[0] : null;
     assert.equal(phone?.move, undefined);
     assert.equal(phone?.hold, "phone");
-    assert.equal(phone?.face, "smile");
+    const smile = beats[3];
+    assert.equal(smile.kind === "action" && smile.acts[0]?.face, "smile");
   });
 
   it("UT-SP-04 dialogue with mood, entry toward someone, narration and speaker cleanup", () => {
     const beats = plan.scenes[0].beats;
-    const line = beats[3];
+    const line = beats.find(b => b.kind === "line")!;
     assert.equal(line.kind, "line");
     assert.equal(line.kind === "line" && line.text, "باز هم گوشی؟!");
     assert.equal(line.kind === "line" && line.acts[0].face, "angry");
-    const enter = beats[5].kind === "action" ? beats[5].acts[0] : null;
-    assert.deepEqual([enter?.who, enter?.move, enter?.target], ["پسر", "enter", "علی"]);
+    const actions = beats.flatMap(b => b.kind === "action" ? b.acts : []);
+    const enter = actions.find(a => a.move === "enter");
+    const approach = actions.find(a => a.move === "approach");
+    assert.deepEqual([enter?.who, enter?.move], ["پسر", "enter"]);
+    assert.deepEqual([approach?.who, approach?.target], ["پسر", "علی"]);
     const car = plan.scenes[1].beats;
     assert.equal(car[1].kind, "narration");
     assert.equal(car[2].kind === "line" && car[2].speaker, "سارا");

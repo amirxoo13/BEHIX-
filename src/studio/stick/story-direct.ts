@@ -1,3 +1,4 @@
+import { speechPulses } from "./speech.ts";
 /**
  * کارگردان خودکار: از داستانِ فهمیده‌شده (story-parse) خط زمانِ فیلم می‌سازد.
  * - جای هر نفر (چپ/راست، نشیمن مبل و صندلی)، ورود و خروج با راه رفتن
@@ -20,9 +21,10 @@ const OFF_LEFT = -0.16;
 const OFF_RIGHT = 1.16;
 const MAX_ON_STAGE = 5;
 
-export type Cue = { from: number; to: number; speaker: string; text: string; mood?: Expression; scene: number };
+export type Cue = { beatId?:string; from: number; to: number; speaker: string; text: string; mood?: Expression; scene: number };
 
-export type Directed = { timeline: Timeline; cues: Cue[]; warnings: string[] };
+export type BeatTiming = { id:string; scene:number; from:number; to:number; text:string; kind:Beat["kind"]; speaker?:string };
+export type Directed = { timeline: Timeline; cues: Cue[]; warnings: string[]; beats:BeatTiming[] };
 
 const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
@@ -174,6 +176,7 @@ export function directStory(plan: StoryPlan): Directed {
   const warnings = [...plan.warnings];
   const scenes: SceneTimeline[] = [];
   const cues: Cue[] = [];
+  const beats: BeatTiming[] = [];
   let clock = 0;
   const seedOf = (id: string) => (plan.cast.findIndex((c) => c.id === id) + 1) * 1.37;
   const nameOf = (id: string) => plan.cast.find((c) => c.id === id)?.name ?? id;
@@ -312,6 +315,7 @@ export function directStory(plan: StoryPlan): Directed {
     let t = 0.5;
     let lineNo = 0;
     for (const beat of scene.beats) {
+      t += beat.delay ?? 0;
       const T = t;
       let dur: number;
       if (beat.kind === "narration") {
@@ -319,9 +323,14 @@ export function directStory(plan: StoryPlan): Directed {
         captions.push({ from: T, to: T + dur, text: beat.text });
         cam(T, 1, 0.5, false);
         t += dur;
+        if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T,to:clock+t,text:beat.text,kind:beat.kind});
         continue;
       }
-      dur = beat.kind === "line" ? lineDuration(beat.text) : beat.acts.length ? 1.5 : 0.7;
+      dur = beat.kind === "line" ? beat.duration ?? lineDuration(beat.text) : beat.acts.length ? 1.5 : beat.delay ? 0 : 0.7;
+      if (beat.delay && beat.acts.length === 0) {
+        if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T-beat.delay,to:clock+T,text:beat.text,kind:beat.kind});
+        continue;
+      }
       let busyUntil = T;
       let punch: ActorState | null = null;
       const momentary: ActorState[] = [];
@@ -329,6 +338,14 @@ export function directStory(plan: StoryPlan): Directed {
       for (const a of beat.acts) {
         const st = states.get(a.who);
         if (!st) continue;
+        if (a.x !== undefined) {
+          st.x = a.x; st.home = a.x;
+          if(st.sit){
+            const seat=nearestSeat(a.x,st.id);
+            if(seat!==null && (forceSit || Math.abs(seat-a.x)<=0.12)){st.x=seat;takeSeat(st.id,seat);}
+            else if(!forceSit){st.sit=false;takeSeat(st.id,null);}
+          }
+        }
         if (a.face) st.face = a.face;
         if (a.drop) st.hold = "none";
         if (a.hold) st.hold = a.hold;
@@ -377,11 +394,11 @@ export function directStory(plan: StoryPlan): Directed {
 
       if (beat.kind === "line") {
         const st = states.get(beat.speaker);
-        dur = Math.max(dur, busyUntil - T + lineDuration(beat.text) * 0.8);
+        dur = beat.duration !== undefined ? Math.max(beat.duration, busyUntil - T + 0.3) : Math.max(dur, busyUntil - T + lineDuration(beat.text) * 0.8);
         const from = Math.max(T + 0.1, busyUntil - 0.3);
-        const to = Math.max(from + 0.8, T + dur - 0.25);
+        const to = Math.max(from + 0.1, T + dur - 0.15);
         if (st) {
-          st.talk.push({ from, to });
+          st.talk.push({ from, to, pulses: speechPulses(beat.text, from, to) });
           // دیالوگ طولانی بدون حرکت مشخص: کمی با دست توضیح می‌دهد (هر دو دیالوگ یک‌بار)
           if (!beat.acts.some((a) => a.gesture) && wordCount(beat.text) >= 7 && st.gesture === null && st.hold === "none" && st.present && hash(lineNo + seedOf(st.id)) > 0.45) {
             st.gesture = "explain";
@@ -395,6 +412,7 @@ export function directStory(plan: StoryPlan): Directed {
         speakers.push({ from, to, cast: beat.speaker });
         captions.push({ from: T, to: T + dur, text: beat.text });
         cues.push({
+          beatId:beat.id,
           from: clock + T,
           to: clock + T + dur,
           speaker: nameOf(beat.speaker),
@@ -423,6 +441,7 @@ export function directStory(plan: StoryPlan): Directed {
         }
       }
       t = T + dur;
+      if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T,to:clock+t,text:beat.text,kind:beat.kind,...(beat.kind==="line"?{speaker:beat.speaker}:{})});
     }
     const end = t + 0.8;
     cam(t, 1, 0.5, false);
@@ -441,7 +460,7 @@ export function directStory(plan: StoryPlan): Directed {
     cast: plan.cast.map((c) => ({ id: c.id, name: c.name, look: c.look })),
     duration: clock,
   };
-  return { timeline, cues, warnings };
+  return { timeline, cues, warnings, beats };
 }
 
 const MOOD_FA: Partial<Record<Expression, string>> = {

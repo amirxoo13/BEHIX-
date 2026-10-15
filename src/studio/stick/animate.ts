@@ -1,3 +1,4 @@
+import { mouthAt, springEase, type MouthPulse } from "./speech.ts";
 /**
  * از «کلیدهای» زمان‌دار به حالت لحظه‌ای هر آدمک، با اصول انیمیشن دستی:
  * - حرکت هم‌پوشان: بالاتنه اول، بعد بازو، بعد ساعد و سر با کمی تأخیر (overlapping action)
@@ -8,7 +9,7 @@
  * همه از روی زمان حساب می‌شود؛ هر فریم مستقل و تکرارپذیر است.
  */
 import { FACES, mixFace, type Expression, type FaceParams } from "./face.ts";
-import { ease, easeLively, type FigureState, type Hold, type Limb, type Pose } from "./figure.ts";
+import { ease, type FigureState, type Hold, type Limb, type Pose } from "./figure.ts";
 import { POSES, type PoseId } from "./poses.ts";
 
 export type ActorKey = {
@@ -27,7 +28,7 @@ export type ActorKey = {
 };
 
 /** بازه‌هایی که شخصیت حرف می‌زند (برای حرکت دهان). */
-export type TalkSpan = { from: number; to: number };
+export type TalkSpan = { from: number; to: number; pulses?: MouthPulse[] };
 
 export type ActorTrack = { keys: ActorKey[]; talk: TalkSpan[]; seed: number };
 
@@ -49,7 +50,7 @@ function activeKey(keys: ActorKey[], t: number) {
 /** ژست بین دو کلید با تأخیر جداگانهٔ هر مفصل. */
 function layered(a: Pose, b: Pose, since: number, dur: number): Pose {
   const p = (delay: number) => ease((since - delay) / dur);
-  const lively = (delay: number) => easeLively((since - delay) / (dur * 1.05), 0.7);
+  const lively = (delay: number) => springEase((since - delay) / (dur * 1.3));
   const body = p(0);
   const upper = p(0.04);
   const fore = lively(0.09);
@@ -80,7 +81,8 @@ export function walkPose(base: Pose, phase: number, dir: number, amount: number)
   return {
     ...base,
     py: base.py - Math.abs(c) * 5 * amount,
-    lean: base.lean + dir * 4 * amount,
+    lean: base.lean + (dir * 4 + s * 2.5) * amount,
+    px: base.px + c * 2.8 * amount,
     tilt: base.tilt - dir * 2 * amount,
     legL,
     legR,
@@ -93,6 +95,7 @@ export function walkPose(base: Pose, phase: number, dir: number, amount: number)
 export function talkAmount(spans: TalkSpan[], t: number, seed: number): number {
   for (const s of spans) {
     if (t < s.from || t > s.to) continue;
+    if (s.pulses) return mouthAt(s.pulses, t);
     const rate = 7;
     const k = Math.floor((t - s.from) * rate);
     const u = (t - s.from) * rate - k;
@@ -143,6 +146,15 @@ export function actorAt(track: ActorTrack, t: number, lookAt: number | null): Ac
     pose = walkPose({ ...POSES.stand, look: pose.look }, since * stepsPerSec, dir, walkAmt);
   }
 
+  // Anticipation is sampled from the next key, independent of playback history.
+  const next = keys[i + 1];
+  if (next && ["standJump", "standKick", "standCheer"].includes(next.pose)) {
+    const u = (t - (next.t - 0.2)) / 0.2;
+    if (u > 0 && u < 1) {
+      const crouch = Math.sin(Math.PI * u) * 0.6;
+      pose = { ...pose, thigh: pose.thigh - crouch * 0.07, lean: pose.lean - crouch * 5 };
+    }
+  }
   // زنده بودن: نفس، جابه‌جایی وزن، تکان ریز سر
   const s = track.seed;
   pose = {
