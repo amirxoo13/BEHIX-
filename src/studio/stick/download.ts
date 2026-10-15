@@ -50,13 +50,19 @@ function blobToBase64(blob: Blob): Promise<string> {
 async function shareNative(blob: Blob, name: string): Promise<void> {
   const [{ Filesystem, Directory }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
   const path = `exports/${safeFileName(name)}`;
-  const written = await Filesystem.writeFile({
-    path,
-    data: await blobToBase64(blob),
-    directory: Directory.Cache,
-    recursive: true,
-  });
-  await Share.share({ title: name, files: [written.uri], dialogTitle: "ذخیره یا ارسال فایل" });
+  // فیلم می‌تواند ده‌ها مگابایت باشد؛ یک‌جا فرستادنش از پل Capacitor حافظهٔ گوشی‌های ضعیف را پر می‌کند.
+  // پس تکه‌تکه نوشته می‌شود. اندازهٔ تکه مضرب ۳ بایت است تا base64 هر تکه جدا هم درست باشد.
+  const CHUNK = 3 * 1024 * 1024;
+  let uri = "";
+  for (let start = 0; start === 0 || start < blob.size; start += CHUNK) {
+    const data = await blobToBase64(blob.slice(start, start + CHUNK));
+    if (start === 0) {
+      uri = (await Filesystem.writeFile({ path, data, directory: Directory.Cache, recursive: true })).uri;
+    } else {
+      await Filesystem.appendFile({ path, data, directory: Directory.Cache });
+    }
+  }
+  await Share.share({ title: name, files: [uri], dialogTitle: "ذخیره یا ارسال فایل" });
 }
 
 function alertSafe(message: string) {

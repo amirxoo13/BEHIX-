@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# اجرای قدیمی همان برنچ با push تازه لغو می‌شود
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -44,9 +49,16 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
+            # PR از fork کلید ندارد: فقط ساخت بدون امضا را چک می‌کنیم؛ push و اجرای دستی بدون کلید خطا می‌دهند
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "::notice::No signing key for this pull request; building an unsigned APK only."
+              echo "APK_SIGNED=false" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "::error::Secret ANDROID_KEYSTORE_BASE64 is missing. Add it in Settings > Secrets and variables > Actions."
             exit 1
           fi
+          echo "APK_SIGNED=true" >> "$GITHUB_ENV"
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/behix-release.jks"
           echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/behix-release.jks" >> "$GITHUB_ENV"
 
@@ -64,12 +76,14 @@ jobs:
           ./gradlew --no-daemon assembleRelease
 
       - name: Check APK signature
+        if: env.APK_SIGNED == 'true'
         run: |
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner verify --print-certs "$APK" | head -5
 
       - name: Upload APK
+        if: env.APK_SIGNED == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: behix-android-apk
