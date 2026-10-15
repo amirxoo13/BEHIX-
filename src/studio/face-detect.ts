@@ -47,7 +47,11 @@ export async function detectFace(src: string): Promise<{ mouth: Pt; eyes: { l: P
   ctx.fillStyle = "#d9dde3";
   ctx.fillRect(0, 0, c.width, c.height);
   ctx.drawImage(img, pad, pad);
-  const det = await detector();
+  // اگر بارگذاری موتور گیر کرد (شبکهٔ کند یا مرورگر قدیمی)، بعد از ۳۰ ثانیه به حالت دستی برمی‌گردیم.
+  const det = await Promise.race([
+    detector(),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 30_000)),
+  ]);
   const res = det.detect(c);
   const pts = res.faceLandmarks[0];
   if (!pts) return null;
