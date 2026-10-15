@@ -21,9 +21,16 @@
     "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "node scripts/run-tests.mjs",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "android:web": "vite build --config vite.android.config.ts",
+    "android:sync": "npm run android:web && cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "@electric-sql/pglite": "^0.5.4",
     "@fontsource/outfit": "^5.3.0",
     "@fontsource/vazirmatn": "^5.3.0",
