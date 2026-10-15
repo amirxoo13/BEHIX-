@@ -296,8 +296,7 @@ export function directStory(plan: StoryPlan): Directed {
 
     const captions: Caption[] = [];
     const thoughts: Thought[] = [];
-    // داخل ماشین کمی نزدیک‌تر تا اتاقک ماشین قاب را پر کند
-    const base = scene.place === "car" ? { zoom: 1.12, cy: 880 } : { zoom: 1, cy: 1000 };
+    const base = { zoom: 1, cy: 1000 };
     const cameras: CameraKey[] = [{ t: 0, zoom: base.zoom, cx: FRAME.w / 2, cy: base.cy }];
     const speakers: SceneTimeline["speakers"] = [];
     const cam = (t: number, rel: number, x: number, sit: boolean) => {

@@ -377,6 +377,11 @@ function benchFront(ctx: Ctx, e: Env, cx: number, w: number) {
   for (const s of [-1, 1]) ln(ctx, cx + s * (w / 2 - 30), e.seatTop + 22, cx + s * (w / 2 - 24), e.floor, 7);
 }
 
+/** اندازهٔ شیشهٔ جلوی ماشین (پشت آن داخل ماشین دیده می‌شود). */
+function carGlass() {
+  return { x: 70, y: 300, w: W - 140, h: 820 };
+}
+
 /* ---------- تعریف مکان‌ها ---------- */
 
 const W = 1080;
@@ -614,98 +619,180 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
     seats: [0.32, 0.68],
     spots: [0.32, 0.68],
     forceSit: true,
+    // دوربین بیرون ماشین، روبه‌روی شیشهٔ جلو: آدم‌ها را از جلو می‌بینیم و پشت سرشان شیشهٔ عقب و جاده‌ای است که دور می‌شود.
     back: (ctx, e) => {
-      // بیرون از شیشهٔ جلو: جاده و درخت‌هایی که رد می‌شوند
-      const wx = 70;
-      const wy = 330;
-      const ww = 940;
-      const wh = 520;
+      const g = carGlass();
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(wx, wy, ww, wh, 60);
+      ctx.roundRect(g.x, g.y, g.w, g.h, [90, 90, 20, 20]);
       ctx.clip();
-      if (e.night) nightSky(ctx, wx, wy, ww, wh, 51);
+      ctx.fillStyle = e.night ? "#9fa3b2" : "#ececea";
+      ctx.fillRect(g.x, g.y, g.w, g.h);
+      // سقف داخل
+      ln(ctx, g.x, 420, g.x + g.w, 420, 3);
+      // شیشهٔ عقب و جاده‌ای که پشت ماشین دور می‌شود
+      const rx = 250;
+      const ry = 440;
+      const rw = W - 500;
+      const rh = 230;
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(rx, ry, rw, rh, 40);
+      ctx.clip();
+      if (e.night) nightSky(ctx, rx, ry, rw, rh, 51, false);
       else {
         ctx.fillStyle = "#f7f7f5";
-        ctx.fillRect(wx, wy, ww, wh);
-        daySky(ctx, wx, wy, ww, wh * 0.6, e);
+        ctx.fillRect(rx, ry, rw, rh);
+        daySky(ctx, rx, ry, rw, rh * 0.5, e, false);
       }
-      const horizon = wy + wh * 0.62;
-      ln(ctx, wx, horizon, wx + ww, horizon, 3);
-      // جاده با خط‌های وسط که نزدیک می‌شوند
+      const hz = ry + rh * 0.45;
+      ln(ctx, rx, hz, rx + rw, hz, 2.6);
       ctx.beginPath();
-      ctx.moveTo(W / 2 - 30, horizon);
-      ctx.lineTo(W / 2 - 420, wy + wh);
-      ctx.moveTo(W / 2 + 30, horizon);
-      ctx.lineTo(W / 2 + 420, wy + wh);
-      ink(ctx, 3.6);
+      ctx.moveTo(W / 2 - 10, hz);
+      ctx.lineTo(rx + 30, ry + rh);
+      ctx.moveTo(W / 2 + 10, hz);
+      ctx.lineTo(rx + rw - 30, ry + rh);
+      ink(ctx, 3);
       ctx.stroke();
       for (let i = 0; i < 4; i++) {
-        const k = ((e.t * 0.9 + i / 4) % 1) ** 2;
-        const y = horizon + k * (wy + wh - horizon);
-        ln(ctx, W / 2, y, W / 2, y + 10 + k * 60, 3 + k * 6);
+        // از نزدیک (پایین) به افق می‌رود: یعنی ماشین جلو می‌رود
+        const k = (1 - ((e.t * 0.8 + i / 4) % 1)) ** 2;
+        const y = hz + k * (ry + rh - hz);
+        ln(ctx, W / 2, y, W / 2, y + 4 + k * 26, 2 + k * 4);
       }
       for (let i = 0; i < 3; i++) {
-        const k = ((e.t * 0.5 + i / 3) % 1) ** 2;
-        for (const s of [-1, 1]) {
-          const x = W / 2 + s * (80 + k * 640);
-          const base = horizon + k * (wh * 0.38);
+        const k = (1 - ((e.t * 0.45 + i / 3) % 1)) ** 2;
+        for (const sd of [-1, 1]) {
+          const x = W / 2 + sd * (40 + k * 330);
+          const base = hz + k * (rh * 0.5);
           if (e.night) {
-            ln(ctx, x, base, x, base - 40 - k * 260, 2 + k * 4);
-            glow(ctx, x, base - 40 - k * 260, 40 + k * 120, 0.5);
-          } else tree(ctx, e, x, base, 0.15 + k * 0.7);
+            ln(ctx, x, base, x, base - 18 - k * 110, 1.5 + k * 3);
+            glow(ctx, x, base - 18 - k * 110, 24 + k * 60, 0.5);
+          } else tree(ctx, e, x, base, 0.08 + k * 0.32);
         }
       }
       ctx.restore();
       ctx.beginPath();
-      ctx.roundRect(wx, wy, ww, wh, 60);
-      ink(ctx, 7);
+      ctx.roundRect(rx, ry, rw, rh, 40);
+      ink(ctx, 6);
       ctx.stroke();
-      // آینهٔ وسط
-      rr(ctx, W / 2 - 80, wy - 20, 160, 46, 14, e.fill);
-      ln(ctx, W / 2, wy - 40, W / 2, wy - 20, 5);
-      // پشتی صندلی‌ها
+      // صندلی عقب
+      rr(ctx, 170, 660, W - 340, 260, 40, e.fill);
+      for (const k of [-1, 1]) ln(ctx, W / 2 + k * 120, 690, W / 2 + k * 120, 900, 3);
+      // پشتی و پشت‌سری صندلی‌های جلو (پشت آدم‌ها)
       for (const x of [W * 0.32, W * 0.68]) {
-        rr(ctx, x - 120, 760, 240, 420, 50, e.fill);
-        rr(ctx, x - 70, 690, 140, 90, 26, e.fill);
+        for (const k of [-1, 1]) ln(ctx, x + k * 34, 700, x + k * 34, 760, 5);
+        rr(ctx, x - 78, 610, 156, 100, 32, e.fill);
+        rr(ctx, x - 128, 740, 256, 480, 54, e.fill);
       }
+      ctx.restore();
     },
     front: (ctx, e) => {
-      // داشبورد جلوی بدن‌ها
+      const g = carGlass();
+      const body = e.night ? "#d9dbe3" : PAPER;
+      // داشبورد (داخل ماشین، پشت شیشه، جلوی بدن‌ها)
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(0, 1110);
-      ctx.quadraticCurveTo(W / 2, 1040, W, 1110);
-      ctx.lineTo(W, e.h);
-      ctx.lineTo(0, e.h);
+      ctx.roundRect(g.x, g.y, g.w, g.h, [90, 90, 20, 20]);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.moveTo(g.x, 1080);
+      ctx.quadraticCurveTo(W / 2, 1030, g.x + g.w, 1080);
+      ctx.lineTo(g.x + g.w, g.y + g.h);
+      ctx.lineTo(g.x, g.y + g.h);
       ctx.closePath();
-      shape(ctx, 5, e.fill);
-      // فرمان جلوی راننده (در ایران راننده سمت چپ ماشین است، که از روبه‌رو سمت راست قاب دیده می‌شود)
+      shape(ctx, 5, e.night ? "#8d92a6" : "#d6d6d2");
+      // فرمان از پشت (راننده‌ی ایرانی سمت چپ ماشین است؛ از روبه‌رو سمت راست قاب)
       const sx = W * 0.68;
-      const sy = 1050;
+      const sy = 1030;
+      ln(ctx, sx, sy, sx, 1110, 12);
       ctx.beginPath();
-      ctx.ellipse(sx, sy, 150, 60, 0, 0, Math.PI * 2);
-      ink(ctx, 9);
+      ctx.ellipse(sx, sy, 150, 52, 0, 0, Math.PI * 2);
+      ink(ctx, 11);
       ctx.stroke();
-      ln(ctx, sx, sy + 10, sx, 1120, 10);
-      // کیلومترشمار و دریچهٔ کولر
-      circ(ctx, sx, 1170, 36, e.fill, 4);
-      ln(ctx, sx, 1170, sx + Math.cos(-2 + Math.sin(e.t) * 0.3) * 28, 1170 + Math.sin(-2 + Math.sin(e.t) * 0.3) * 28, 3);
-      rr(ctx, W * 0.32 - 70, 1150, 140, 50, 12, e.fill);
-      for (let i = 1; i < 4; i++) ln(ctx, W * 0.32 - 70 + i * 35, 1156, W * 0.32 - 70 + i * 35, 1194, 2.4);
-      // لبهٔ داشبورد، داشبورد کمک‌راننده، کنسول وسط با صفحهٔ رادیو و دستهٔ دنده
+      // آینهٔ وسط از پشت با آویز تکان‌خورنده
+      ln(ctx, W / 2, g.y, W / 2, g.y + 40, 6);
+      rr(ctx, W / 2 - 90, g.y + 36, 180, 50, 16, "#3a3a3a", 4);
+      const sw = Math.sin(e.t * 2.3) * 0.22;
+      const hx = W / 2 + Math.sin(sw) * 80;
+      const hy = g.y + 86 + Math.cos(sw) * 80;
+      ln(ctx, W / 2, g.y + 86, hx, hy, 2.4);
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(-sw);
       ctx.beginPath();
-      ctx.moveTo(0, 1250);
-      ctx.quadraticCurveTo(W / 2, 1190, W, 1250);
-      ink(ctx, 4);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(16, 22);
+      ctx.lineTo(8, 22);
+      ctx.lineTo(18, 40);
+      ctx.lineTo(-18, 40);
+      ctx.lineTo(-8, 22);
+      ctx.lineTo(-16, 22);
+      ctx.closePath();
+      shape(ctx, 3, e.fill);
+      ctx.restore();
+      // بازتاب نور روی شیشه
+      ctx.globalAlpha = e.night ? 0.12 : 0.35;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(g.x + 40, g.y + 260);
+      ctx.lineTo(g.x + 150, g.y + 40);
+      ctx.lineTo(g.x + 200, g.y + 40);
+      ctx.lineTo(g.x + 90, g.y + 260);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      // جادهٔ زیر ماشین: خط‌های وسط از جلوی دوربین به زیر ماشین می‌روند (ماشین جلو می‌رود)
+      const bottom = g.y + g.h;
+      const bumper = bottom + 300;
+      ctx.fillStyle = e.night ? "#7f8496" : "#e4e4e1";
+      ctx.fillRect(0, bumper - 20, W, e.h - bumper + 20);
+      for (const k of [-1, 1]) ln(ctx, W / 2 + k * 470, bumper, W / 2 + k * 620, e.h, 5);
+      for (let i = 0; i < 3; i++) {
+        const u = (e.t * 0.9 + i / 3) % 1;
+        const y0 = e.h - u * (e.h - bumper);
+        ln(ctx, W / 2, y0, W / 2, Math.max(bumper, y0 - 90 + u * 40), 10 - u * 4);
+      }
+      // بدنهٔ ماشین دور شیشه: سقف، ستون‌ها، کاپوت، برف‌پاک‌کن، چراغ‌ها و سپر
+      ctx.beginPath();
+      ctx.moveTo(0, 230);
+      ctx.quadraticCurveTo(W / 2, 170, W, 230);
+      ctx.lineTo(W, bumper);
+      ctx.quadraticCurveTo(W / 2, bumper + 30, 0, bumper);
+      ctx.closePath();
+      ctx.roundRect(g.x, g.y, g.w, g.h, [90, 90, 20, 20]);
+      ctx.fillStyle = body;
+      ctx.fill("evenodd");
+      ink(ctx, 6);
       ctx.stroke();
-      rr(ctx, W * 0.32 - 120, 1290, 240, 110, 22, e.fill);
-      circ(ctx, W * 0.32 + 90, 1345, 8, INK, 1);
-      rr(ctx, W / 2 - 80, 1215, 160, 200, 26, e.night ? "#b4b8c4" : "#e6e6e3");
-      rr(ctx, W / 2 - 58, 1235, 116, 70, 10, e.night ? "#8d92a6" : PAPER);
-      if (e.night) glow(ctx, W / 2, 1270, 80, 0.35);
-      for (const dx of [-34, 0, 34]) circ(ctx, W / 2 + dx, 1340, 10, e.fill, 3);
-      ln(ctx, W / 2, 1405, W / 2, 1385, 8);
-      circ(ctx, W / 2, 1380, 16, e.fill, 4);
+      ctx.beginPath();
+      ctx.roundRect(g.x, g.y, g.w, g.h, [90, 90, 20, 20]);
+      ink(ctx, 10);
+      ctx.stroke();
+      for (const [x1, x2] of [
+        [g.x + 90, W / 2 - 40],
+        [W / 2 + 20, g.x + g.w - 110],
+      ]) {
+        ln(ctx, x1, bottom + 14, x2, bottom - 8, 7);
+      }
+      // خط‌های کاپوت
+      for (const k of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(W / 2 + k * 170, bottom + 40);
+        ctx.quadraticCurveTo(W / 2 + k * 190, bottom + 110, W / 2 + k * 215, bottom + 160);
+        ink(ctx, 3);
+        ctx.stroke();
+      }
+      ln(ctx, 30, bottom + 170, W - 30, bottom + 170, 4);
+      // چراغ‌ها و جلوپنجره
+      for (const k of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(W / 2 + k * 370, bottom + 225, 100, 36, 0, 0, Math.PI * 2);
+        shape(ctx, 5, e.night ? "#fff6cf" : PAPER);
+        if (e.night) glow(ctx, W / 2 + k * 370, bottom + 225, 130, 0.45);
+      }
+      rr(ctx, W / 2 - 200, bottom + 196, 400, 58, 20, e.night ? "#9da2b3" : "#e3e3df");
+      for (let i = 1; i < 6; i++) ln(ctx, W / 2 - 200 + i * 66, bottom + 202, W / 2 - 200 + i * 66, bottom + 248, 2.5);
     },
   },
   office: {

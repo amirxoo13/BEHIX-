@@ -170,13 +170,27 @@ function drawHold(ctx: Ctx, hold: Hold, at: P, side: number) {
   ctx.save();
   ctx.translate(at.x, at.y);
   if (hold === "phone") {
-    ctx.rotate(side * -0.25);
+    // صفحهٔ گوشی رو به صورت خود شخصیت است؛ بیننده پشت گوشی را می‌بیند (قاب تیره و دوربین)
+    ctx.rotate(side * -0.12);
     ctx.beginPath();
-    ctx.roundRect(-11, -30, 24, 42, 5);
-    fillStroke(ctx, "#2a2a2a", 3.4);
+    ctx.roundRect(-13, -34, 26, 48, 6);
+    fillStroke(ctx, "#2b2b2b", 3.4);
     ctx.beginPath();
-    ctx.roundRect(-7, -26, 16, 32, 3);
-    ctx.fillStyle = "#e9e9e9";
+    ctx.roundRect(-8, -29, 11, 16, 3.5);
+    ctx.fillStyle = "#4a4a4a";
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = "#777";
+    ctx.stroke();
+    ctx.fillStyle = "#0e0e0e";
+    for (const cy of [-25, -17.5]) {
+      ctx.beginPath();
+      ctx.arc(-2.5, cy, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(0, -1, 3, 0, Math.PI * 2);
+    ctx.fillStyle = "#555";
     ctx.fill();
   } else if (hold === "cup") {
     ctx.beginPath();

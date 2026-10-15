@@ -68,7 +68,8 @@ export const POSES: Record<PoseId, Pose> = {
   standShrug: { ...base, armL: L(55, -125), armR: L(55, -125), tilt: -6 },
   sit: { ...base, ...sitLegs, armL: L(26, -18), armR: L(26, -18) },
   sitCross: { ...base, ...sitLegs, armL: L(18, -128), armR: L(22, -122) },
-  sitPhone: { ...base, ...sitLegs, armL: L(24, -172), armR: L(25, -172), tilt: 8, look: 0.1 },
+  // گوشی جلوی سینه، کمی پایین‌تر از صورت؛ سر کمی خم به طرف گوشی
+  sitPhone: { ...base, ...sitLegs, armL: L(24, -142), armR: L(28, -136), tilt: 10, look: 0.1 },
   sitCupR: { ...base, ...sitLegs, armR: L(24, -96), armL: L(26, -18) },
   sitCupL: { ...base, ...sitLegs, armL: L(24, -96), armR: L(26, -18) },
   sitReachR: { ...base, ...sitLegs, lean: 8, armR: L(72, 8), armL: L(26, -18) },
