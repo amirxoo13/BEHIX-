@@ -3,10 +3,11 @@
  * همه‌چیز با زاویه‌های مفصل تعریف می‌شود تا بین دو ژست به نرمی درون‌یابی شود.
  * واحدها «واحد بدن» است؛ مبدأ لگن (وسط باسن) و محور y رو به پایین.
  */
-export type Ctx = CanvasRenderingContext2D;
+import { drawFaceParams, FACES, type Expression, type FaceParams } from "./face.ts";
+import { INK, PAPER, type Ctx } from "./figure-base.ts";
 
-export const INK = "#141414";
-export const PAPER = "#ffffff";
+export { INK, PAPER, type Ctx };
+export type { Expression, FaceParams };
 
 /** اندازه‌های بدن (واحد بدن). */
 export const BODY = {
@@ -24,22 +25,6 @@ export const BODY = {
 /** زاویهٔ یک دست یا پا: a = زاویهٔ بخش بالا از «رو به پایین» (مثبت = به بیرونِ بدن)، b = خم مفصل نسبت به بخش بالا. */
 export type Limb = { a: number; b: number };
 
-export type Expression =
-  | "neutral"
-  | "smile"
-  | "laugh"
-  | "grin"
-  | "smirk"
-  | "angry"
-  | "pout"
-  | "sad"
-  | "surprised"
-  | "worried"
-  | "content"
-  | "kiss"
-  | "sideEye"
-  | "annoyed";
-
 export type Pose = {
   /** جابه‌جایی لگن نسبت به نقطهٔ جای شخصیت (واحد بدن). */
   px: number;
@@ -51,30 +36,65 @@ export type Pose = {
   armR: Limb;
   legL: Limb;
   legR: Limb;
-  /** کوتاه‌شدن ران (۱ = ایستاده، حدود ۰٫۳ = نشسته رو به دوربین). */
+  /** کوتاه‌شدن ران (۱ = ایستاده، حدود ۰٫۴۵ = نشسته رو به دوربین). */
   thigh: number;
   /** جهت نگاه مردمک‌ها (-۱ چپ تا ۱ راست). */
   look: number;
 };
 
+export type Kind = "man" | "woman" | "boy" | "girl" | "oldMan" | "oldWoman";
+
+export type Hair = "tufts" | "short" | "bald" | "curly" | "long" | "bob" | "ponytail" | "scarf";
+
 export type Look = {
-  kind: "man" | "woman";
-  /** دستهٔ مو برای مرد (۰ = کچل). */
-  tufts?: number;
+  kind: Kind;
+  hair?: Hair;
+  glasses?: boolean;
+  mustache?: boolean;
+  beard?: boolean;
+  cap?: boolean;
 };
 
-export type Hold = "none" | "phone" | "cup" | "cookie";
+export type Hold = "none" | "phone" | "cup" | "cookie" | "book" | "bag" | "ball" | "flowers";
 
 export type FigureState = {
   pose: Pose;
-  face: Expression;
+  face: FaceParams;
   /** ۰ = چشم باز، ۱ = پلک کاملاً بسته. */
   blink: number;
   /** باز بودن دهان هنگام حرف زدن (۰ تا ۱). */
   talk: number;
   holdL?: Hold;
   holdR?: Hold;
+  /** زمان صحنه (برای اشک و عرق). */
+  time?: number;
 };
+
+export function isFemale(k: Kind) {
+  return k === "woman" || k === "girl" || k === "oldWoman";
+}
+
+export function isChild(k: Kind) {
+  return k === "boy" || k === "girl";
+}
+
+export function isOld(k: Kind) {
+  return k === "oldMan" || k === "oldWoman";
+}
+
+/** اندازهٔ کلی هر نوع شخصیت نسبت به بزرگسال. */
+export function kindScale(k: Kind) {
+  return isChild(k) ? 0.7 : isOld(k) ? 0.96 : 1;
+}
+
+export function defaultHair(k: Kind): Hair {
+  if (k === "woman") return "long";
+  if (k === "girl") return "ponytail";
+  if (k === "oldWoman") return "scarf";
+  if (k === "oldMan") return "bald";
+  if (k === "boy") return "short";
+  return "tufts";
+}
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
@@ -125,17 +145,21 @@ export function joints(pose: Pose) {
   };
 }
 
-function polyline(ctx: Ctx, pts: P[], w = BODY.line) {
+/** خط نرم از میان سه نقطه (مفصل گرد، نه زاویهٔ تیز). */
+function limbPath(ctx: Ctx, a: P, m: P, b: P, w = BODY.line) {
   ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+  ctx.moveTo(a.x, a.y);
+  // نقطهٔ کنترل کمی آن‌طرف‌تر از مفصل تا خم مثل بازوی واقعی نرم باشد
+  const cx = m.x * 1.18 - (a.x + b.x) * 0.09;
+  const cy = m.y * 1.18 - (a.y + b.y) * 0.09;
+  ctx.quadraticCurveTo(cx, cy, b.x, b.y);
   stroke(ctx, w);
 }
 
-function foot(ctx: Ctx, at: P, side: number) {
+function foot(ctx: Ctx, at: P, side: number, kid: boolean) {
   ctx.beginPath();
   ctx.moveTo(at.x, at.y);
-  ctx.quadraticCurveTo(at.x + side * 10, at.y + 3, at.x + side * 17, at.y + 1);
+  ctx.quadraticCurveTo(at.x + side * 10, at.y + 3, at.x + side * (kid ? 14 : 17), at.y + 1);
   stroke(ctx, BODY.line + 0.6);
 }
 
@@ -171,243 +195,69 @@ function drawHold(ctx: Ctx, hold: Hold, at: P, side: number) {
     ctx.lineTo(4, -8);
     ctx.closePath();
     fillStroke(ctx, PAPER, 3.4);
-    for (const [x, y] of [[-4, -13], [2, -3], [-5, -4]]) {
+    for (const [x, y] of [
+      [-4, -13],
+      [2, -3],
+      [-5, -4],
+    ]) {
       ctx.beginPath();
       ctx.arc(x, y, 1.8, 0, Math.PI * 2);
       ctx.fillStyle = INK;
       ctx.fill();
     }
+  } else if (hold === "book") {
+    ctx.rotate(side * -0.15);
+    ctx.beginPath();
+    ctx.rect(-26, -30, 26, 36);
+    ctx.rect(0, -30, 26, 36);
+    fillStroke(ctx, PAPER, 3.4);
+    for (const y of [-20, -12, -4]) {
+      ctx.beginPath();
+      ctx.moveTo(-20, y);
+      ctx.lineTo(-6, y);
+      ctx.moveTo(6, y);
+      ctx.lineTo(20, y);
+      stroke(ctx, 1.8);
+    }
+  } else if (hold === "bag") {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 10);
+    stroke(ctx, 3);
+    ctx.beginPath();
+    ctx.roundRect(-22, 10, 44, 34, 6);
+    fillStroke(ctx, PAPER, 3.6);
+  } else if (hold === "ball") {
+    ctx.beginPath();
+    ctx.arc(side * 4, -12, 16, 0, Math.PI * 2);
+    fillStroke(ctx, PAPER, 3.4);
+    ctx.beginPath();
+    ctx.moveTo(side * 4 - 6, -18);
+    ctx.lineTo(side * 4 + 5, -18);
+    ctx.lineTo(side * 4 + 8, -8);
+    ctx.lineTo(side * 4, -2);
+    ctx.lineTo(side * 4 - 8, -8);
+    ctx.closePath();
+    ctx.fillStyle = INK;
+    ctx.fill();
+  } else if (hold === "flowers") {
+    for (let i = 0; i < 3; i++) {
+      const fx = (i - 1) * 10;
+      ctx.beginPath();
+      ctx.moveTo(0, 4);
+      ctx.lineTo(fx, -26);
+      stroke(ctx, 2.6);
+      ctx.beginPath();
+      ctx.arc(fx, -30, 7, 0, Math.PI * 2);
+      fillStroke(ctx, PAPER, 2.8);
+    }
   }
   ctx.restore();
 }
 
-/* ---------- چهره ---------- */
+/* ---------- مو و لوازم سر ---------- */
 
-function dot(ctx: Ctx, x: number, y: number, r: number) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = INK;
-  ctx.fill();
-}
-
-function arc(ctx: Ctx, x: number, y: number, r: number, a0: number, a1: number, w = 3.8, ccw = false) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, a0, a1, ccw);
-  stroke(ctx, w);
-}
-
-function line(ctx: Ctx, x1: number, y1: number, x2: number, y2: number, w = 3.8) {
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  stroke(ctx, w);
-}
-
-/** چشم: باز (سفید با مردمک)، یا بسته. برای زن مژه هم دارد. */
-function eye(
-  ctx: Ctx,
-  x: number,
-  y: number,
-  opts: { open: number; look: number; big?: boolean; lash?: boolean; side: number; lid?: number },
-) {
-  const rx = opts.big ? 10 : 8;
-  const ry = (opts.big ? 12 : 9.5) * Math.max(0.08, opts.open);
-  if (opts.open < 0.15) {
-    // پلک بسته
-    ctx.beginPath();
-    ctx.moveTo(x - rx, y);
-    ctx.quadraticCurveTo(x, y + 5, x + rx, y);
-    stroke(ctx, 3.6);
-    return;
-  }
-  ctx.beginPath();
-  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-  fillStroke(ctx, PAPER, 3.2);
-  const pr = Math.min(rx, ry) * 0.55;
-  dot(ctx, x + opts.look * (rx - pr - 1), y + 1, pr);
-  if (opts.lid) {
-    // پلک نیمه‌افتاده (بی‌حوصله/پوزخند)
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(x, y, rx + 0.5, ry + 0.5, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = PAPER;
-    ctx.fillRect(x - rx - 2, y - ry - 2, rx * 2 + 4, ry * 2 * opts.lid);
-    ctx.restore();
-    line(ctx, x - rx, y - ry + ry * 2 * opts.lid, x + rx, y - ry + ry * 2 * opts.lid, 3.4);
-  }
-  if (opts.lash) {
-    for (const k of [0, 1]) {
-      const ax = x + opts.side * (rx - 1 - k * 5);
-      const ay = y - ry + 1 + k * 2;
-      line(ctx, ax, ay, ax + opts.side * 5, ay - 6 + k * 2, 2.8);
-    }
-  }
-}
-
-function brows(ctx: Ctx, y: number, gap: number, kind: "flat" | "angry" | "sad" | "up" | "raise1" | "none") {
-  if (kind === "none") return;
-  for (const s of [-1, 1]) {
-    const inner = s * (gap - 7);
-    const outer = s * (gap + 9);
-    let yi = y;
-    let yo = y;
-    if (kind === "angry") {
-      yi = y + 6;
-      yo = y - 5;
-    } else if (kind === "sad") {
-      yi = y - 6;
-      yo = y + 3;
-    } else if (kind === "up") {
-      yi = y - 6;
-      yo = y - 6;
-    } else if (kind === "raise1" && s > 0) {
-      yi = y - 7;
-      yo = y - 9;
-    }
-    line(ctx, inner, yi, outer, yo, 4);
-  }
-}
-
-/** چهره در مختصات سر (مرکز سر = ۰،۰). */
-export function drawFace(ctx: Ctx, face: Expression, blink: number, talk: number, look: number, woman: boolean) {
-  const ey = -4;
-  const gap = 15;
-  const open = 1 - blink;
-  const lash = woman;
-  const eyes = (o: Partial<{ open: number; look: number; big: boolean; lid: number }> = {}) => {
-    for (const s of [-1, 1]) {
-      eye(ctx, s * gap, ey, { open: o.open ?? open, look: o.look ?? look, big: o.big, lash, side: s, lid: o.lid });
-    }
-  };
-  const happyEyes = () => {
-    // چشم خندان ^ ^
-    for (const s of [-1, 1]) arc(ctx, s * gap, ey + 4, 8, Math.PI * 1.1, Math.PI * 1.9, 4);
-  };
-  const my = 20;
-  switch (face) {
-    case "neutral":
-      eyes();
-      brows(ctx, ey - 15, gap, woman ? "none" : "flat");
-      if (talk > 0.05) talkMouth(ctx, my, talk);
-      else line(ctx, -8, my, 8, my);
-      break;
-    case "smile":
-      eyes();
-      if (talk > 0.05) talkMouth(ctx, my, talk);
-      else arc(ctx, 0, my - 9, 13, 0.2 * Math.PI, 0.8 * Math.PI, 4);
-      break;
-    case "grin": {
-      eyes();
-      ctx.beginPath();
-      ctx.moveTo(-17, my - 4);
-      ctx.quadraticCurveTo(0, my + 20, 17, my - 4);
-      ctx.closePath();
-      fillStroke(ctx, PAPER, 3.8);
-      line(ctx, -15, my + 1, 15, my + 1, 2.6);
-      break;
-    }
-    case "laugh": {
-      happyEyes();
-      ctx.beginPath();
-      ctx.moveTo(-19, my - 6);
-      ctx.quadraticCurveTo(0, my + 28 + talk * 4, 19, my - 6);
-      ctx.closePath();
-      fillStroke(ctx, "#2b2b2b", 3.8);
-      // زبان
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(-19, my - 6);
-      ctx.quadraticCurveTo(0, my + 28 + talk * 4, 19, my - 6);
-      ctx.closePath();
-      ctx.clip();
-      ctx.beginPath();
-      ctx.ellipse(0, my + 18, 10, 7, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "#9a9a9a";
-      ctx.fill();
-      ctx.fillStyle = PAPER;
-      ctx.fillRect(-19, my - 6, 38, 6);
-      ctx.restore();
-      break;
-    }
-    case "smirk":
-      eyes({ lid: 0.45, look: look || 0.6 });
-      brows(ctx, ey - 15, gap, "raise1");
-      ctx.beginPath();
-      ctx.moveTo(-10, my + 1);
-      ctx.quadraticCurveTo(4, my + 4, 13, my - 5);
-      stroke(ctx, 4);
-      break;
-    case "angry":
-      eyes({ lid: 0.3 });
-      brows(ctx, ey - 13, gap, "angry");
-      if (talk > 0.05) talkMouth(ctx, my, talk);
-      else arc(ctx, 0, my + 9, 11, 1.2 * Math.PI, 1.8 * Math.PI, 4);
-      break;
-    case "pout": {
-      // اخم با لپ باد کرده
-      eyes({ lid: 0.35 });
-      brows(ctx, ey - 13, gap, "angry");
-      ctx.beginPath();
-      ctx.ellipse(0, my + 2, 7, 6, 0, 0, Math.PI * 2);
-      fillStroke(ctx, PAPER, 3.6);
-      for (const s of [-1, 1]) arc(ctx, s * 22, my - 2, 9, s > 0 ? -0.6 * Math.PI : 0.4 * Math.PI, s > 0 ? 0.6 * Math.PI : 1.6 * Math.PI, 3.2);
-      break;
-    }
-    case "sad":
-      eyes({ look: 0 });
-      brows(ctx, ey - 14, gap, "sad");
-      arc(ctx, 0, my + 10, 11, 1.2 * Math.PI, 1.8 * Math.PI, 4);
-      break;
-    case "worried":
-      eyes({ look: look || -0.5 });
-      brows(ctx, ey - 15, gap, "sad");
-      ctx.beginPath();
-      ctx.moveTo(-10, my + 2);
-      for (let i = 1; i <= 4; i++) ctx.lineTo(-10 + i * 5, my + (i % 2 ? -2 : 2));
-      stroke(ctx, 3.6);
-      break;
-    case "surprised":
-      eyes({ big: true, look: 0 });
-      brows(ctx, ey - 20, gap, "up");
-      ctx.beginPath();
-      ctx.ellipse(0, my + 4, 7, 9, 0, 0, Math.PI * 2);
-      fillStroke(ctx, "#2b2b2b", 3.6);
-      break;
-    case "content":
-      for (const s of [-1, 1]) arc(ctx, s * gap, ey - 2, 8, 0.1 * Math.PI, 0.9 * Math.PI, 4);
-      arc(ctx, 0, my - 7, 10, 0.2 * Math.PI, 0.8 * Math.PI, 4);
-      break;
-    case "kiss":
-      eyes({ look: look || 0.7 });
-      ctx.font = "700 26px sans-serif";
-      ctx.fillStyle = INK;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("3", 2, my + 2);
-      break;
-    case "sideEye":
-      eyes({ look: look || 0.9, lid: 0.25 });
-      brows(ctx, ey - 15, gap, "raise1");
-      line(ctx, -7, my + 1, 9, my - 1);
-      break;
-    case "annoyed":
-      eyes({ lid: 0.5, look: look || -0.4 });
-      brows(ctx, ey - 13, gap, "flat");
-      line(ctx, -9, my + 2, 9, my + 2);
-      break;
-  }
-}
-
-function talkMouth(ctx: Ctx, y: number, talk: number) {
-  ctx.beginPath();
-  ctx.ellipse(0, y + 2, 9 + talk * 3, 3 + talk * 8, 0, 0, Math.PI * 2);
-  fillStroke(ctx, "#2b2b2b", 3.6);
-}
-
-/* ---------- مو ---------- */
-
-function hairBack(ctx: Ctx, r: number) {
+function hairBackLong(ctx: Ctx, r: number) {
   ctx.beginPath();
   ctx.moveTo(-r * 1.02, -r * 0.1);
   ctx.bezierCurveTo(-r * 1.25, -r * 1.45, r * 1.25, -r * 1.45, r * 1.02, -r * 0.1);
@@ -419,8 +269,31 @@ function hairBack(ctx: Ctx, r: number) {
   fillStroke(ctx);
 }
 
-function hairFront(ctx: Ctx, r: number) {
-  // چتری: روی سر تا شقیقه‌ها، لبهٔ پایینش سه دستهٔ موی نوک‌دار روی پیشانی.
+function hairBackBob(ctx: Ctx, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.04, -r * 0.1);
+  ctx.bezierCurveTo(-r * 1.25, -r * 1.42, r * 1.25, -r * 1.42, r * 1.04, -r * 0.1);
+  ctx.quadraticCurveTo(r * 1.15, r * 0.55, r * 0.9, r * 0.62);
+  ctx.lineTo(-r * 0.9, r * 0.62);
+  ctx.quadraticCurveTo(-r * 1.15, r * 0.55, -r * 1.04, -r * 0.1);
+  fillStroke(ctx);
+}
+
+function ponytail(ctx: Ctx, r: number, t: number) {
+  const sw = Math.sin(t * 3) * 0.08;
+  ctx.beginPath();
+  ctx.moveTo(r * 0.75, -r * 0.7);
+  ctx.bezierCurveTo(r * (1.55 + sw), -r * 0.9, r * (1.6 + sw), r * 0.1, r * (1.25 + sw), r * 0.55);
+  ctx.bezierCurveTo(r * (1.3 + sw), r * 0.05, r * 1.15, -r * 0.4, r * 0.85, -r * 0.45);
+  ctx.closePath();
+  fillStroke(ctx);
+  ctx.beginPath();
+  ctx.ellipse(r * 0.82, -r * 0.6, 5, 8, 0.6, 0, Math.PI * 2);
+  fillStroke(ctx, INK, 2);
+}
+
+/** چتری کج روی پیشانی. */
+function bangs(ctx: Ctx, r: number) {
   ctx.beginPath();
   ctx.moveTo(-r * 1.0, -r * 0.12);
   ctx.arc(0, -r * 0.04, r * 1.04, Math.PI * 1.05, Math.PI * 1.95);
@@ -429,6 +302,36 @@ function hairFront(ctx: Ctx, r: number) {
   ctx.quadraticCurveTo(r * 0.36, -r * 0.66, r * 0.02, -r * 0.36);
   ctx.quadraticCurveTo(-r * 0.2, -r * 0.7, -r * 0.5, -r * 0.33);
   ctx.quadraticCurveTo(-r * 0.68, -r * 0.62, -r * 1.0, -r * 0.12);
+  fillStroke(ctx);
+}
+
+/** روسری: دور صورت، گره زیر چانه و دو گوشه که پایین می‌افتند. */
+function scarf(ctx: Ctx, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.62, r * 0.78);
+  ctx.bezierCurveTo(-r * 1.55, r * 0.5, -r * 1.35, -r * 1.5, 0, -r * 1.32);
+  ctx.bezierCurveTo(r * 1.35, -r * 1.5, r * 1.55, r * 0.5, r * 0.62, r * 0.78);
+  ctx.lineTo(r * 0.3, r * 1.25);
+  ctx.lineTo(-r * 0.3, r * 1.25);
+  ctx.closePath();
+  fillStroke(ctx);
+  // دو گوشهٔ روسری
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * r * 0.15, r * 1.1);
+    ctx.lineTo(s * r * 0.55, r * 1.75);
+    ctx.lineTo(s * r * 0.05, r * 1.6);
+    ctx.closePath();
+    fillStroke(ctx);
+  }
+}
+
+/** لبهٔ روسری روی پیشانی (بعد از کشیدن صورت). */
+function scarfFront(ctx: Ctx, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.98, -r * 0.05);
+  ctx.bezierCurveTo(-r * 0.95, -r * 1.1, r * 0.95, -r * 1.1, r * 0.98, -r * 0.05);
+  ctx.bezierCurveTo(r * 0.75, -r * 0.62, -r * 0.75, -r * 0.62, -r * 0.98, -r * 0.05);
   fillStroke(ctx);
 }
 
@@ -444,85 +347,230 @@ function tufts(ctx: Ctx, r: number, n: number) {
   }
 }
 
+function shortHair(ctx: Ctx, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.0, -r * 0.2);
+  ctx.arc(0, -r * 0.05, r * 1.06, Math.PI * 1.08, Math.PI * 1.92);
+  ctx.lineTo(r * 1.0, -r * 0.2);
+  ctx.lineTo(r * 0.82, -r * 0.42);
+  ctx.lineTo(r * 0.6, -r * 0.55);
+  ctx.lineTo(r * 0.35, -r * 0.48);
+  ctx.lineTo(r * 0.1, -r * 0.6);
+  ctx.lineTo(-r * 0.2, -r * 0.5);
+  ctx.lineTo(-r * 0.5, -r * 0.62);
+  ctx.lineTo(-r * 0.78, -r * 0.45);
+  ctx.closePath();
+  fillStroke(ctx);
+}
+
+function curly(ctx: Ctx, r: number) {
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * (1.02 + (i / 8) * 0.96);
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * r * 0.98, Math.sin(a) * r * 0.98, r * 0.24, 0, Math.PI * 2);
+    fillStroke(ctx, PAPER, 3.4);
+  }
+}
+
+function sideHair(ctx: Ctx, r: number) {
+  // موی دو طرف سر برای پیرمرد کچل
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * r * 0.98, -r * 0.35);
+    ctx.quadraticCurveTo(s * r * 1.22, -r * 0.1, s * r * 1.0, r * 0.25);
+    ctx.quadraticCurveTo(s * r * 1.1, -r * 0.05, s * r * 0.98, -r * 0.35);
+    fillStroke(ctx, PAPER, 3);
+  }
+}
+
+function capOn(ctx: Ctx, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.0, -r * 0.3);
+  ctx.bezierCurveTo(-r * 1.0, -r * 1.35, r * 1.0, -r * 1.35, r * 1.0, -r * 0.3);
+  ctx.closePath();
+  fillStroke(ctx);
+  ctx.beginPath();
+  ctx.moveTo(r * 0.2, -r * 0.32);
+  ctx.quadraticCurveTo(r * 1.1, -r * 0.42, r * 1.55, -r * 0.2);
+  ctx.quadraticCurveTo(r * 1.0, -r * 0.15, r * 0.2, -r * 0.2);
+  ctx.closePath();
+  fillStroke(ctx);
+  ctx.beginPath();
+  ctx.arc(0, -r * 1.07, 4, 0, Math.PI * 2);
+  fillStroke(ctx, INK, 2);
+}
+
+function glasses(ctx: Ctx) {
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(s * 15, -4, 12, 0, Math.PI * 2);
+    stroke(ctx, 3);
+  }
+  ctx.beginPath();
+  ctx.moveTo(-3, -6);
+  ctx.quadraticCurveTo(0, -9, 3, -6);
+  stroke(ctx, 3);
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * 27, -6);
+    ctx.lineTo(s * 40, -10);
+    stroke(ctx, 3);
+  }
+}
+
+function mustache(ctx: Ctx) {
+  ctx.beginPath();
+  ctx.moveTo(0, 12);
+  ctx.quadraticCurveTo(-12, 7, -20, 16);
+  ctx.quadraticCurveTo(-10, 14, 0, 16);
+  ctx.quadraticCurveTo(10, 14, 20, 16);
+  ctx.quadraticCurveTo(12, 7, 0, 12);
+  fillStroke(ctx, INK, 2.4);
+}
+
+function beard(ctx: Ctx, r: number) {
+  // ریش کوتاه دور چانه، زیر دهان
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.86, r * 0.36);
+  ctx.quadraticCurveTo(-r * 0.78, r * 1.18, 0, r * 1.22);
+  ctx.quadraticCurveTo(r * 0.78, r * 1.18, r * 0.86, r * 0.36);
+  ctx.quadraticCurveTo(r * 0.6, r * 0.82, r * 0.25, r * 0.8);
+  ctx.quadraticCurveTo(0, r * 0.9, -r * 0.25, r * 0.8);
+  ctx.quadraticCurveTo(-r * 0.6, r * 0.82, -r * 0.86, r * 0.36);
+  fillStroke(ctx);
+  for (const [x, y] of [
+    [-0.45, 0.92],
+    [0.42, 0.95],
+    [0, 1.06],
+  ]) {
+    ctx.beginPath();
+    ctx.moveTo(r * x - 3, r * y - 3);
+    ctx.lineTo(r * x + 3, r * y + 3);
+    stroke(ctx, 2);
+  }
+}
+
+function wrinkles(ctx: Ctx, r: number) {
+  for (const y of [-0.62, -0.5]) {
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.32, r * y);
+    ctx.quadraticCurveTo(0, r * (y - 0.06), r * 0.32, r * y);
+    stroke(ctx, 2);
+  }
+}
+
 /* ---------- کل بدن ---------- */
 
 /**
- * کشیدن آدمک. (x, y) جای لگن در صحنه است و `scale` اندازه.
- * ترتیب لایه‌ها: پا، دامن، بدن، دست پشت، سر، دست جلو و اشیای دست.
+ * کشیدن آدمک. (x, y) جای لگن در صحنه است و `scale` اندازه (اندازهٔ بچه‌ها خودکار کوچک‌تر می‌شود).
+ * ترتیب لایه‌ها: پا، پیراهن/بدن، مو پشت، سر، چهره، مو جلو، دست‌ها و اشیای دست.
  */
 export function drawFigure(ctx: Ctx, look: Look, st: FigureState, x: number, y: number, scale: number) {
   const j = joints(st.pose);
+  const kid = isChild(look.kind);
+  const female = isFemale(look.kind);
+  const hair = look.hair ?? defaultHair(look.kind);
+  const t = st.time ?? 0;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(scale, scale);
-  const woman = look.kind === "woman";
 
   // پاها
   for (const [leg, side] of [
     [j.legL, -1],
     [j.legR, 1],
   ] as const) {
-    const hip = { x: j.pelvis.x + side * (woman ? 14 : 9), y: j.pelvis.y + (woman ? 10 : 0) };
-    polyline(ctx, [hip, leg.mid, leg.end]);
-    foot(ctx, leg.end, side);
+    const hip = { x: j.pelvis.x + side * (female ? 14 : 9), y: j.pelvis.y + (female ? 10 : 0) };
+    limbPath(ctx, hip, leg.mid, leg.end);
+    foot(ctx, leg.end, side, kid);
   }
 
   // بدن
-  if (woman) {
+  const L = rad(st.pose.lean);
+  const down = { x: -Math.sin(L), y: Math.cos(L) };
+  const across = { x: Math.cos(L), y: Math.sin(L) };
+  if (female) {
     // پیراهن مثلثی از سرشانه تا زیر لگن
-    const L = rad(st.pose.lean);
-    const down = { x: -Math.sin(L), y: Math.cos(L) };
-    const across = { x: Math.cos(L), y: Math.sin(L) };
     const top = { x: j.shoulder.x - down.x * 8, y: j.shoulder.y - down.y * 8 };
     const sitting = st.pose.thigh < 0.7;
-    const hemD = sitting ? 26 : 42;
-    const hemW = sitting ? 62 : 56;
-    const hem = { x: j.pelvis.x + down.x * hemD, y: j.pelvis.y + down.y * hemD };
     ctx.beginPath();
     ctx.moveTo(top.x - across.x * 11, top.y - across.y * 11);
     ctx.lineTo(top.x + across.x * 11, top.y + across.y * 11);
-    ctx.lineTo(hem.x + across.x * hemW, hem.y + across.y * hemW);
-    ctx.lineTo(hem.x - across.x * hemW, hem.y - across.y * hemW);
+    if (sitting) {
+      // نشسته: دامن تا روی زانوها پهن می‌شود و فقط ساق‌ها از زیرش پیداست
+      const kL = { x: j.legL.mid.x - 14, y: j.legL.mid.y + 10 };
+      const kR = { x: j.legR.mid.x + 14, y: j.legR.mid.y + 10 };
+      ctx.lineTo(j.pelvis.x + across.x * 30, j.pelvis.y + across.y * 30 - 4);
+      ctx.lineTo(kR.x, kR.y);
+      ctx.quadraticCurveTo(j.pelvis.x, Math.max(kL.y, kR.y) + 12, kL.x, kL.y);
+      ctx.lineTo(j.pelvis.x - across.x * 30, j.pelvis.y - across.y * 30 - 4);
+    } else {
+      const hem = { x: j.pelvis.x + down.x * 42, y: j.pelvis.y + down.y * 42 };
+      ctx.lineTo(hem.x + across.x * 56, hem.y + across.y * 56);
+      ctx.lineTo(hem.x - across.x * 56, hem.y - across.y * 56);
+    }
     ctx.closePath();
     fillStroke(ctx);
   } else {
-    polyline(ctx, [j.pelvis, j.neck]);
+    ctx.beginPath();
+    ctx.moveTo(j.pelvis.x, j.pelvis.y);
+    ctx.lineTo(j.neck.x, j.neck.y);
+    stroke(ctx);
   }
   // گردن تا زیر سر
   {
     const H = rad(st.pose.lean + st.pose.tilt);
-    polyline(ctx, [j.neck, { x: j.neck.x + Math.sin(H) * (BODY.neck + 4), y: j.neck.y - Math.cos(H) * (BODY.neck + 4) }]);
-  }
-
-  // دست‌ها
-  // زن: دست‌ها از گوشه‌های بالای پیراهن شروع می‌شوند تا روی پیراهن خط نیفتد.
-  const sw = woman ? 11 : 0;
-  const Lr = rad(st.pose.lean);
-  for (const [arm, side, hold] of [
-    [j.armL, -1, st.holdL ?? "none"],
-    [j.armR, 1, st.holdR ?? "none"],
-  ] as const) {
-    const o = { x: Math.cos(Lr) * sw * side, y: Math.sin(Lr) * sw * side };
-    const sh = { x: j.shoulder.x + o.x, y: j.shoulder.y + o.y };
-    polyline(ctx, [sh, { x: arm.mid.x + o.x, y: arm.mid.y + o.y }, { x: arm.end.x + o.x, y: arm.end.y + o.y }]);
-    drawHold(ctx, hold, { x: arm.end.x + o.x, y: arm.end.y + o.y }, side);
+    ctx.beginPath();
+    ctx.moveTo(j.neck.x, j.neck.y);
+    ctx.lineTo(j.neck.x + Math.sin(H) * (BODY.neck + 4), j.neck.y - Math.cos(H) * (BODY.neck + 4));
+    stroke(ctx);
   }
 
   // سر
   ctx.save();
   ctx.translate(j.headC.x, j.headC.y);
   ctx.rotate(rad(st.pose.lean + st.pose.tilt));
-  const r = BODY.headR;
-  if (woman) hairBack(ctx, r);
+  const r = BODY.headR * (kid ? 1.08 : 1);
+  if (hair === "long") hairBackLong(ctx, r);
+  else if (hair === "bob") hairBackBob(ctx, r);
+  else if (hair === "ponytail") ponytail(ctx, r, t);
+  else if (hair === "scarf") scarf(ctx, r);
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   fillStroke(ctx);
-  if (woman) hairFront(ctx, r);
-  else if (look.tufts) tufts(ctx, r, look.tufts);
-  drawFace(ctx, st.face, st.blink, st.talk, st.pose.look, woman);
+  if (look.beard) beard(ctx, r);
+  if (isOld(look.kind)) wrinkles(ctx, r);
+  drawFaceParams(ctx, st.face, { look: st.pose.look, blink: st.blink, talk: st.talk, lashes: female, time: t });
+  if (look.mustache || look.kind === "oldMan") mustache(ctx);
+  if (look.glasses || look.kind === "oldWoman") glasses(ctx);
+  if (hair === "long" || hair === "bob" || hair === "ponytail") bangs(ctx, r);
+  else if (hair === "scarf") scarfFront(ctx, r);
+  else if (hair === "short") shortHair(ctx, r);
+  else if (hair === "curly") curly(ctx, r);
+  else if (hair === "tufts" && !look.cap) tufts(ctx, r, 3);
+  if (look.kind === "oldMan" && hair === "bald") sideHair(ctx, r);
+  if (look.cap) capOn(ctx, r);
   ctx.restore();
 
+  // دست‌ها (زن: از گوشه‌های بالای پیراهن شروع می‌شوند تا روی پیراهن خط نیفتد)
+  const sw = female ? 11 : 0;
+  for (const [arm, side, hold] of [
+    [j.armL, -1, st.holdL ?? "none"],
+    [j.armR, 1, st.holdR ?? "none"],
+  ] as const) {
+    const o = { x: across.x * sw * side, y: across.y * sw * side };
+    const sh = { x: j.shoulder.x + o.x, y: j.shoulder.y + o.y };
+    const end = { x: arm.end.x + o.x, y: arm.end.y + o.y };
+    limbPath(ctx, sh, { x: arm.mid.x + o.x, y: arm.mid.y + o.y }, end);
+    drawHold(ctx, hold, end, side);
+  }
+
   ctx.restore();
+}
+
+/** حالت چهره از روی اسم. */
+export function faceOf(e: Expression): FaceParams {
+  return FACES[e];
 }
 
 /* ---------- درون‌یابی ژست ---------- */
@@ -549,4 +597,18 @@ export function mixPose(a: Pose, b: Pose, t: number): Pose {
 export function ease(t: number): number {
   const u = Math.min(1, Math.max(0, t));
   return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+}
+
+/**
+ * نرمی با «پیش‌حرکت و جاافتادن» (anticipation + overshoot): کمی عقب، بعد کمی جلوتر از هدف و برگشت.
+ * همان اصلی که در انیمیشن دستی حرکت را زنده نشان می‌دهد.
+ */
+export function easeLively(t: number, amount = 1): number {
+  const u = Math.min(1, Math.max(0, t));
+  const c1 = 1.4 * amount;
+  const c3 = c1 + 1;
+  // easeInOutBack
+  return u < 0.5
+    ? (Math.pow(2 * u, 2) * ((c3 * 1.2 + 1) * 2 * u - c3 * 1.2)) / 2
+    : (Math.pow(2 * u - 2, 2) * ((c3 * 1.2 + 1) * (u * 2 - 2) + c3 * 1.2) + 2) / 2;
 }
