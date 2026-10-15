@@ -83,7 +83,7 @@ jobs:
           test -f "$APK"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
           test -n "$APKSIGNER"
-          "$APKSIGNER" verify --print-certs "$APK" | head -5
+          "$APKSIGNER" verify --print-certs "$APK"
 
       - name: Upload APK
         if: env.APK_SIGNED == 'true'
