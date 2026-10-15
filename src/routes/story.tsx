@@ -77,7 +77,7 @@ function StoryPage() {
                 const on = beat ? selectedId === beat.id || directed.beats.some((item) => item.id === selectedId && item.scene === index) : false;
                 return (
                   <li key={`${index}-${scene.start}`}>
-                    <button type="button" className={on ? "is-on" : ""} disabled={!beat} onClick={() => beat && setSelected(beat.id)}>
+                    <button type="button" className={on ? "is-on" : ""} aria-pressed={on} disabled={!beat} onClick={() => beat && setSelected(beat.id)}>
                       <b>{fa(index + 1)}</b>
                       <span>{PLACES[scene.place].label}</span>
                       <small>{scene.night ? "شب" : "روز"}</small>

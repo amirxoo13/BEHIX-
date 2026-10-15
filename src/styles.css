@@ -546,8 +546,9 @@
   }
   .studio .story-text { min-height: 9rem; }
   @media (max-width: 899px) {
+    .studio { grid-template-rows: auto; }
     .studio-hint { display: none; }
-    .studio-body { grid-template-columns: 1fr; }
+    .studio-body { display: contents; }
     .studio-screen { order: 1; }
     .studio-time { order: 2; }
     .studio-scenes { order: 3; border-left: 0; border-top: 1px solid var(--color-line); }
