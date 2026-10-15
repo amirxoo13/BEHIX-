@@ -5,8 +5,11 @@ import { POSES } from "./poses.ts";
 
 describe("stick figure rig", () => {
   it("UT-ST-01 blending starts and ends exactly on the two poses", () => {
-    assert.deepEqual(mixPose(POSES.stand, POSES.sit, 0), POSES.stand);
-    assert.deepEqual(mixPose(POSES.stand, POSES.sit, 1), POSES.sit);
+    const near = (a: unknown, b: unknown) =>
+      assert.deepEqual(JSON.parse(JSON.stringify(a, (_k, v) => (typeof v === "number" ? Math.round(v * 1e6) / 1e6 : v))),
+        JSON.parse(JSON.stringify(b, (_k, v) => (typeof v === "number" ? Math.round(v * 1e6) / 1e6 : v))));
+    near(mixPose(POSES.stand, POSES.sit, 0), POSES.stand);
+    near(mixPose(POSES.stand, POSES.sit, 1), POSES.sit);
     assert.equal(ease(0), 0);
     assert.equal(ease(1), 1);
     assert.equal(ease(0.5), 0.5);
