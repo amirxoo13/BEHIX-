@@ -25,7 +25,7 @@ function DeskPage() {
       <h1 className="sr-only">BEHIX — {title}</h1>
       <img className="lockup" src="/brand/lockup.png" alt="BEHIX. Animate Your Imagination." />
       <p className="mx-auto mt-4 max-w-xl text-center text-sm leading-6 text-muted">
-        تولید را به ترتیب خط تولید جلو ببرید. سناریو، بعد شخصیت، بعد فضا، دکوپاژ، انیمیت، صدا و خروجی.
+        فیلم آدمکی را در یک صفحه بسازید: صحنه، شخصیت، بوم و زمان. خط تولید عکس‌سر جدا مانده است.
       </p>
 
       <Link to="/story" className="panel mx-auto mt-6 flex max-w-xl items-center justify-between gap-3 no-underline">

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { importProject, newProject, projectJson, type StoryProject } from "@/studio/stick/project";
-import { TEMPLATES } from "@/studio/stick/templates";
 import { downloadBlob } from "@/studio/stick/download";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
 export function ProjectPanel({
@@ -59,26 +58,6 @@ export function ProjectPanel({
             {w.projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          ساخت از قالب
-          <select
-            className="field"
-            value=""
-            onChange={(e) => {
-              const t = TEMPLATES[Number(e.target.value)];
-              if (t) open(newProject(t.text, t.title));
-            }}
-          >
-            <option value="" disabled>
-              انتخاب قالب
-            </option>
-            {TEMPLATES.map((t, i) => (
-              <option value={i} key={t.title}>
-                {t.title}
               </option>
             ))}
           </select>
