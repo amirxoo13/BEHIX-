@@ -33,6 +33,7 @@ async function main() {
     "src/lib/preview-path-prefix.test.ts",
     "src/lib/rate-limit.test.ts",
     "src/studio/*.test.ts",
+    "src/studio/stick/*.test.ts",
   ]);
   process.exit(combineStatus([scripts, ts]));
 }
