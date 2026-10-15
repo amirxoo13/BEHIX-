@@ -49,7 +49,9 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 async function shareNative(blob: Blob, name: string): Promise<void> {
   const [{ Filesystem, Directory }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
-  const path = `exports/${safeFileName(name)}`;
+  // هر خروجی پوشهٔ جدای خودش را دارد تا خروجی بعدی با همان اسم، فایلِ در حال اشتراکِ قبلی را عوض نکند
+  const id = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  const path = `exports/${id}/${safeFileName(name)}`;
   // فیلم می‌تواند ده‌ها مگابایت باشد؛ یک‌جا فرستادنش از پل Capacitor حافظهٔ گوشی‌های ضعیف را پر می‌کند.
   // پس تکه‌تکه نوشته می‌شود. اندازهٔ تکه مضرب ۳ بایت است تا base64 هر تکه جدا هم درست باشد.
   const CHUNK = 3 * 1024 * 1024;
