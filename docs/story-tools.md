@@ -85,8 +85,6 @@ node scripts/story-soak.mjs
 
 آزمون‌ها را برای سنجش زمان و ضبط، **پشت سر هم** اجرا کنید. soak پخش واقعی ۶۰۰ ثانیه است؛ در طول آن HMR، عوض‌کردن تب یا بار سنگین آزمون دیگر نتیجه را مخدوش می‌کند. فایل‌های نتیجه زیر `$WORKSPACE_ROOT/output/behix/` نوشته می‌شوند. `story-failure-check.mjs` سهمیهٔ ذخیره را پیش از ناوبری در context جداگانه محدود می‌کند و برای آزمون شکست صف به مرورگری نیاز دارد که خروجی داستانش از MediaRecorder استفاده کند؛ track بومی ضبط متوقف می‌شود و هیچ recorder ساختگی جای آن قرار نمی‌گیرد.
 
-برای smoke نسخهٔ ساخته‌شده، `npm run preview:restart` و سپس `scripts/browser-smoke.mjs` با `BROWSER_CDP_URL` و `BROWSER_READY_SELECTOR='canvas[data-render-ready=true]'` اجرا شود؛ dev و build جداگانه بررسی شوند.
-
 ### فریم مرجع
 
 ۱۲ PNG در `tests/story/baselines/` چهار قالب × سه اندازه را پوشش می‌دهند. نسخهٔ مرورگر/فونت، seed و زمان انتخاب در `manifest.json` ثبت است. `story-browser.mjs` baseline گمشده را خطا می‌داند؛ `STORY_VISUAL_CANDIDATES=1` فقط ذخیرهٔ نامزدهای گمشده را مجاز می‌کند. فریم تولیدشده و diff را بازبینی کنید، سپس فقط تصاویر تأییدشده را به baseline منتقل و manifest را به‌روز کنید. تست را دوباره با حالت عادی اجرا کنید. تغییر نسخهٔ مرورگر می‌تواند نیازمند بازبینی مستقل باشد.
