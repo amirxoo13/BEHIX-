@@ -9,6 +9,7 @@ import { useStudio } from "@/studio/store";
 
 export const Route = createFileRoute("/")({ component: DeskPage });
 
+/** Renders the project overview, metadata editor, and links to the animation workflows. */
 function DeskPage() {
   const title = useStudio((s) => s.title);
   const logline = useStudio((s) => s.logline);

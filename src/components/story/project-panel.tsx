@@ -2,6 +2,7 @@ import { useState } from "react";
 import { importProject, newProject, projectJson, type StoryProject } from "@/studio/stick/project";
 import { downloadBlob } from "@/studio/stick/download";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
+/** Renders workspace project management controls, or nothing while no project is loaded. */
 export function ProjectPanel({
   workspace: w,
 }: {

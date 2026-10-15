@@ -39,6 +39,7 @@ const clock = (sec: number) => {
   return `${fa(m)}:${fa(Math.floor(s % 60)).padStart(2, "۰")}`;
 };
 
+/** Renders the story studio, compiling workspace text for scene selection, preview, and timeline editing. */
 function StoryPage() {
   const workspace = useStoryWorkspace("");
   const { project, commit } = workspace;
