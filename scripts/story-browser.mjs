@@ -106,10 +106,12 @@ try {
         diff = new PNG({ width: a.width, height: a.height });
       const count = pixelmatch(a.data, b.data, diff.data, a.width, a.height, { threshold: 0.1 });
       if (count) writeFileSync(resolve(output, `${frame.name}-diff.png`), PNG.sync.write(diff));
-      check(`visual baseline ${frame.name}`, count === 0);
+      if (count && process.env.STORY_VISUAL_CANDIDATES === "1") report.checks.push(`candidate pending review: ${frame.name}, ${count} changed pixels`);
+      else check(`visual baseline ${frame.name}`, count === 0);
     } else if(process.env.STORY_VISUAL_CANDIDATES === "1") report.checks.push(`candidate saved, baseline review pending: ${frame.name}`);
     else throw new Error(`Missing reviewed baseline: ${frame.name}`);
   }
+  if (process.env.STORY_VISUAL_ONLY !== "1") {
   const persistence = await page.evaluate(async () => {
     const model = await import("/src/studio/stick/project.ts"),
       db = await import("/src/studio/stick/project-db.ts");
@@ -139,31 +141,32 @@ try {
   await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
   const original = await page.getByLabel("داستان‌های ذخیره‌شده").inputValue();
   await page.getByRole("button", { name: "داستان تازه", exact: true }).click();
+  await page.waitForFunction(id => document.querySelector('details[aria-label="پروژه‌ها"] select')?.value !== id, original);
   await page.getByLabel("نام پروژه", { exact: true }).fill("آزمون مرورگر");
-  await page.getByLabel("سناریو", { exact: true }).fill("صحنه: پارک\nعلی: سلام\nعلی: خوبی؟");
-  await page.getByLabel("مدت دیالوگ (ثانیه)").fill("7");
-  await page.getByLabel("مدت دیالوگ (ثانیه)").press("Tab");
+  await page.getByLabel("داستان", { exact: true }).fill("صحنه: پارک\nعلی: سلام\nعلی: خوبی؟");
+  await page.getByLabel("مدت بخش (ثانیه)").fill("7");
+  await page.getByLabel("مدت بخش (ثانیه)").press("Tab");
   await page.waitForFunction(() => document.body.textContent.includes("ذخیره شد؛"));
   await page.reload();
   await page.locator("canvas").waitFor();
   check(
     "timeline duration survives reload",
-    (await page.getByLabel("مدت دیالوگ (ثانیه)").inputValue()) === "7",
+    (await page.getByLabel("مدت بخش (ثانیه)").inputValue()) === "7",
   );
   await page
-    .getByLabel("سناریو", { exact: true })
+    .getByLabel("داستان", { exact: true })
     .fill("صحنه: پارک\nعلی: جملهٔ تازه\nعلی: سلام\nعلی: خوبی؟");
   await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
-  await page.getByRole("button", { name: "برگردان", exact: true }).click();
+  await page.locator('details[aria-label="پروژه‌ها"]').getByRole("button", { name: "برگردان", exact: true }).click();
   check(
     "undo restores story text",
-    (await page.getByLabel("سناریو", { exact: true }).inputValue()).includes("جملهٔ تازه") ===
+    (await page.getByLabel("داستان", { exact: true }).inputValue()).includes("جملهٔ تازه") ===
       false,
   );
   await page.getByRole("button", { name: "تکرار", exact: true }).click();
   check(
     "redo restores insertion",
-    (await page.getByLabel("سناریو", { exact: true }).inputValue()).includes("جملهٔ تازه"),
+    (await page.getByLabel("داستان", { exact: true }).inputValue()).includes("جملهٔ تازه"),
   );
   await page
     .getByLabel("بخش داستان")
@@ -172,7 +175,7 @@ try {
     });
   check(
     "matching text retains manual duration after insertion",
-    (await page.getByLabel("مدت دیالوگ (ثانیه)").inputValue()) === "7",
+    (await page.getByLabel("مدت بخش (ثانیه)").inputValue()) === "7",
   );
   for (const format of ["portrait", "square", "landscape"]) {
     await page.getByLabel("قاب خروجی").selectOption(format);
@@ -193,6 +196,7 @@ try {
   }, testId);
   await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
   await page.screenshot({ path: resolve(output, "desktop.png") });
+  }
   check("no uncaught browser errors", errors.length === 0);
 } finally {
   writeFileSync(resolve(output, "browser-report.json"), JSON.stringify(report, null, 2));

@@ -227,7 +227,7 @@ export function CharacterMaker() {
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
-    });
+    }).catch(() => { if (alive) setError("تصویر شخصیت خوانده نشد؛ تصویر دیگری انتخاب کنید."); });
     return () => {
       alive = false;
       cancelAnimationFrame(raf);

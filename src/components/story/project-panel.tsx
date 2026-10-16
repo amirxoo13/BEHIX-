@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { importProject, newProject, projectJson, type StoryProject } from "@/studio/stick/project";
-import { TEMPLATES } from "@/studio/stick/templates";
 import { downloadBlob } from "@/studio/stick/download";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
+/** Renders workspace project management controls, or nothing while no project is loaded. */
 export function ProjectPanel({
   workspace: w,
 }: {
@@ -15,7 +15,7 @@ export function ProjectPanel({
   const open = (project: StoryProject) => {
     setError("");
     setDeleting(false);
-    w.open(project);
+    void w.open(project);
   };
   return (
     <details className="panel" aria-label="پروژه‌ها">
@@ -27,6 +27,7 @@ export function ProjectPanel({
           <button className="btn btn-ghost" onClick={() => open(newProject())}>
             داستان تازه
           </button>
+          <button className="btn btn-ghost" onClick={() => open({ ...structuredClone(p), id: crypto.randomUUID(), title: `${p.title.slice(0, 110)} — کپی`, updatedAt: Date.now() })}>کپی پروژه</button>
           <button className="btn btn-ghost" disabled={!w.canUndo} onClick={w.undo}>
             برگردان
           </button>
@@ -59,26 +60,6 @@ export function ProjectPanel({
             {w.projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          ساخت از قالب
-          <select
-            className="field"
-            value=""
-            onChange={(e) => {
-              const t = TEMPLATES[Number(e.target.value)];
-              if (t) open(newProject(t.text, t.title));
-            }}
-          >
-            <option value="" disabled>
-              انتخاب قالب
-            </option>
-            {TEMPLATES.map((t, i) => (
-              <option value={i} key={t.title}>
-                {t.title}
               </option>
             ))}
           </select>

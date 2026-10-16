@@ -5,6 +5,7 @@ import { CLOTHES, type Look } from "./figure.ts";
 import { parseStory, type Beat, type StoryPlan } from "./story-parse.ts";
 import { directStory } from "./story-direct.ts";
 import type { Format } from "./layout.ts";
+import { PLACE_IDS, type PlaceId } from "./places.ts";
 
 const finite = z.number().finite();
 export const lookSchema = z
@@ -53,6 +54,8 @@ const editSchema = z
     x: finite.min(0.08).max(0.92).optional(),
     face: z.enum(Object.keys(FACES) as [Expression, ...Expression[]]).optional(),
     duration: finite.min(1).max(120).optional(),
+    place: z.enum(PLACE_IDS as [PlaceId, ...PlaceId[]]).optional(),
+    night: z.boolean().optional(),
     unresolved: z.boolean().optional(),
   })
   .strict();
@@ -145,7 +148,14 @@ export function changeText(p: StoryProject, text: string): StoryProject {
 export function setEdit(
   p: StoryProject,
   beatId: string,
-  patch: { actor?: string; x?: number; face?: Expression; duration?: number },
+  patch: {
+    actor?: string;
+    x?: number;
+    face?: Expression;
+    duration?: number;
+    place?: PlaceId;
+    night?: boolean;
+  },
 ): StoryProject {
   const match = anchors(parseStory(p.text)).find((a) => a.beat.id === beatId);
   if (!match) return p;
@@ -177,6 +187,8 @@ export function compileProject(p: StoryProject) {
     for (const beat of scene.beats)
       for (const edit of edits) {
         if (edit.unresolved || edit.beatId !== beat.id) continue;
+        if (edit.place !== undefined) scene.place = edit.place;
+        if (edit.night !== undefined) scene.night = edit.night;
         if (edit.duration !== undefined && beat.kind === "line") beat.duration = edit.duration;
         if (beat.kind !== "narration" && edit.actor && (edit.x !== undefined || edit.face)) {
           let act = beat.acts.find((a) => a.who === edit.actor);

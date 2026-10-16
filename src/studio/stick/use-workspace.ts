@@ -10,7 +10,7 @@ import {
   type StoryProject,
 } from "./project.ts";
 import { listProjects, migrateLegacy, saveProject, deleteProject } from "./project-db.ts";
-export function useStoryWorkspace(sample: string) {
+export function useStoryWorkspace(sample: string, requestedId?: string) {
   const [stack, setStack] = useState<History<StoryProject> | null>(null);
   const [projects, setProjects] = useState<StoryProject[]>([]);
   const [message, setMessage] = useState("");
@@ -18,13 +18,16 @@ export function useStoryWorkspace(sample: string) {
   const queue = useRef(Promise.resolve());
   const latest = useRef(0);
   const typing = useRef(0);
+  const revision = useRef(0);
+  const current = useRef<StoryProject | null>(null);
+  const switching = useRef(false);
   useEffect(() => {
     let alive = true;
     void migrateLegacy(sample)
       .then((items) => {
         if (!alive) return;
         setProjects(items);
-        setStack(history(items.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? newProject()));
+        setStack(history(items.find(p => p.id === requestedId) ?? items.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? newProject()));
       })
       .catch(() => {
         if (alive) {
@@ -35,8 +38,9 @@ export function useStoryWorkspace(sample: string) {
     return () => {
       alive = false;
     };
-  }, [sample]);
+  }, [sample, requestedId]);
   const project = stack?.present ?? null;
+  current.current = project;
   useEffect(() => {
     if (!project) return;
     const sequence = ++latest.current;
@@ -62,22 +66,52 @@ export function useStoryWorkspace(sample: string) {
       });
   }, [project]);
   const commit = useCallback((change: (p: StoryProject) => StoryProject, group = false) => {
+    revision.current++;
     const now = Date.now();
     const coalesce = group && now - typing.current < 700;
     typing.current = group ? now : 0;
     setStack((h) => (h ? remember(h, { ...change(h.present), updatedAt: now }, coalesce) : h));
   }, []);
-  const open = useCallback((p: StoryProject) => {
-    typing.current = 0;
-    setStack(history(structuredClone(p)));
+  const flush = useCallback(async () => {
+    const snapshot = current.current;
+    const version = revision.current;
+    if (!snapshot) return true;
+    const pending = queue.current.then(async () => {
+      if (revision.current !== version) return false;
+      await saveProject(snapshot);
+      return revision.current === version;
+    });
+    // Serialize the explicit flush with autosaves; a newer edit must never be overwritten.
+    queue.current = pending.then(() => undefined, () => undefined);
+    try {
+      if (!(await pending)) return false;
+      if (revision.current !== version) return false;
+      setMessage("");
+      return true;
+    } catch {
+      setMessage("ذخیره نشد؛ پروژه باز می‌ماند. دوباره تلاش کنید یا JSON بگیرید.");
+      return false;
+    }
   }, []);
+  const open = useCallback(async (p: StoryProject) => {
+    if (switching.current) return false;
+    switching.current = true;
+    try {
+      if (!(await flush())) return false;
+      typing.current = 0;
+      revision.current++;
+      setStack(history(structuredClone(p)));
+      return true;
+    } finally { switching.current = false; }
+  }, [flush]);
   const remove = async () => {
     if (!project) return;
-    await queue.current;
+    if (!(await flush())) throw new Error("ذخیره نشد؛ حذف متوقف شد.");
     await deleteProject(project.id);
     const items = await listProjects();
     setProjects(items);
-    open(items[0] ?? newProject());
+    revision.current++;
+    setStack(history(items[0] ?? newProject()));
   };
   return {
     project,
@@ -87,12 +121,15 @@ export function useStoryWorkspace(sample: string) {
     commit,
     open,
     remove,
+    flush,
     setText: (text: string) => commit((p) => changeText(p, text), true),
     undo: () => {
+      revision.current++;
       typing.current = 0;
       setStack((h) => (h ? undo(h) : h));
     },
     redo: () => {
+      revision.current++;
       typing.current = 0;
       setStack((h) => (h ? redo(h) : h));
     },

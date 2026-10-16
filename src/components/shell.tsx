@@ -44,6 +44,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <span className="mt-1 block truncate text-sm text-muted">{title}</span>
           </span>
         </Link>
+        <Link to="/projects" className="btn btn-ghost">پروژه‌ها</Link>
       </header>
       <StorageBar notice={storageNotice} locked={storageLocked} />
       <div className="layout">

@@ -1,3 +1,4 @@
+import { validPlacement } from "./placement.ts";
 // ذخیره‌سازی امن پروژه: IndexedDB با مهاجرت از localStorage و پشتیبان JSON.
 // این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
 import { CAST, MAX_CUSTOM, isCustomId } from "./characters.ts";
@@ -137,12 +138,12 @@ let knownIds: Set<string> = new Set(CAST.map((c) => c.id));
 function repairActor(v: unknown, slot: "a" | "b"): ActorSlot {
   const o = v && typeof v === "object" ? (v as Partial<ActorSlot>) : {};
   const known = typeof o.charId === "string" && knownIds.has(o.charId);
-  return {
+  return validPlacement({
     ...o,
     charId: known ? (o.charId as string) : DEFAULT_CHAR[slot],
-    emotion: typeof o.emotion === "string" ? o.emotion : "neutral",
-    action: typeof o.action === "string" ? o.action : "idle",
-  } as ActorSlot;
+    emotion: oneOf(o.emotion, ["neutral", "smile", "laugh", "angry", "cry", "shock", "poker"], "neutral"),
+    action: oneOf(o.action, ["idle", "walk", "point", "tea", "hips", "head"], "idle"),
+  } as ActorSlot);
 }
 
 // حاضرین اضافه: نامعتبرها حذف می‌شوند (نه ترمیم) و تکراری‌ها و بازیگران اصلی کنار می‌روند.
@@ -174,7 +175,7 @@ function repairProps(v: unknown): PropPlacement[] {
 
 // PERS-01c: همهٔ فیلدهای متنی/شمارشی با پیش‌فرض پر می‌شوند.
 export function normalize(shot: Shot): Shot {
-  const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? shot.pitch : 1;
+  const pitch = typeof shot.pitch === "number" && Number.isFinite(shot.pitch) ? Math.max(0.8, Math.min(1.35, shot.pitch)) : 1;
   const legacy = LEGACY_BG[shot.background as string];
   const actorA = repairActor(shot.actorA, "a");
   const actorB = repairActor(shot.actorB, "b");

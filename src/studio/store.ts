@@ -1,3 +1,4 @@
+import { validPlacement } from "./placement.ts";
 import { create } from "zustand";
 import { playSfx, playUrl, stopAll } from "./audio.ts";
 import { exportBackup, idbKV, importBackup, loadProject, saveProject, type Persist } from "./persist.ts";
@@ -288,8 +289,8 @@ export const useStudio = create<Studio>((set, get) => ({
       if (i !== s.selected) return shot;
       const next =
         slot === "a"
-          ? { ...shot, actorA: { ...shot.actorA, ...partial } }
-          : { ...shot, actorB: { ...shot.actorB, ...partial } };
+          ? { ...shot, actorA: validPlacement({ ...shot.actorA, ...partial }) }
+          : { ...shot, actorB: validPlacement({ ...shot.actorB, ...partial }) };
       // کسی که جلو آمد دیگر جزو حاضرین پشت قاب نیست (یک نفر دوبار دیده نشود).
       const main = [next.actorA.charId, next.actorB.charId];
       return { ...next, extras: next.extras.filter((e) => !main.includes(e.charId)) };

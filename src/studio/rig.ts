@@ -1,4 +1,4 @@
-import type { Action, Emotion, Viseme } from "./types";
+import type { Action, Emotion, Viseme } from "./types.ts";
 
 export const INK = "#1a120c";
 
@@ -30,7 +30,9 @@ export function solve2(
 ): Pt & { ex: number; ey: number } {
   let dx = x2 - x1;
   let dy = y2 - y1;
-  let dist = Math.hypot(dx, dy) || 0.0001;
+  // Coincident targets need a direction before clamping to reachable distance.
+  if (dx === 0 && dy === 0) dy = 0.0001;
+  let dist = Math.hypot(dx, dy);
   const max = len1 + len2 - 0.01;
   const min = Math.abs(len1 - len2) + 0.01;
   if (dist > max) {
@@ -203,7 +205,7 @@ export function visemeFromChar(ch: string): { viseme: Viseme; open: number } {
 
 export function visemeFromText(dialogue: string, local: number, duration: number): { viseme: Viseme; open: number } {
   const chars = Array.from(dialogue);
-  if (!chars.length || duration <= 0) return { viseme: "rest", open: 0 };
+  if (!chars.length || duration <= 0 || !Number.isFinite(local) || local < 0 || local >= duration) return { viseme: "rest", open: 0 };
   const i = Math.min(chars.length - 1, Math.max(0, Math.floor((local / duration) * chars.length)));
   return visemeFromChar(chars[i] ?? " ");
 }

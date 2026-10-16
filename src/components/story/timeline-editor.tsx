@@ -3,6 +3,7 @@ import { FACES, type Expression } from "@/studio/stick/face";
 import { anchors, setEdit, type StoryProject, type StoryEdit } from "@/studio/stick/project";
 import { parseStory } from "@/studio/stick/story-parse";
 import type { Directed } from "@/studio/stick/story-direct";
+import { PLACES, PLACE_IDS, type PlaceId } from "@/studio/stick/places";
 const FACE_LABELS: Record<Expression, string> = {
   neutral: "خنثی",
   smile: "لبخند",
@@ -44,6 +45,7 @@ export function TimelineEditor({
   const [actor, setActor] = useState("");
   const beat = directed.beats.find((b) => b.id === selected) ?? directed.beats[0];
   const scene = beat ? directed.timeline.scenes[beat.scene] : undefined;
+  const sceneBeat = beat ? directed.beats.find((b) => b.scene === beat.scene) : undefined;
   const who = scene?.actors.some((a) => a.cast === actor)
     ? actor
     : (beat?.speaker ?? scene?.actors[0]?.cast ?? "");
@@ -63,6 +65,39 @@ export function TimelineEditor({
       </label>
       {beat && (
         <>
+          {scene && sceneBeat && (
+            <fieldset className="grid gap-3">
+              <legend>صحنهٔ انتخاب‌شده</legend>
+              <label>
+                مکان
+                <select
+                  className="field"
+                  value={scene.place}
+                  onChange={(e) => {
+                    const place = e.target.value as PlaceId;
+                    commit((p) => setEdit(p, sceneBeat.id, { place }));
+                  }}
+                >
+                  {PLACE_IDS.map((id) => (
+                    <option key={id} value={id}>
+                      {PLACES[id].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={scene.night}
+                  onChange={(e) => {
+                    const night = e.target.checked;
+                    commit((p) => setEdit(p, sceneBeat.id, { night }));
+                  }}
+                />
+                شب
+              </label>
+            </fieldset>
+          )}
           {beat.kind === "line" && (
             <label>
               مدت دیالوگ (ثانیه)

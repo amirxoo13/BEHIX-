@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as CastRouteImport } from './routes/cast'
 import { Route as DeliverRouteImport } from './routes/deliver'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ScenarioRouteImport } from './routes/scenario'
 import { Route as SoundRouteImport } from './routes/sound'
 import { Route as StageRouteImport } from './routes/stage'
@@ -38,6 +39,11 @@ const CastRoute = CastRouteImport.update({
 const DeliverRoute = DeliverRouteImport.update({
   id: '/deliver',
   path: '/deliver',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScenarioRoute = ScenarioRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/projects'
     | '/scenario'
     | '/sound'
     | '/stage'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/projects'
     | '/scenario'
     | '/sound'
     | '/stage'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/projects'
     | '/scenario'
     | '/sound'
     | '/stage'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   BoardRoute: typeof BoardRoute
   CastRoute: typeof CastRoute
   DeliverRoute: typeof DeliverRoute
+  ProjectsRoute: typeof ProjectsRoute
   ScenarioRoute: typeof ScenarioRoute
   SoundRoute: typeof SoundRoute
   StageRoute: typeof StageRoute
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/deliver'
       fullPath: '/deliver'
       preLoaderRoute: typeof DeliverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scenario': {
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   BoardRoute: BoardRoute,
   CastRoute: CastRoute,
   DeliverRoute: DeliverRoute,
+  ProjectsRoute: ProjectsRoute,
   ScenarioRoute: ScenarioRoute,
   SoundRoute: SoundRoute,
   StageRoute: StageRoute,
