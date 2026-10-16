@@ -112,7 +112,7 @@ async function buildShotTracks(shots: Shot[], urls: Record<string, string>): Pro
 }
 
 /** Offline, faster-than-real-time render: draw every frame, encode MP4. */
-async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmResult> {
+async function renderWebCodecs(onProgress?: (p: number) => void, signal?: AbortSignal): Promise<FilmResult> {
   const s = useStudio.getState();
   const total = totalDuration(s.shots);
   const { w, h } = canvasSize(s.aspect);
@@ -137,6 +137,7 @@ async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmRe
     const frames = Math.max(1, Math.ceil(total * FPS));
     const noPulse = { a: 0, b: 0 };
     for (let i = 0; i < frames; i++) {
+      signal?.throwIfAborted();
       const t = i / FPS;
       const loc = locate(s.shots, t) ?? { index: s.shots.length - 1, local: s.shots.at(-1)?.duration ?? 0 };
       const shot = s.shots[loc.index];
@@ -151,14 +152,17 @@ async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmRe
         // صدا با playbackRate=pitch پخش می‌شود؛ پس زمان فایل = زمان نما × pitch.
         audioMouth: mouthAt(tracks.get(shot.id), loc.local * (shot.pitch || 1)),
       });
-      await video.add(t, 1 / FPS);
+      await video.add(t, Math.min(1 / FPS, total - t));
       if (onProgress && i % FPS === 0) onProgress(i / frames);
     }
+    signal?.throwIfAborted();
     await audio.add(mix);
     await output.finalize();
   } catch (err) {
     await output.cancel().catch(() => undefined);
     throw err;
+  } finally {
+    canvas.width = 1; canvas.height = 1;
   }
   const buf = output.target.buffer;
   if (!buf) throw new Error("فایل ویدیو ساخته نشد.");
@@ -167,40 +171,76 @@ async function renderWebCodecs(onProgress?: (p: number) => void): Promise<FilmRe
 }
 
 /** Previous real-time path (captureStream + MediaRecorder), kept as fallback. */
-async function renderMediaRecorder(canvas: HTMLCanvasElement): Promise<FilmResult> {
+async function renderMediaRecorder(canvas: HTMLCanvasElement, signal?: AbortSignal): Promise<FilmResult> {
+  signal?.throwIfAborted();
   await resumeAudio();
   if (typeof canvas.captureStream !== "function" || typeof MediaRecorder === "undefined") {
-    throw new Error("این مرورگر نه رمزگذار سریع ویدیو دارد و نه ضبط تصویر صحنه؛ ساخت فیلم ممکن نیست.");
+    throw new Error("این مرورگر از ضبط تصویر صحنه پشتیبانی نمی‌کند.");
   }
   const mime = pickVideoMime();
   const dest = openRecordBus();
-  let blob: Blob;
-  let recordedType = "";
+  let stream: MediaStream | undefined;
+  let recorder: MediaRecorder | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let stopTimeout: ReturnType<typeof setTimeout> | undefined;
+  let cancel = () => {};
+  let hidden = () => {};
   try {
-    const canvasStream = canvas.captureStream(FPS);
-    const mixed = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+    stream = canvas.captureStream(FPS);
+    const mixed = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
     const rec = new MediaRecorder(mixed, mime ? { mimeType: mime } : undefined);
+    recorder = rec;
     const chunks: Blob[] = [];
-    const stopped = new Promise<Blob>((resolve) => {
-      rec.ondataavailable = (e) => {
-        if (e.data.size) chunks.push(e.data);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      let complete = false;
+      const fail = (error: unknown) => reject(error);
+      cancel = () => fail(new DOMException("ساخت فیلم لغو شد.", "AbortError"));
+      hidden = () => {
+        if (document.hidden) fail(new Error("صفحه هنگام ضبط پنهان شد؛ دوباره خروجی بگیرید."));
       };
-      rec.onstop = () => resolve(new Blob(chunks, { type: rec.mimeType || mime || "video/webm" }));
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onerror = () => fail(new Error("مرورگر نتوانست فیلم را ضبط کند."));
+      rec.onstop = () => {
+        if (!complete) { fail(new Error("ضبط پیش از پایان فیلم متوقف شد.")); return; }
+        const type = rec.mimeType || chunks[0]?.type;
+        if (!type || !chunks.length) { fail(new Error("فایل ویدیویی تولید نشد.")); return; }
+        resolve(new Blob(chunks, { type }));
+      };
+      for (const track of mixed.getTracks()) track.onended = () => fail(new Error("مسیر ضبط قطع شد."));
+      signal?.addEventListener("abort", cancel, { once: true });
+      document.addEventListener("visibilitychange", hidden);
+      if (signal?.aborted) { cancel(); return; }
+      if (document.hidden) { hidden(); return; }
+      setPlayDone(() => {
+        complete = true;
+        stopTimeout = setTimeout(() => fail(new Error("مرورگر پایان ضبط را تأیید نکرد.")), 5000);
+        if (rec.state !== "inactive") rec.stop();
+      });
+      timeout = setTimeout(() => fail(new Error("زمان ضبط پایان یافت؛ پخش صحنه متوقف شده است.")),
+        (totalDuration(useStudio.getState().shots) + 15) * 1000);
+      rec.start();
+      resetArmed();
+      useStudio.getState().setPlaying(true, performance.now());
     });
-    rec.start();
-    // The recorder's own mimeType names the codecs it really chose.
-    recordedType = rec.mimeType;
-    resetArmed();
-    useStudio.getState().setPlaying(true, performance.now());
-    await new Promise<void>((resolve) => setPlayDone(resolve));
-    await new Promise((r) => setTimeout(r, 200));
-    if (rec.state !== "inactive") rec.stop();
-    stopAll();
-    blob = await stopped;
+    return { blob, method: "mediarecorder", ...describeRecorded(blob.type) };
   } finally {
+    clearTimeout(timeout);
+    clearTimeout(stopTimeout);
+    signal?.removeEventListener("abort", cancel);
+    document.removeEventListener("visibilitychange", hidden);
+    setPlayDone(null);
+    finishPlayback();
+    stopAll();
+    if (recorder) {
+      recorder.onstop = null; recorder.onerror = null; recorder.ondataavailable = null;
+      if (recorder.state !== "inactive") recorder.stop();
+    }
+    for (const track of [...(stream?.getTracks() ?? []), ...dest.stream.getTracks()]) {
+      track.onended = null;
+      track.stop();
+    }
     setRecordDest(null);
   }
-  return { blob, method: "mediarecorder", ...describeRecorded(recordedType || mime) };
 }
 
 /**
@@ -210,8 +250,10 @@ async function renderMediaRecorder(canvas: HTMLCanvasElement): Promise<FilmResul
  */
 export async function renderFilm(
   canvas: HTMLCanvasElement,
-  opts: { onProgress?: (p: number) => void; forceFallback?: boolean } = {},
+  opts: { onProgress?: (p: number) => void; forceFallback?: boolean; signal?: AbortSignal } = {},
 ): Promise<FilmResult> {
+  opts.signal?.throwIfAborted();
+  if (useStudio.getState().exporting) throw new Error("یک خروجی دیگر در حال ساخت است.");
   if (useStudio.getState().playing) finishPlayback();
   stopAll();
   useStudio.getState().setExporting(true);
@@ -221,12 +263,13 @@ export async function renderFilm(
     const { w, h } = canvasSize(useStudio.getState().aspect);
     if (!opts.forceFallback && (await canRenderMp4(w, h))) {
       try {
-        return await renderWebCodecs(opts.onProgress);
+        return await renderWebCodecs(opts.onProgress, opts.signal);
       } catch (err) {
+        opts.signal?.throwIfAborted();
         console.warn("[export] WebCodecs path failed, falling back to MediaRecorder", err);
       }
     }
-    return await renderMediaRecorder(canvas);
+    return await renderMediaRecorder(canvas, opts.signal);
   } finally {
     useStudio.getState().setExporting(false);
   }

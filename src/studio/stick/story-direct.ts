@@ -29,7 +29,10 @@ export type Directed = { timeline: Timeline; cues: Cue[]; warnings: string[]; be
 const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
 export function lineDuration(text: string): number {
-  return Math.min(9, Math.max(1.4, 0.45 + wordCount(text) / WORDS_PER_SEC));
+  // Explicit estimate, not pronunciation recognition. Never compress long dialogue.
+  const pauses = (text.match(/[،,؛;:]/g)?.length ?? 0) * 0.18
+    + (text.match(/[.!?؟…]+/g)?.length ?? 0) * 0.3;
+  return Math.max(1.4, 0.45 + wordCount(text) / WORDS_PER_SEC + pauses);
 }
 
 const walkTime = (dx: number) => Math.max(0.7, Math.abs(dx) * 2.6);
@@ -319,14 +322,14 @@ export function directStory(plan: StoryPlan): Directed {
       const T = t;
       let dur: number;
       if (beat.kind === "narration") {
-        dur = Math.max(1.4, 0.6 + wordCount(beat.text) / 2.6);
+        dur = beat.duration ?? lineDuration(beat.text);
         captions.push({ from: T, to: T + dur, text: beat.text });
         cam(T, 1, 0.5, false);
         t += dur;
         if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T,to:clock+t,text:beat.text,kind:beat.kind});
         continue;
       }
-      dur = beat.kind === "line" ? beat.duration ?? lineDuration(beat.text) : beat.acts.length ? 1.5 : beat.delay ? 0 : 0.7;
+      dur = beat.duration ?? (beat.kind === "line" ? lineDuration(beat.text) : beat.acts.length ? 1.5 : beat.delay ? 0 : 0.7);
       if (beat.delay && beat.acts.length === 0) {
         if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T-beat.delay,to:clock+T,text:beat.text,kind:beat.kind});
         continue;

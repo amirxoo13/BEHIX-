@@ -9,7 +9,7 @@ import { compileProject, setEdit, type StoryProject } from "@/studio/stick/proje
 import { frameFor, FORMATS, type Format } from "@/studio/stick/layout";
 import { actorAt } from "@/studio/stick/animate";
 import { loadRenderFonts } from "@/studio/stick/fonts";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useBlocker } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fa } from "@/studio/format";
 import { makePaper } from "@/studio/stick/paper";
@@ -18,7 +18,7 @@ import { cuesToSrt, type Directed } from "@/studio/stick/story-direct";
 import { canExportMp4, exportStoryFilm, type StoryFilm } from "@/studio/stick/story-export";
 import { FRAME, renderStory, cameraAt, sceneAt } from "@/studio/stick/story-render";
 
-export const Route = createFileRoute("/story")({ component: StoryPage });
+export const Route = createFileRoute("/story")({ validateSearch: (search: Record<string, unknown>): { project?: string } => ({ project: typeof search.project === "string" ? search.project : undefined }), component: StoryPage });
 
 const KIND_FA = { baby: "نوزاد", man: "مرد", woman: "زن", boy: "پسربچه", girl: "دختربچه", oldMan: "پیرمرد", oldWoman: "پیرزن" } as const;
 
@@ -41,7 +41,10 @@ const clock = (sec: number) => {
 
 /** Renders the story studio, compiling workspace text for scene selection, preview, and timeline editing. */
 function StoryPage() {
-  const workspace = useStoryWorkspace("");
+  const search = Route.useSearch();
+  const workspace = useStoryWorkspace("", search.project);
+  useBlocker({ shouldBlockFn: async () => !(await workspace.flush()), enableBeforeUnload: workspace.saving || !!workspace.message });
+  const [panel, setPanel] = useState<"script" | "time" | "scenes">("script");
   const { project, commit } = workspace;
   const [selected, setSelected] = useState("");
   const text = project?.text ?? "";
@@ -55,18 +58,22 @@ function StoryPage() {
   const selectedId=directed?.beats.some(b=>b.id===selected)?selected:directed?.beats[0]?.id??"";
 
   return (
-    <div className="studio" dir="rtl">
+    <div className="studio" dir="rtl" data-panel={panel}>
       <header className="studio-bar">
         <Link to="/" className="studio-brand" aria-label="خانه">
           <img src="/brand/app-icon.png" alt="" className="brand-mark" />
           <img src="/brand/wordmark.png" alt="BEHIX" className="brand-word" />
         </Link>
-        <p className="studio-hint">صحنه، آدمک، دیالوگ. بوم وسط است؛ متن کنار آن؛ زمان پایین.</p>
+        <p className="studio-hint" role="status">{workspace.message || (workspace.saving ? "در حال ذخیره…" : "ذخیره در همین مرورگر")}</p>
+        <Link to="/projects" className="btn btn-ghost">پروژه‌ها</Link>
         <div className="studio-actions">
           <button type="button" className="btn btn-ghost" disabled={!workspace.canUndo} onClick={workspace.undo}>برگردان</button>
           <button type="button" className="btn btn-ghost" disabled={!workspace.canRedo} onClick={workspace.redo}>از نو</button>
         </div>
       </header>
+      <nav className="studio-tabs" aria-label="پنل‌های ویرایش">
+        {([["script", "متن و پروژه"], ["time", "ویرایش بخش"], ["scenes", "صحنه‌ها"]] as const).map(([id, label]) => <button key={id} className={panel === id ? "btn btn-on" : "btn btn-ghost"} aria-pressed={panel === id} onClick={() => setPanel(id)}>{label}</button>)}
+      </nav>
       <div className="studio-body">
         <aside className="studio-scenes" aria-label="صحنه‌ها">
           <p className="studio-kicker">صحنه‌ها</p>
@@ -325,7 +332,9 @@ function Player({ directed,project,selected,commit }: { directed: Directed;proje
         نمایش زیرنویس روی تصویر
       </label>
       <label>قاب خروجی<select className="field" value={format} onChange={e=>commit(p=>({...p,settings:{...p.settings,format:e.target.value as Format}}))}>{Object.entries(FORMATS).map(([id,f])=><option key={id} value={id}>{f.label}</option>)}</select></label>
-      <Exporter directed={directed} captions={captions} project={project} commit={commit} />
+      <details className="studio-export panel"><summary className="cursor-pointer font-bold">خروجی فیلم و زیرنویس</summary>
+        <Exporter directed={directed} captions={captions} project={project} commit={commit} />
+      </details>
     </div>
   );
 }

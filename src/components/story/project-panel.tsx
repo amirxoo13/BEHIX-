@@ -15,7 +15,7 @@ export function ProjectPanel({
   const open = (project: StoryProject) => {
     setError("");
     setDeleting(false);
-    w.open(project);
+    void w.open(project);
   };
   return (
     <details className="panel" aria-label="پروژه‌ها">
@@ -27,6 +27,7 @@ export function ProjectPanel({
           <button className="btn btn-ghost" onClick={() => open(newProject())}>
             داستان تازه
           </button>
+          <button className="btn btn-ghost" onClick={() => open({ ...structuredClone(p), id: crypto.randomUUID(), title: `${p.title.slice(0, 110)} — کپی`, updatedAt: Date.now() })}>کپی پروژه</button>
           <button className="btn btn-ghost" disabled={!w.canUndo} onClick={w.undo}>
             برگردان
           </button>

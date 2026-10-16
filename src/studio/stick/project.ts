@@ -1,3 +1,5 @@
+import { GESTURE_LABELS, MOVE_LABELS, HOLD_LABELS } from "./edit-options.ts";
+import { PLACE_IDS } from "./places.ts";
 import { normalizeFa } from "../catalog.ts";
 import { z } from "zod";
 import { FACES, type Expression } from "./face.ts";
@@ -53,6 +55,12 @@ const editSchema = z
     x: finite.min(0.08).max(0.92).optional(),
     face: z.enum(Object.keys(FACES) as [Expression, ...Expression[]]).optional(),
     duration: finite.min(1).max(120).optional(),
+    gesture: z.enum(Object.keys(GESTURE_LABELS) as [keyof typeof GESTURE_LABELS, ...Array<keyof typeof GESTURE_LABELS>]).optional(),
+    move: z.enum(Object.keys(MOVE_LABELS) as [keyof typeof MOVE_LABELS, ...Array<keyof typeof MOVE_LABELS>]).optional(),
+    hold: z.enum(Object.keys(HOLD_LABELS) as [keyof typeof HOLD_LABELS, ...Array<keyof typeof HOLD_LABELS>]).optional(),
+    sit: z.boolean().optional(),
+    place: z.enum(PLACE_IDS as [typeof PLACE_IDS[number], ...typeof PLACE_IDS]).optional(),
+    night: z.boolean().optional(),
     unresolved: z.boolean().optional(),
   })
   .strict();
@@ -145,9 +153,11 @@ export function changeText(p: StoryProject, text: string): StoryProject {
 export function setEdit(
   p: StoryProject,
   beatId: string,
-  patch: { actor?: string; x?: number; face?: Expression; duration?: number },
+  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night">,
 ): StoryProject {
-  const match = anchors(parseStory(p.text)).find((a) => a.beat.id === beatId);
+  const plan = parseStory(p.text);
+  const match = anchors(plan).find((a) => a.beat.id === beatId);
+  const sceneBeatIds = new Set(plan.scenes.find(s => s.beats.some(b => b.id === beatId))?.beats.map(b => b.id));
   if (!match) return p;
   const index = p.edits.findIndex(
     (e) => !e.unresolved && e.beatId === beatId && e.actor === patch.actor,
@@ -161,7 +171,11 @@ export function setEdit(
     anchor: match.anchor,
     unresolved: false,
   };
-  const edits = [...p.edits];
+  const edits = p.edits.map(other => {
+    if (other === previous || other.unresolved || !sceneBeatIds.has(other.beatId)) return other;
+    // A scene has one background. A later edit from any beat replaces earlier scene overrides.
+    return { ...other, ...(patch.place !== undefined ? { place: undefined } : {}), ...(patch.night !== undefined ? { night: undefined } : {}) };
+  });
   if (index >= 0) edits[index] = edit;
   else edits.push(edit);
   return projectSchema.parse({ ...p, edits });
@@ -177,8 +191,13 @@ export function compileProject(p: StoryProject) {
     for (const beat of scene.beats)
       for (const edit of edits) {
         if (edit.unresolved || edit.beatId !== beat.id) continue;
-        if (edit.duration !== undefined && beat.kind === "line") beat.duration = edit.duration;
-        if (beat.kind !== "narration" && edit.actor && (edit.x !== undefined || edit.face)) {
+        if (edit.duration !== undefined) {
+          if (beat.kind === "action" && beat.delay && beat.acts.length === 0) beat.delay = edit.duration;
+          else beat.duration = edit.duration;
+        }
+        if (edit.place !== undefined) scene.place = edit.place;
+        if (edit.night !== undefined) scene.night = edit.night;
+        if (beat.kind !== "narration" && edit.actor && (edit.x !== undefined || edit.face || edit.gesture || edit.move || edit.hold || edit.sit !== undefined)) {
           let act = beat.acts.find((a) => a.who === edit.actor);
           if (!act) {
             act = { who: edit.actor };
@@ -186,6 +205,14 @@ export function compileProject(p: StoryProject) {
           }
           if (edit.x !== undefined) act.x = edit.x;
           if (edit.face) act.face = edit.face;
+          if (edit.gesture) {
+            act.gesture = edit.gesture;
+            if (["drive", "eat", "write"].includes(edit.gesture)) act.sit = true;
+            if (edit.gesture === "phoneEar" && edit.hold === undefined) act.hold = "phone";
+          }
+          if (edit.move) act.move = edit.move;
+          if (edit.hold) { act.hold = edit.hold; act.drop = edit.hold === "none"; }
+          if (edit.sit !== undefined) act.sit = edit.sit;
         }
       }
   const directed = directStory(plan);

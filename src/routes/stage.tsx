@@ -1,3 +1,4 @@
+import { actorPlacement } from "@/studio/placement";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
 import { Bone } from "lucide-react";
@@ -88,12 +89,18 @@ function Perform({
   action: Action;
   busy: boolean;
 }) {
+  const actor = useStudio(s => slot === "a" ? s.shots[s.selected]?.actorA : s.shots[s.selected]?.actorB);
+  const placement = actorPlacement(actor ?? {}, slot === "a" ? 0.3 : 0.72);
   return (
     <section className="panel">
       <h2 className="font-bold">
         {title}
         <span className="mr-2 text-sm font-normal text-muted">{findChar(charId).name}</span>
       </h2>
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <label>جای افقی (%)<input className="field" aria-label={`جای ${title}`} type="number" min={12} max={88} step={1} value={Math.round(placement.x * 100)} disabled={busy} onChange={e => { if (e.target.value) useStudio.getState().patchActor(slot, { x: Number(e.target.value) / 100 }); }} /></label>
+        <label>اندازه (%)<input className="field" aria-label={`اندازه ${title}`} type="number" min={70} max={120} step={5} value={Math.round(placement.scale * 100)} disabled={busy} onChange={e => { if (e.target.value) useStudio.getState().patchActor(slot, { scale: Number(e.target.value) / 100 }); }} /></label>
+      </div>
       <p className="lbl">حس چهره</p>
       <div className="grid grid-cols-2 gap-2">
         {EMOTIONS.map((item) => (

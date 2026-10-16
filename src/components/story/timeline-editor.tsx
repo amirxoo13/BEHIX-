@@ -1,3 +1,5 @@
+import { GESTURE_LABELS, MOVE_LABELS, HOLD_LABELS } from "@/studio/stick/edit-options";
+import { PLACES, PLACE_IDS, type PlaceId } from "@/studio/stick/places";
 import { useState } from "react";
 import { FACES, type Expression } from "@/studio/stick/face";
 import { anchors, setEdit, type StoryProject, type StoryEdit } from "@/studio/stick/project";
@@ -63,9 +65,9 @@ export function TimelineEditor({
       </label>
       {beat && (
         <>
-          {beat.kind === "line" && (
+          {(
             <label>
-              مدت دیالوگ (ثانیه)
+              مدت بخش (ثانیه)
               <input
                 key={`${beat.id}-${beat.to - beat.from}`}
                 className="field"
@@ -82,6 +84,13 @@ export function TimelineEditor({
               />
             </label>
           )}
+          <p className="text-xs text-muted">حرکت کامل می‌شود؛ اگر زمان رفتن از مدت انتخابی بیشتر باشد، بخش طولانی‌تر خواهد شد.</p>
+          <label>مکان صحنه
+            <select className="field" value={scene?.place ?? "blank"} onChange={e => commit(p => setEdit(p, beat.id, { place: e.target.value as PlaceId }))}>
+              {PLACE_IDS.map(id => <option key={id} value={id}>{PLACES[id].label}</option>)}
+            </select>
+          </label>
+          <label><input type="checkbox" checked={scene?.night ?? false} onChange={e => commit(p => setEdit(p, beat.id, { night: e.target.checked }))} /> شب در این صحنه</label>
           <label>
             شخصیت
             <select className="field" value={who} onChange={(e) => setActor(e.target.value)}>
@@ -92,7 +101,7 @@ export function TimelineEditor({
               ))}
             </select>
           </label>
-          {who && (
+          {who && beat.kind !== "narration" && (
             <>
               <label>
                 جای افقی (۸ تا ۹۲ درصد)
@@ -135,6 +144,24 @@ export function TimelineEditor({
                   ))}
                 </select>
               </label>
+              {<>
+                {([
+                  ["gesture", "حرکت دست و بدن", GESTURE_LABELS],
+                  ["move", "جابجایی شخصیت", MOVE_LABELS],
+                  ["hold", "شیء در دست", HOLD_LABELS],
+                ] as const).map(([field, label, options]) => <label key={field}>{label}
+                  <select className="field" value={edit?.[field] ?? ""} onChange={e => commit(p => setEdit(p, beat.id, { actor: who, [field]: e.target.value }))}>
+                    <option value="" disabled>از داستان</option>
+                    {Object.entries(options).map(([id, text]) => <option key={id} value={id}>{text}</option>)}
+                  </select>
+                </label>)}
+                <label>وضعیت بدن
+                  <select className="field" value={edit?.sit === undefined ? "" : String(edit.sit)} onChange={e => commit(p => setEdit(p, beat.id, { actor: who, sit: e.target.value === "true" }))}>
+                    <option value="" disabled>از داستان</option><option value="false">ایستاده</option><option value="true">نشسته (در مکان دارای صندلی)</option>
+                  </select>
+                </label>
+              </>}
+              <button className="btn btn-ghost" disabled={!edit} onClick={() => commit(p => ({...p, edits: p.edits.filter(e => e.id !== edit?.id)}))}>بازنشانی بازی این شخصیت</button>
               <p className="text-sm text-muted">
                 برای جابه‌جایی در این بخش، شخصیت را روی تصویر بکشید. هر کشیدن یک تغییر قابل
                 برگرداندن است.

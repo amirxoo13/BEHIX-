@@ -1,3 +1,4 @@
+import { actorPlacement } from "./placement.ts";
 import { findChar } from "./characters";
 import { drawActor, type FaceDraw } from "./draw-actor";
 import { SCROLLING, drawBackground } from "./draw-bg";
@@ -53,21 +54,21 @@ function applyCamera(
   if (shot.camera === "medium") z = 1.22;
   if (shot.camera === "closeLeft") {
     z = 1.75;
-    fx = w * 0.32;
+    fx = w * actorPlacement(shot.actorA, 0.3).x;
     fy = h * 0.46;
   }
   if (shot.camera === "closeRight") {
     z = 1.75;
-    fx = w * 0.7;
+    fx = w * actorPlacement(shot.actorB, 0.72).x;
     fy = h * 0.46;
   }
   if (shot.camera === "push") {
     z = 1 + 0.32 * Math.min(1, local / Math.max(0.2, shot.duration));
-    fx = shot.speaker === "b" ? w * 0.68 : w * 0.34;
+    fx = w * (shot.speaker === "b" ? actorPlacement(shot.actorB, 0.72).x : actorPlacement(shot.actorA, 0.3).x);
   }
   if (shot.camera === "comic") {
     z = 1.95;
-    fx = shot.speaker === "b" ? w * 0.7 : w * 0.32;
+    fx = w * (shot.speaker === "b" ? actorPlacement(shot.actorB, 0.72).x : actorPlacement(shot.actorA, 0.3).x);
     fy = h * 0.42;
     ctx.translate(Math.sin(local * 42) * 5, Math.cos(local * 37) * 4);
   }
@@ -188,8 +189,8 @@ export function renderFrame(
     seed: 2 + i,
   }));
   slots.push(
-    { id: "a", actor: shot.actorA, x: w * 0.3, foot: footY, sc: scale, inner: 1, pulse: opts.pulses.a, talking: shot.speaker === "a", seed: 0 },
-    { id: "b", actor: shot.actorB, x: w * 0.72, foot: footY, sc: scale, inner: -1, pulse: opts.pulses.b, talking: shot.speaker === "b", seed: 1 },
+    { id: "a", actor: shot.actorA, x: w * actorPlacement(shot.actorA, 0.3).x, foot: footY, sc: scale * actorPlacement(shot.actorA, 0.3).scale, inner: 1, pulse: opts.pulses.a, talking: shot.speaker === "a", seed: 0 },
+    { id: "b", actor: shot.actorB, x: w * actorPlacement(shot.actorB, 0.72).x, foot: footY, sc: scale * actorPlacement(shot.actorB, 0.72).scale, inner: -1, pulse: opts.pulses.b, talking: shot.speaker === "b", seed: 1 },
   );
   for (const s of slots) {
     const char = findChar(s.actor.charId);
@@ -210,6 +211,7 @@ export function renderFrame(
       open: mouth.open,
       emotion: s.actor.emotion,
       env,
+      time: opts.local,
     };
     const shake = s.actor.emotion === "angry" ? Math.sin(time * 28) * 5 * (0.35 + env) : 0;
     const gesture = s.actor.action === "tea" || s.actor.action === "point" ? s.actor.action : "none";
