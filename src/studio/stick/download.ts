@@ -1,3 +1,5 @@
+import { Capacitor } from "@capacitor/core";
+
 /**
  * ذخیرهٔ فایل خروجی (فیلم، SRT، متن، تصویر).
  * - در مرورگر: دانلود معمولی با لینک.
@@ -5,8 +7,6 @@
  *   نوشته می‌شود و پنجرهٔ «اشتراک‌گذاری» اندروید باز می‌شود (ذخیره در فایل‌ها، تلگرام، گالری و ...).
  * پلاگین‌ها فقط در اپ و فقط موقع نیاز بارگذاری می‌شوند تا به سایت حجمی اضافه نشود.
  */
-import { Capacitor } from "@capacitor/core";
-
 export function downloadBlob(blob: Blob, name: string): void {
   if (Capacitor.isNativePlatform()) {
     void shareNative(blob, name).catch((error) => {
@@ -35,6 +35,7 @@ export function safeFileName(name: string): string {
   return cleaned || "behix-file";
 }
 
+/** Read a blob as base64 without the data URL prefix, rejecting on file read errors. */
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -47,6 +48,7 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+/** Write the blob to a unique cache path in chunks, then open the native share dialog. */
 async function shareNative(blob: Blob, name: string): Promise<void> {
   const [{ Filesystem, Directory }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
   // هر خروجی پوشهٔ جدای خودش را دارد تا خروجی بعدی با همان اسم، فایلِ در حال اشتراکِ قبلی را عوض نکند
@@ -67,6 +69,7 @@ async function shareNative(blob: Blob, name: string): Promise<void> {
   await Share.share({ title: name, files: [uri], dialogTitle: "ذخیره یا ارسال فایل" });
 }
 
+/** Show a download error in an alert, falling back to the console if alerts throw. */
 function alertSafe(message: string) {
   try {
     window.alert(message);

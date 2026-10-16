@@ -161,6 +161,7 @@ function Understood({ directed }: { directed: Directed }) {
   );
 }
 
+/** Show the supported Persian syntax for scenes, characters, actions, and dialogue. */
 function Guide() {
   return (
     <details className="panel mt-3 text-sm leading-7">
@@ -197,6 +198,7 @@ function Guide() {
   );
 }
 
+/** Preview the compiled timeline with playback, seeking, actor dragging, and export controls. */
 function Player({ directed,project,selected,commit }: { directed: Directed;project:StoryProject;selected:string;commit:(f:(p:StoryProject)=>StoryProject)=>void }) {
   const { timeline } = directed;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -347,6 +349,7 @@ function Player({ directed,project,selected,commit }: { directed: Directed;proje
   );
 }
 
+/** Manage cancellable film rendering and downloads of films, subtitles, text, and thumbnails. */
 function Exporter({ directed, captions,project,commit }: { directed: Directed; captions: boolean;project:StoryProject;commit:(f:(p:StoryProject)=>StoryProject)=>void }) {
   const {fps,format}=project.settings;
   const setFps=(fps:30|60)=>commit(p=>({...p,settings:{...p.settings,fps}}));

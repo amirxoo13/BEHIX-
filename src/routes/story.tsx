@@ -3,6 +3,7 @@ import { StoryApp } from "@/components/story/story-app";
 
 export const Route = createFileRoute("/story")({ component: StoryPage });
 
+/** Render the shared story editor with a brand link back to the website home page. */
 function StoryPage() {
   return (
     <StoryApp

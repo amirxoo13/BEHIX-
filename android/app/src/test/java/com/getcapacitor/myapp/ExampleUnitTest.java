@@ -11,6 +11,7 @@ import org.junit.Test;
  */
 public class ExampleUnitTest {
 
+    /** Verify basic addition as a smoke check for the local JUnit setup. */
     @Test
     public void addition_isCorrect() throws Exception {
         assertEquals(4, 2 + 2);

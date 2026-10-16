@@ -11,6 +11,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 const outDir = resolve(__dirname, "dist-android");
 
+/** Create a build plugin that prepares the Android entry page and copies local brand assets. */
 function androidAssets(): Plugin {
   return {
     name: "behix:android-assets",

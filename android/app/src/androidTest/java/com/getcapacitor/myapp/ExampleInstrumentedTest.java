@@ -16,6 +16,7 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class ExampleInstrumentedTest {
 
+    /** Verify that the installed app context uses the BEHIX application ID. */
     @Test
     public void useAppContext() throws Exception {
         // Context of the app under test.
