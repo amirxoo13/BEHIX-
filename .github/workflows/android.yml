@@ -1,0 +1,98 @@
+# ساخت خودکار فایل APK اندروید (Capacitor) با هر تغییر در main، یا دستی از تب Actions.
+# خروجی: Artifacts ← behix-android-apk
+# کلید امضا از Secrets می‌آید: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# اجرای قدیمی همان برنچ با push تازه لغو می‌شود
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install packages
+        run: npm ci --ignore-scripts
+
+      - name: Build app web files
+        run: npm run android:web
+
+      - name: Copy web files into Android project
+        run: npx cap sync android
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            # PR از fork کلید ندارد: فقط ساخت بدون امضا را چک می‌کنیم؛ push و اجرای دستی بدون کلید خطا می‌دهند
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              echo "::notice::No signing key for this pull request; building an unsigned APK only."
+              echo "APK_SIGNED=false" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "::error::Secret ANDROID_KEYSTORE_BASE64 is missing. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "APK_SIGNED=true" >> "$GITHUB_ENV"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/behix-release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/behix-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # هر اجرا شمارهٔ نسخهٔ بالاتری می‌گیرد تا مایکت به‌روزرسانی را قبول کند
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Check APK signature
+        if: env.APK_SIGNED == 'true'
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK"
+
+      - name: Upload APK
+        if: env.APK_SIGNED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: behix-android-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/behix-release.jks"
