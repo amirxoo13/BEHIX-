@@ -1,3 +1,4 @@
+import { filmTime } from "@/studio/playback-time";
 import { useEffect, type RefObject } from "react";
 import { canvasSize, locate, renderFrame } from "@/studio/frame";
 import { consumeShotAudio, finishPlayback, useStudio } from "@/studio/store";
@@ -36,7 +37,8 @@ export function StageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
         }
       }
       if (s.playing) {
-        const loc = locate(s.shots, (now - s.playT0) / 1000);
+        clock = filmTime(now, s.playT0) * 1000;
+        const loc = locate(s.shots, clock / 1000);
         if (!loc) finishPlayback();
         else {
           consumeShotAudio(loc.index);
@@ -51,7 +53,7 @@ export function StageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
         dt,
         aspect: s.aspect,
         showRig: s.showRig,
-        pulses: s.pulses,
+        pulses: s.playing || s.scrub !== null ? { a: 0, b: 0 } : s.pulses,
         speakingLive,
       });
       raf = requestAnimationFrame(loop);

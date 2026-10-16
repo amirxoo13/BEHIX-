@@ -25,6 +25,8 @@ const FORMATS: { id: Aspect; label: string; note: string }[] = [
 
 function DeliverPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
   const shots = useStudio((s) => s.shots);
   const aspect = useStudio((s) => s.aspect);
   const exporting = useStudio((s) => s.exporting);
@@ -62,10 +64,11 @@ function DeliverPage() {
     const setStatus = useStudio.getState().setStatus;
     setStatus("در حال ساخت فایل…");
     setFilm(null);
-    setProgress(0);
+    setProgress(null);
+    controller.current = new AbortController();
     try {
       const before = exportSnapOf(useStudio.getState());
-      const out = await renderFilm(canvas, { onProgress: (p) => setProgress(p) });
+      const out = await renderFilm(canvas, { onProgress: (p) => setProgress(p), signal: controller.current.signal });
       if (exportSnapChanged(before, exportSnapOf(useStudio.getState()))) {
         setFilm(null);
         setStatus("پروژه هنگام ساخت فایل عوض شد؛ این فایل ذخیره نشد.");
@@ -79,6 +82,7 @@ function DeliverPage() {
       setStatus(err instanceof Error ? err.message : "ساخت ویدیو انجام نشد.");
     } finally {
       setProgress(null);
+      controller.current = null;
     }
   }
 
@@ -116,6 +120,8 @@ function DeliverPage() {
           اشتراک‌گذاری
         </button>
       </div>
+      {exporting && <button className="btn btn-danger mt-3" onClick={() => controller.current?.abort()}>لغو خروجی</button>}
+      {exporting && pct === null && <p role="status">در حال آماده‌سازی یا ضبط زنده…</p>}
       {exporting && pct !== null && (
         <div className="mt-3" data-testid="export-progress">
           <progress className="w-full" max={100} value={pct} aria-label="پیشرفت ساخت ویدیو" />

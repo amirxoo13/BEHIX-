@@ -84,9 +84,16 @@ export async function migrateLegacy(sample: string): Promise<StoryProject[]> {
         } catch {
           /* keep the supplied sample */
         }
-        const p = newProject(text.slice(0, 20000), "داستان نخست");
-        tx.objectStore("projects").put(p);
-        tx.objectStore("meta").put(true, "legacy-v1");
+        const existing = tx.objectStore("projects").count();
+        existing.onsuccess = () => {
+          // Dashboard may already have created a document before the first editor visit.
+          // Import real legacy text, but do not create an extra empty project.
+          if (text.trim() || existing.result === 0) {
+            const p = newProject(text.slice(0, 20000), "داستان نخست");
+            tx.objectStore("projects").put(p);
+          }
+          tx.objectStore("meta").put(true, "legacy-v1");
+        };
       };
       tx.oncomplete = () => resolve();
       tx.onabort = () => reject(tx.error);

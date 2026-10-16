@@ -1,3 +1,4 @@
+import { tearsAt } from "./tears.ts";
 import type { CharacterDef, Emotion, Viseme } from "./types";
 import { INK, RIG, type BodyPose } from "./rig";
 
@@ -7,10 +8,9 @@ export type FaceDraw = {
   open: number;
   emotion: Emotion;
   env: number;
+  time?: number;
 };
 
-type Drop = { x: number; y: number; vy: number; life: number };
-const tears: Record<string, Drop[]> = {};
 
 function path(ctx: CanvasRenderingContext2D, fill: string, width = 4) {
   ctx.fillStyle = fill;
@@ -394,29 +394,13 @@ function facial(ctx: CanvasRenderingContext2D, char: CharacterDef, y: number) {
   }
 }
 
-function updateTears(id: string, face: FaceDraw, dt: number) {
-  const bag = (tears[id] ??= []);
-  const crying = face.emotion === "cry";
-  if (crying && bag.length < 8 && Math.random() < dt * 3) {
-    bag.push({ x: Math.random() < 0.5 ? -16 : 16, y: -6, vy: 18, life: 1 });
-  }
-  for (const d of bag) {
-    d.y += d.vy * dt;
-    d.vy += 40 * dt;
-    d.life -= dt * 0.7;
-  }
-  tears[id] = bag.filter((d) => d.life > 0 && d.y < 40);
-  if (!crying) tears[id] = tears[id].filter((d) => d.life > 0.2);
-  return tears[id];
-}
-
 function drawHeadFront(
   ctx: CanvasRenderingContext2D,
   char: CharacterDef,
   face: FaceDraw,
   headY: number,
   id: string,
-  dt: number,
+  _dt: number,
 ) {
   if (char.hairStyle === "chador") {
     ctx.beginPath();
@@ -467,7 +451,7 @@ function drawHeadFront(
     ctx.ellipse(20, headY + 12, 7, 4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  const drops = updateTears(id, face, dt);
+  const drops = tearsAt(face.time ?? 0, face.emotion === "cry", id);
   ctx.fillStyle = "#7eb8d4";
   for (const d of drops) {
     ctx.globalAlpha = Math.max(0, d.life);
@@ -614,7 +598,8 @@ export async function preloadHeads(chars: CharacterDef[]): Promise<void> {
       .filter((c) => c.head)
       .map(async (c) => {
         headImage(c.head!.src);
-        await heads.get(c.head!.src)?.decode().catch(() => undefined);
+        try { await heads.get(c.head!.src)?.decode(); }
+        catch { throw new Error(`تصویر شخصیت «${c.name}» خوانده نشد؛ تصویر را جایگزین کنید.`); }
       }),
   );
 }
@@ -629,7 +614,7 @@ function drawPhotoHead(
   headY: number,
   img: HTMLImageElement,
   id: string,
-  dt: number,
+  _dt: number,
 ) {
   const h = char.head!;
   const w = h.size;
@@ -724,7 +709,7 @@ function drawPhotoHead(
     ctx.restore();
   }
   // اشک از زیر هر چشم.
-  const drops = updateTears(id, face, dt);
+  const drops = tearsAt(face.time ?? 0, face.emotion === "cry", id);
   if (drops.length && eyes) {
     ctx.fillStyle = "#7eb8d4";
     for (const d of drops) {

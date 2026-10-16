@@ -57,7 +57,7 @@ export function conjugations(text: string): string {
   return result;
 }
 export const hasNegativeVerb = (s: string) =>
-  /(?:^|\s)(?:نمی[‌ ]?\S+|نکرد\S*|نشد\S*|نرفت\S*|نیامد\S*|ننشت\S*|ننوش\S*|نخورد\S*|نخند\S*|نپرید\S*)/.test(
+  /(?:^|\s)(?:نمی[‌ ]?\S+|نکرد\S*|نشد\S*|نرفت\S*|نیامد\S*|ننشست\S*|ننشت\S*|ننوش\S*|نخورد\S*|نخند\S*|نپرید\S*)/.test(
     s,
   );
 const hasVerb = (s: string) =>

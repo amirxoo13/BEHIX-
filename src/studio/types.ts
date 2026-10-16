@@ -111,6 +111,9 @@ export type HeadImage = {
 };
 
 export type ActorSlot = {
+  /** Normalized horizontal placement; omitted keeps legacy layout. */
+  x?: number;
+  scale?: number;
   charId: string;
   emotion: Emotion;
   action: Action;

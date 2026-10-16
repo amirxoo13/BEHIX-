@@ -9,7 +9,7 @@ import { compileProject, setEdit, type StoryProject } from "@/studio/stick/proje
 import { frameFor, FORMATS, type Format } from "@/studio/stick/layout";
 import { actorAt } from "@/studio/stick/animate";
 import { loadRenderFonts } from "@/studio/stick/fonts";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useBlocker } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fa } from "@/studio/format";
 import { makePaper } from "@/studio/stick/paper";
@@ -18,23 +18,7 @@ import { cuesToSrt, type Directed } from "@/studio/stick/story-direct";
 import { canExportMp4, exportStoryFilm, type StoryFilm } from "@/studio/stick/story-export";
 import { FRAME, renderStory, cameraAt, sceneAt } from "@/studio/stick/story-render";
 
-export const Route = createFileRoute("/story")({ component: StoryPage });
-
-const SAMPLE = `صحنه ۱: پذیرایی خانه، شب
-علی (مرد، سمت راست، عینکی) و سارا (زن، سمت چپ، روسری) روی مبل نشسته‌اند. سارا چای در دست دارد.
-علی با گوشی ور می‌رود و لبخند می‌زند.
-سارا (عصبانی): باز هم گوشی؟! از وقتی اومدی خونه سرت توی اون گوشیه.
-علی (شوکه): نه عزیزم، داشتم ساعت رو نگاه می‌کردم.
-سارا دست به سینه می‌شود و قهر می‌کند.
-پسر (بچه) وارد می‌شود و به طرف علی می‌رود.
-پسر (با ذوق): بابا، توپم کو؟
-علی فکر می‌کند.
-
-صحنه ۲: داخل ماشین، روز
-علی پشت فرمان نشسته و سارا کنارش نشسته.
-راوی: فردای آن روز...
-سارا (نگران): علی، آروم‌تر برو!
-علی می‌خندد.`;
+export const Route = createFileRoute("/story")({ validateSearch: (search: Record<string, unknown>): { project?: string } => ({ project: typeof search.project === "string" ? search.project : undefined }), component: StoryPage });
 
 const KIND_FA = { baby: "نوزاد", man: "مرد", woman: "زن", boy: "پسربچه", girl: "دختربچه", oldMan: "پیرمرد", oldWoman: "پیرزن" } as const;
 
@@ -55,12 +39,16 @@ const clock = (sec: number) => {
   return `${fa(m)}:${fa(Math.floor(s % 60)).padStart(2, "۰")}`;
 };
 
+/** Renders the story studio, compiling workspace text for scene selection, preview, and timeline editing. */
 function StoryPage() {
-  const workspace=useStoryWorkspace(SAMPLE);
-  const { project,commit }=workspace;
-  const [selected,setSelected]=useState("");
-  const text=project?.text??SAMPLE;
-  const setText=workspace.setText;
+  const search = Route.useSearch();
+  const workspace = useStoryWorkspace("", search.project);
+  useBlocker({ shouldBlockFn: async () => !(await workspace.flush()), enableBeforeUnload: workspace.saving || !!workspace.message });
+  const [panel, setPanel] = useState<"script" | "time" | "scenes">("script");
+  const { project, commit } = workspace;
+  const [selected, setSelected] = useState("");
+  const text = project?.text ?? "";
+  const setText = workspace.setText;
   const result=useMemo(()=>{
     if(!project)return {directed:null,error:null};
     try{return {directed:compileProject(project),error:null};}
@@ -70,29 +58,65 @@ function StoryPage() {
   const selectedId=directed?.beats.some(b=>b.id===selected)?selected:directed?.beats[0]?.id??"";
 
   return (
-    <div className="min-h-screen bg-bg text-fg" dir="rtl">
-      <header className="topbar">
-        <Link to="/" className="flex min-w-0 items-center gap-3">
+    <div className="studio" dir="rtl" data-panel={panel}>
+      <header className="studio-bar">
+        <Link to="/" className="studio-brand" aria-label="خانه">
           <img src="/brand/app-icon.png" alt="" className="brand-mark" />
-          <span className="min-w-0">
-            <img src="/brand/wordmark.png" alt="BEHIX" className="brand-word" />
-            <span className="mt-1 block truncate text-sm text-muted">داستان به فیلم</span>
-          </span>
+          <img src="/brand/wordmark.png" alt="BEHIX" className="brand-word" />
         </Link>
+        <p className="studio-hint" role="status">{workspace.message || (workspace.saving ? "در حال ذخیره…" : "ذخیره در همین مرورگر")}</p>
+        <Link to="/projects" className="btn btn-ghost">پروژه‌ها</Link>
+        <div className="studio-actions">
+          <button type="button" className="btn btn-ghost" disabled={!workspace.canUndo} onClick={workspace.undo}>برگردان</button>
+          <button type="button" className="btn btn-ghost" disabled={!workspace.canRedo} onClick={workspace.redo}>از نو</button>
+        </div>
       </header>
-      <main className="story-page">
-        <section className="story-editor" aria-labelledby="story-title">
-          <h1 id="story-title" className="text-xl font-bold">
-            داستان را بنویسید، فیلم ساخته می‌شود
-          </h1>
-          <p className="mt-2 text-sm leading-7 text-muted">
-            هر صحنه با «صحنه: مکان، شب/روز» شروع می‌شود. شخصیت‌ها را بار اول با پرانتز معرفی کنید، دیالوگ را با «اسم (حالت): جمله» بنویسید. فیلم بی‌صداست؛ زیرنویس زمان‌دار
-            دیالوگ‌ها برای صداپیشه آماده می‌شود.
-          </p>
+      <nav className="studio-tabs" aria-label="پنل‌های ویرایش">
+        {([["script", "متن و پروژه"], ["time", "ویرایش بخش"], ["scenes", "صحنه‌ها"]] as const).map(([id, label]) => <button key={id} className={panel === id ? "btn btn-on" : "btn btn-ghost"} aria-pressed={panel === id} onClick={() => setPanel(id)}>{label}</button>)}
+      </nav>
+      <div className="studio-body">
+        <aside className="studio-scenes" aria-label="صحنه‌ها">
+          <p className="studio-kicker">صحنه‌ها</p>
+          {directed ? (
+            <ol>
+              {directed.timeline.scenes.map((scene, index) => {
+                const beat = directed.beats.find((item) => item.scene === index);
+                const on = beat ? selectedId === beat.id || directed.beats.some((item) => item.id === selectedId && item.scene === index) : false;
+                return (
+                  <li key={`${index}-${scene.start}`}>
+                    <button type="button" className={on ? "is-on" : ""} aria-pressed={on} disabled={!beat} onClick={() => beat && setSelected(beat.id)}>
+                      <b>{fa(index + 1)}</b>
+                      <span>{PLACES[scene.place].label}</span>
+                      <small>{scene.night ? "شب" : "روز"}</small>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <p className="studio-empty">هنوز صحنه‌ای نیست.</p>
+          )}
+          {directed && directed.timeline.cast.length > 0 && (
+            <ul className="studio-cast" aria-label="شخصیت‌ها">
+              {directed.timeline.cast.map((c) => (
+                <li key={c.id}>{c.name}<small>{KIND_FA[c.look.kind]}</small></li>
+              ))}
+            </ul>
+          )}
+        </aside>
+        <section className="studio-screen" aria-label="پیش‌نمایش فیلم">
+          {directed && project ? (
+            <Player directed={directed} project={project} selected={selectedId} commit={commit} />
+          ) : (
+            <div className="story-canvas-box studio-blank">
+              <p>بوم خالی است. در ستون متن، صحنه را بنویسید.</p>
+            </div>
+          )}
+        </section>
+        <aside className="studio-script" aria-labelledby="story-title">
+          <h1 id="story-title">متن</h1>
           <ProjectPanel workspace={workspace} />
-          <label className="lbl" htmlFor="story">
-            سناریو
-          </label>
+          <label className="lbl" htmlFor="story">داستان</label>
           <textarea
             id="story"
             className="field story-text"
@@ -101,69 +125,28 @@ function StoryPage() {
             maxLength={20000}
             disabled={!project}
             spellCheck={false}
+            placeholder={"صحنه: پذیرایی خانه، شب\nسارا (زن): سلام."}
             onChange={(e) => setText(e.target.value)}
           />
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" className="btn btn-ghost" onClick={() => setText(SAMPLE)}>
-              نمونهٔ آماده
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={() => setText("")}>
-              پاک کردن
-            </button>
+          <div className="mt-2">
+            <button type="button" className="btn btn-ghost" onClick={() => setText("")}>پاک کردن متن</button>
           </div>
-          {error && (
-            <p role="alert" className="story-warn mt-3">
-              {error}
-            </p>
+          {error && <p role="alert" className="story-warn mt-3">{error}</p>}
+          {directed && directed.warnings.length > 0 && (
+            <ul className="story-warn mt-3" aria-label="هشدارها">
+              {directed.warnings.map((w, i) => <li key={`${i}-${w}`}>{w}</li>)}
+            </ul>
           )}
-          {directed && <Understood directed={directed} />}
-          {project && directed && <>
-            <TimelineEditor project={project} directed={directed} selected={selectedId} onSelect={setSelected} commit={commit} unresolved={directed.unresolved}/>
-            <CharacterLibrary project={project} cast={directed.timeline.cast} commit={commit}/>
-          </>}
-          <BatchExport projects={workspace.projects}/>
+          {project && directed && <CharacterLibrary project={project} cast={directed.timeline.cast} commit={commit} />}
           <Guide />
-        </section>
-        <section className="story-player" aria-label="پیش‌نمایش فیلم">
-          {directed && project ? <Player directed={directed} project={project} selected={selectedId} commit={commit} /> : <div className="story-canvas-box" />}
-        </section>
-      </main>
-    </div>
-  );
-}
-
-/** آنچه سیستم از داستان فهمید: شخصیت‌ها، صحنه‌ها و هشدارها. */
-function Understood({ directed }: { directed: Directed }) {
-  const { timeline, warnings } = directed;
-  return (
-    <div className="mt-4 grid gap-3">
-      {warnings.length > 0 && (
-        <ul className="story-warn" aria-label="هشدارها">
-          {warnings.map((w, i) => (
-            <li key={`${i}-${w}`}>{w}</li>
-          ))}
-        </ul>
-      )}
-      <div className="panel">
-        <p className="lbl !mt-0">شخصیت‌ها</p>
-        <ul className="flex flex-wrap gap-2">
-          {timeline.cast.length === 0 && <li className="text-sm text-muted">هنوز کسی نیست.</li>}
-          {timeline.cast.map((c) => (
-            <li key={c.id} className="story-chip">
-              <b>{c.name}</b> · {KIND_FA[c.look.kind]}
-              {c.look.glasses ? " · عینکی" : ""}
-            </li>
-          ))}
-        </ul>
-        <p className="lbl">صحنه‌ها</p>
-        <ol className="grid gap-1 text-sm">
-          {timeline.scenes.map((s, i) => (
-            <li key={`${i}-${s.start}`}>
-              {fa(i + 1)}. {PLACES[s.place].label} · {s.night ? "شب" : "روز"} · {fa(Number((s.end - s.start).toFixed(1)))} ثانیه
-            </li>
-          ))}
-        </ol>
+        </aside>
       </div>
+      <footer className="studio-time">
+        {project && directed && (
+          <TimelineEditor project={project} directed={directed} selected={selectedId} onSelect={setSelected} commit={commit} unresolved={directed.unresolved} />
+        )}
+        {directed && <BatchExport projects={workspace.projects} />}
+      </footer>
     </div>
   );
 }
@@ -349,7 +332,9 @@ function Player({ directed,project,selected,commit }: { directed: Directed;proje
         نمایش زیرنویس روی تصویر
       </label>
       <label>قاب خروجی<select className="field" value={format} onChange={e=>commit(p=>({...p,settings:{...p.settings,format:e.target.value as Format}}))}>{Object.entries(FORMATS).map(([id,f])=><option key={id} value={id}>{f.label}</option>)}</select></label>
-      <Exporter directed={directed} captions={captions} project={project} commit={commit} />
+      <details className="studio-export panel"><summary className="cursor-pointer font-bold">خروجی فیلم و زیرنویس</summary>
+        <Exporter directed={directed} captions={captions} project={project} commit={commit} />
+      </details>
     </div>
   );
 }
