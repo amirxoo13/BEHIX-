@@ -40,6 +40,9 @@ jobs:
 
       - name: Build app web files
         run: npm run android:web
+        env:
+          # سرور BEHIX روی Google Cloud Run (صدای Gemini)؛ آدرس عمومی است، کلید نیست
+          VITE_API_BASE: https://behix-549866171811.us-central1.run.app
 
       - name: Copy web files into Android project
         run: npx cap sync android
