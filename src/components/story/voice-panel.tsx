@@ -24,16 +24,22 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     void lineJobs(directed, voices, looks)
       .then(async (j) => {
         const loaded = await loadClips(j);
-        if (alive) {
-          setJobs(j);
-          setClips(loaded);
-        }
+        if (!alive) return;
+        setJobs(j);
+        setClips(loaded);
+        // کلیپ از قبل ذخیره‌شده (مثلاً همان جمله در دیالوگ تازه): مدت دیالوگ هم باید اندازهٔ صدایش شود
+        // مقایسه با ویرایش ذخیره‌شده (نه طول نهایی بخش که حرکت‌ها ممکن است بلندترش کنند) تا حلقه نشود
+        const fixes = [...loaded].filter(([id, c]) => {
+          const saved = project?.edits.find((e) => !e.unresolved && e.beatId === id && e.actor === undefined)?.duration;
+          return saved === undefined || Math.abs(saved - lineDurationFor(c.samples.length / c.sampleRate)) > 0.05;
+        });
+        if (fixes.length) commit((p) => fixes.reduce((acc, [id, c]) => setEdit(acc, id, { duration: lineDurationFor(c.samples.length / c.sampleRate) }), p));
       })
       .catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [directed, cast, voices]);
+  }, [directed, cast, voices]); // eslint-disable-line react-hooks/exhaustive-deps -- project.edits is read once per compile
   useEffect(() => () => abort.current?.abort(), []);
 
   const voiced = useMemo(() => (directed ? placeVoices(directed, clips) : null), [directed, clips]);
