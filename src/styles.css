@@ -917,3 +917,9 @@
   .project-card { transition: none; }
   .project-card:hover { transform: none; }
 }
+@layer components {
+  .voice-panel { display: grid; gap: 0.6rem; padding: 0.8rem; margin-bottom: 0.8rem; border-radius: 0.9rem; background: color-mix(in srgb, var(--color-violet) 10%, var(--color-surface)); border: 1px solid color-mix(in srgb, var(--color-violet) 45%, var(--color-line)); }
+  .voice-head { display: flex; gap: 0.6rem; align-items: center; }
+  .voice-head svg { color: var(--color-violet); flex: none; }
+  .voice-head small { display: block; color: var(--color-muted); font-size: 0.76rem; }
+}

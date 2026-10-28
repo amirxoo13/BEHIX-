@@ -6,6 +6,7 @@ import { changeText, copyCharacter, type LibraryCharacter, type StoryProject } f
 import { deleteCharacter, listCharacters, saveCharacter } from "@/studio/stick/project-db";
 import { castTimeline } from "@/studio/stick/previews";
 import type { CastMember } from "@/studio/stick/story-render";
+import { VOICES, VOICE_IDS, type Voice } from "@/studio/stick/voice";
 
 const KIND: Record<Look["kind"], string> = { man: "مرد", woman: "زن", boy: "پسربچه", girl: "دختربچه", oldMan: "پیرمرد", oldWoman: "پیرزن", baby: "نوزاد" };
 const CLOTHING: Record<Clothing, string> = { classic: "ساده", tshirt: "تی‌شرت", shirt: "پیراهن", coat: "کت", dress: "پیراهن بلند", chador: "چادر" };
@@ -16,7 +17,7 @@ const EXTRAS = [["glasses", "عینک"], ["mustache", "سبیل"], ["beard", "ر
  * بازیگران داستان با پیش‌نمایش زنده (مثل ساخت شخصیت در Plotagon):
  * نوع، مو، لباس و جزئیات چهره؛ ذخیره در کتابخانه و آوردن از کتابخانه به داستان.
  */
-export function CastPanel({ project, cast, commit }: { project: StoryProject; cast: CastMember[]; commit: (f: (p: StoryProject) => StoryProject) => void }) {
+export function CastPanel({ project, cast, commit, voices, onVoice }: { project: StoryProject; cast: CastMember[]; commit: (f: (p: StoryProject) => StoryProject) => void; voices: Record<string, Voice>; onVoice: (castId: string, v: Voice) => void }) {
   const [library, setLibrary] = useState<LibraryCharacter[]>([]);
   const [error, setError] = useState("");
   const refresh = () => listCharacters().then(setLibrary).catch(() => setError("کتابخانهٔ شخصیت‌ها خوانده نشد."));
@@ -66,6 +67,12 @@ export function CastPanel({ project, cast, commit }: { project: StoryProject; ca
                   </select>
                 </label>
               </div>
+              <label>
+                <span className="group-label">صدا (Gemini)</span>
+                <select className="field" value={voices[c.id] ?? ""} onChange={(e) => onVoice(c.id, e.target.value as Voice)}>
+                  {VOICE_IDS.map((v) => <option key={v} value={v}>{v} · {VOICES[v] === "f" ? "زن" : "مرد"}</option>)}
+                </select>
+              </label>
               <div className="chips" aria-label={`جزئیات ${c.name}`}>
                 {EXTRAS.map(([key, label]) => (
                   <button key={key} type="button" aria-pressed={!!c.look[key]} className={c.look[key] ? "chip is-on" : "chip"} onClick={() => alter(c, { ...c.look, [key]: !c.look[key] })}>

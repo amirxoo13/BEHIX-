@@ -20,6 +20,7 @@ import { Route as SoundRouteImport } from './routes/sound'
 import { Route as StageRouteImport } from './routes/stage'
 import { Route as StoryRouteImport } from './routes/story'
 import { Route as WorldRouteImport } from './routes/world'
+import { Route as ApiTtsRouteImport } from './routes/api/tts'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +78,11 @@ const WorldRoute = WorldRouteImport.update({
   path: '/world',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTtsRoute = ApiTtsRouteImport.update({
+  id: '/api/tts',
+  path: '/api/tts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/tts': typeof ApiTtsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/tts': typeof ApiTtsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/tts': typeof ApiTtsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/tts'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/tts'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -168,6 +179,7 @@ export interface FileRouteTypes {
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/tts'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -183,6 +195,7 @@ export interface RootRouteChildren {
   StageRoute: typeof StageRoute
   StoryRoute: typeof StoryRoute
   WorldRoute: typeof WorldRoute
+  ApiTtsRoute: typeof ApiTtsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorldRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tts': {
+      id: '/api/tts'
+      path: '/api/tts'
+      fullPath: '/api/tts'
+      preLoaderRoute: typeof ApiTtsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -287,6 +307,7 @@ const rootRouteChildren: RootRouteChildren = {
   StageRoute: StageRoute,
   StoryRoute: StoryRoute,
   WorldRoute: WorldRoute,
+  ApiTtsRoute: ApiTtsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

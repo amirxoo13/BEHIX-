@@ -6,6 +6,7 @@ import { FACES, type Expression } from "./face.ts";
 import { CLOTHES, type Look } from "./figure.ts";
 import { parseStory, type Beat, type StoryPlan } from "./story-parse.ts";
 import { directStory } from "./story-direct.ts";
+import { VOICE_IDS } from "./voice.ts";
 import type { Format } from "./layout.ts";
 
 const finite = z.number().finite();
@@ -81,6 +82,7 @@ export const projectSchema = z
         format: z.enum(["portrait", "square", "landscape"]),
         fps: z.union([z.literal(30), z.literal(60)]),
         captions: z.boolean(),
+        voices: z.record(z.string().max(100), z.enum(VOICE_IDS as [string, ...string[]])).optional(),
       })
       .strict(),
     updatedAt: finite.nonnegative(),

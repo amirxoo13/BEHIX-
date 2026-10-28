@@ -9,6 +9,8 @@ import { canExportMp4, exportStoryFilm, type StoryFilm } from "@/studio/stick/st
 import { renderStoryboard } from "@/studio/stick/storyboard";
 import { frameImage, thumbnail } from "@/studio/stick/thumbnail";
 import { fa } from "@/studio/format";
+import { VoicePanel, type Voicing } from "@/components/story/voice-panel";
+import { mixClips } from "@/studio/stick/voice";
 
 const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, "_").trim() || "behix";
 
@@ -16,7 +18,8 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, "_").trim() || "behix";
  * پنجرهٔ خروجی (مثل Export در Animaker و Animation Desk): تنظیم قاب و نرمی، ساخت فیلم،
  * و فایل‌های همراه: زیرنویس، متن صداپیشه، استوری‌بورد، تصویر کوچک، فریم فعلی و فایل پروژه.
  */
-export function ExportDialog({ open, onClose, directed, project, commit, currentTime }: {
+export function ExportDialog({ open, onClose, directed, voicing, project, commit, currentTime }: {
+  voicing: Voicing;
   open: boolean;
   onClose: () => void;
   directed: Directed;
@@ -52,7 +55,7 @@ export function ExportDialog({ open, onClose, directed, project, commit, current
   useEffect(() => {
     setFilm(null);
     abort.current?.abort();
-  }, [directed, captions, fps, format]);
+  }, [directed, voicing.voiced, captions, fps, format]);
   useEffect(() => () => abort.current?.abort(), []);
 
   const settings = (patch: Partial<StoryProject["settings"]>) => commit((p) => ({ ...p, settings: { ...p.settings, ...patch } }));
@@ -64,7 +67,10 @@ export function ExportDialog({ open, onClose, directed, project, commit, current
     const ctrl = new AbortController();
     abort.current = ctrl;
     try {
-      const result = await exportStoryFilm(directed.timeline, { fps, captions, format, onProgress: setProgress, signal: ctrl.signal });
+      const voiced = voicing.voiced;
+      const timeline = voiced?.timeline ?? directed.timeline;
+      const audio = voiced?.placed.length ? { data: mixClips(voiced.placed, timeline.duration), sampleRate: 24000 } : undefined;
+      const result = await exportStoryFilm(timeline, { fps, captions, format, audio, onProgress: setProgress, signal: ctrl.signal });
       setFilm(result);
       setMessage(result.notice);
     } catch (err) {
@@ -114,6 +120,7 @@ export function ExportDialog({ open, onClose, directed, project, commit, current
           </label>
         </section>
 
+        <VoicePanel v={voicing} />
         <section className="export-film" aria-label="فیلم">
           {busy ? (
             <>
@@ -128,7 +135,7 @@ export function ExportDialog({ open, onClose, directed, project, commit, current
             </button>
           ) : (
             <button type="button" className="btn btn-primary btn-lg" onClick={() => void run()} disabled={empty}>
-              <Film size={18} aria-hidden /> ساخت فیلم بی‌صدا ({FORMATS[format].label})
+              <Film size={18} aria-hidden /> ساخت فیلم {voicing.voiced?.placed.length ? "با صدا" : "بی‌صدا"} ({FORMATS[format].label})
             </button>
           )}
           {fast === false && !busy && <p className="hint">این مرورگر رمزگذار سریع ندارد؛ فیلم هم‌زمان با پخش ضبط می‌شود و به اندازهٔ طول فیلم زمان می‌برد.</p>}
@@ -137,10 +144,10 @@ export function ExportDialog({ open, onClose, directed, project, commit, current
         <section aria-label="فایل‌های همراه">
           <h3 className="panel-subtitle">فایل‌های همراه</h3>
           <div className="export-grid">
-            <button type="button" className="export-tile" disabled={!directed.cues.length} onClick={() => file(() => new Blob(["﻿", cuesToSrt(directed.cues)], { type: "application/x-subrip;charset=utf-8" }), `${title}.srt`)}>
+            <button type="button" className="export-tile" disabled={!directed.cues.length} onClick={() => file(() => new Blob(["\uFEFF", cuesToSrt(directed.cues)], { type: "application/x-subrip;charset=utf-8" }), `${title}.srt`)}>
               <Subtitles size={20} aria-hidden /><b>زیرنویس برای صداپیشه</b><small>SRT با زمان دقیق هر دیالوگ</small>
             </button>
-            <button type="button" className="export-tile" disabled={!directed.cues.length} onClick={() => file(() => new Blob(["﻿", dialogueText(directed.cues, project.title)], { type: "text/plain;charset=utf-8" }), `${title}.txt`)}>
+            <button type="button" className="export-tile" disabled={!directed.cues.length} onClick={() => file(() => new Blob(["\uFEFF", dialogueText(directed.cues, project.title)], { type: "text/plain;charset=utf-8" }), `${title}.txt`)}>
               <FileText size={20} aria-hidden /><b>متن کامل صداپیشه</b><small>دیالوگ‌ها با گوینده و زمان</small>
             </button>
             <button type="button" className="export-tile" disabled={empty} onClick={() => file(() => renderStoryboard(directed, format, project.title, names), `${title}-storyboard.png`)}>

@@ -5,6 +5,9 @@ import { CastPanel } from "@/components/story/cast-panel";
 import { ExportDialog } from "@/components/story/export-dialog";
 import { SceneBoard } from "@/components/story/scene-board";
 import { TimelineStrip } from "@/components/story/timeline-strip";
+import { useVoices, VoicePanel } from "@/components/story/voice-panel";
+import { audioContext } from "@/studio/stick/voice-client";
+import type { PlacedClip } from "@/studio/stick/voice";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
 import { compileProject, setEdit, type StoryProject } from "@/studio/stick/project";
 import { frameFor, FORMATS, type Format } from "@/studio/stick/layout";
@@ -13,7 +16,7 @@ import { loadRenderFonts } from "@/studio/stick/fonts";
 import { makePaper } from "@/studio/stick/paper";
 import { PLACES, PLACE_IDS } from "@/studio/stick/places";
 import type { Directed } from "@/studio/stick/story-direct";
-import { FRAME, renderStory, cameraAt, sceneAt } from "@/studio/stick/story-render";
+import { FRAME, renderStory, cameraAt, sceneAt, type Timeline } from "@/studio/stick/story-render";
 import { fa } from "@/studio/format";
 
 type Tab = "script" | "cast" | "scenes" | "guide" | "edit";
@@ -56,6 +59,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
     }
   }, [project]);
   const beats = useMemo(() => directed?.beats ?? [], [directed]);
+  const voicing = useVoices(project, directed, commit);
   const selectedId = beats.some((b) => b.id === selected) ? selected : (beats[0]?.id ?? "");
 
   // اولین قاب (t=0) محو ورود صحنه است و سفید دیده می‌شود؛ پیش‌نمایش از وسط اولین بخش شروع می‌شود
@@ -192,7 +196,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
             )}
           </div>
           <div className="pane pane-cast">
-            {project && directed && <CastPanel project={project} cast={directed.timeline.cast} commit={commit} />}
+            {project && directed && <><VoicePanel v={voicing} /><CastPanel project={project} cast={directed.timeline.cast} commit={commit} voices={voicing.voices} onVoice={voicing.setVoice} /></>}
           </div>
           <div className="pane pane-scenes">
             {project && directed && <SceneBoard directed={directed} format={project.settings.format} selected={selectedId} onPick={(id) => pick(id)} commit={commit} />}
@@ -202,7 +206,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
 
         <section className="editor-stage" aria-label="پیش‌نمایش فیلم">
           {directed && project ? (
-            <Player ref={player} directed={directed} project={project} selected={selectedId} commit={commit} onTime={setTime} onPlaying={setPlaying}
+            <Player ref={player} directed={directed} timeline={voicing.voiced?.timeline ?? directed.timeline} audio={voicing.voiced?.placed ?? []} project={project} selected={selectedId} commit={commit} onTime={setTime} onPlaying={setPlaying}
               empty={!text.trim()} onStart={() => insertLine("صحنه ۱: پذیرایی خانه، روز", "پذیرایی خانه")} />
           ) : (
             <div className="ed-stage"><p className="stage-empty-text">{error ? "داستان خوانده نشد." : "در حال آماده‌سازی…"}</p></div>
@@ -238,7 +242,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
       </nav>
 
       {directed && project && (
-        <ExportDialog open={exporting} onClose={() => setExporting(false)} directed={directed} project={project} commit={commit} currentTime={() => player.current?.time() ?? 0} />
+        <ExportDialog open={exporting} onClose={() => setExporting(false)} directed={directed} voicing={voicing} project={project} commit={commit} currentTime={() => player.current?.time() ?? 0} />
       )}
     </div>
   );
@@ -315,10 +319,24 @@ function Guide() {
   );
 }
 
+const buffers = new WeakMap<Float32Array, AudioBuffer>();
+/** AudioBuffer هر کلیپ فقط یک بار ساخته می‌شود. */
+function bufferOf(ac: AudioContext, c: PlacedClip): AudioBuffer {
+  let b = buffers.get(c.samples);
+  if (!b) {
+    b = ac.createBuffer(1, c.samples.length, c.sampleRate);
+    b.copyToChannel(c.samples as Float32Array<ArrayBuffer>, 0);
+    buffers.set(c.samples, b);
+  }
+  return b;
+}
+
 /** پیش‌نمایش فیلم با پخش، جابه‌جایی زمان و کشیدن شخصیت‌ها روی صحنه. */
-function Player({ ref, directed, project, selected, commit, onTime, onPlaying, empty, onStart }: {
+function Player({ ref, directed, timeline, audio, project, selected, commit, onTime, onPlaying, empty, onStart }: {
   ref: Ref<PlayerHandle>;
   directed: Directed;
+  timeline: Timeline;
+  audio: PlacedClip[];
   project: StoryProject;
   selected: string;
   commit: (f: (p: StoryProject) => StoryProject) => void;
@@ -327,7 +345,6 @@ function Player({ ref, directed, project, selected, commit, onTime, onPlaying, e
   empty: boolean;
   onStart: () => void;
 }) {
-  const { timeline } = directed;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const format: Format = project.settings.format;
   const frame = useMemo(() => frameFor(format), [format]);
@@ -414,8 +431,33 @@ function Player({ ref, directed, project, selected, commit, onTime, onPlaying, e
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, draw, duration, onTime]);
+    // صدای دیالوگ‌ها از همین لحظه، هم‌زمان با تصویر
+    const nodes: AudioBufferSourceNode[] = [];
+    if (audio.length) {
+      const ac = audioContext();
+      void ac.resume();
+      const t0 = tRef.current, at = ac.currentTime + 0.02;
+      for (const c of audio) {
+        const len = c.samples.length / c.sampleRate;
+        if (c.start + len <= t0) continue;
+        const src = ac.createBufferSource();
+        src.buffer = bufferOf(ac, c);
+        src.connect(ac.destination);
+        src.start(at + Math.max(0, c.start - t0), Math.max(0, t0 - c.start));
+        nodes.push(src);
+      }
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      for (const n of nodes) {
+        try {
+          n.stop();
+        } catch {
+          /* already ended */
+        }
+      }
+    };
+  }, [playing, draw, duration, onTime, audio]);
 
   const pointerX = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();

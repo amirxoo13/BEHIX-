@@ -20,7 +20,8 @@ export function BatchExport({ projects }: { projects: StoryProject[] }) {
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
     void listArtifacts()
-      .then((files) => {
+      .then((all) => {
+        const files = all.filter((f) => !f.id.startsWith("voice:"));
         if (files.length)
           setItems([
             {
