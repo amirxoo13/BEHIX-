@@ -344,7 +344,7 @@ function Player({ ref, directed, project, selected, commit, onTime, onPlaying, e
 
   useEffect(() => {
     let alive = true;
-    loadRenderFonts().catch(() => undefined).then(() => alive && setFontReady(true));
+    void loadRenderFonts().catch(() => undefined).then(() => alive && setFontReady(true));
     return () => {
       alive = false;
     };
@@ -437,7 +437,7 @@ function Player({ ref, directed, project, selected, commit, onTime, onPlaying, e
         </div>
         <label className="toggle is-compact">
           <input type="checkbox" checked={captions} onChange={(e) => commit((p) => ({ ...p, settings: { ...p.settings, captions: e.target.checked } }))} />
-          زیرنویس
+          <span>زیرنویس</span>
         </label>
       </div>
       <div className={`stage-canvas is-${format}`}>

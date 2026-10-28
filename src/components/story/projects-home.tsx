@@ -160,9 +160,9 @@ export function ProjectsHome({ brand, onOpen, extra }: { brand: (content: ReactN
 
         {rename && (
           <form className="panel home-dialog" onSubmit={(e) => { e.preventDefault(); void run(async () => { await saveProject({ ...rename, title: rename.title.trim() || "داستان", updatedAt: Date.now() }); setRename(null); }); }}>
-            <label>نام تازه<input autoFocus className="field" maxLength={120} value={rename.title} onChange={(e) => setRename({ ...rename, title: e.target.value })} /></label>
+            <label>نام تازه<input className="field" maxLength={120} value={rename.title} onChange={(e) => setRename({ ...rename, title: e.target.value })} /></label>
             <div className="flex gap-2">
-              <button disabled={busy} className="btn btn-primary">ذخیرهٔ نام</button>
+              <button type="submit" disabled={busy} className="btn btn-primary">ذخیرهٔ نام</button>
               <button type="button" className="btn btn-ghost" onClick={() => setRename(null)}>انصراف</button>
             </div>
           </form>

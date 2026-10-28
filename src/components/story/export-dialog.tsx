@@ -110,7 +110,7 @@ export function ExportDialog({ open, onClose, directed, project, commit, current
           </div>
           <label className="toggle">
             <input type="checkbox" checked={captions} disabled={busy} onChange={(e) => settings({ captions: e.target.checked })} />
-            زیرنویس روی تصویر فیلم
+            <span>زیرنویس روی تصویر فیلم</span>
           </label>
         </section>
 
