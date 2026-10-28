@@ -63,6 +63,8 @@ const editSchema = z
     place: z.enum(PLACE_IDS as [typeof PLACE_IDS[number], ...typeof PLACE_IDS]).optional(),
     night: z.boolean().optional(),
     shot: z.enum(["wide", "medium", "close"]).optional(),
+    /** مدت را برنامه به اندازهٔ صدای دیالوگ گذاشته (نه کاربر)؛ با صدای تازه دوباره تنظیم می‌شود. */
+    fit: z.boolean().optional(),
     unresolved: z.boolean().optional(),
   })
   .strict();
@@ -156,7 +158,7 @@ export function changeText(p: StoryProject, text: string): StoryProject {
 export function setEdit(
   p: StoryProject,
   beatId: string,
-  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night" | "shot">,
+  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night" | "shot" | "fit">,
 ): StoryProject {
   const plan = parseStory(p.text);
   const match = anchors(plan).find((a) => a.beat.id === beatId);
@@ -169,6 +171,8 @@ export function setEdit(
   const edit: StoryEdit = {
     ...previous,
     ...patch,
+    // مدتی که کاربر خودش انتخاب کند دیگر خودکار عوض نمی‌شود
+    fit: patch.duration !== undefined ? patch.fit || undefined : previous?.fit,
     id: previous?.id ?? crypto.randomUUID(),
     beatId,
     anchor: match.anchor,

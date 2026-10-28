@@ -89,7 +89,10 @@ export function envelopePulses(samples: Float32Array, sampleRate: number, offset
   const step = win / sampleRate;
   for (let k = 0; k <= rms.length; k++) {
     const on = k < rms.length && rms[k] > gate;
-    if (on && start < 0) (start = k), (top = 0);
+    if (on && start < 0) {
+      start = k;
+      top = 0;
+    }
     if (on) top = Math.max(top, rms[k]);
     // هر هجا حداکثر ۲۴۰ میلی‌ثانیه؛ صداهای کشیده چند بار باز و بسته می‌شوند
     if (start >= 0 && (!on || k - start >= 6)) {
@@ -134,7 +137,9 @@ export function placeVoices(directed: Directed, clips: Map<string, VoiceClip>): 
 export const lineDurationFor = (seconds: number) => Math.min(120, Math.max(1, Math.round((seconds + 0.5) * 10) / 10));
 
 /** میکس همهٔ کلیپ‌ها در یک کانال، به طول فیلم. */
-export function mixClips(placed: PlacedClip[], duration: number, sampleRate = 24000): Float32Array {
+/** نرخ نمونهٔ صدای میکس‌شدهٔ فیلم (همان نرخ خروجی Gemini TTS). */
+export const MIX_RATE = 24000;
+export function mixClips(placed: PlacedClip[], duration: number, sampleRate = MIX_RATE): Float32Array {
   const out = new Float32Array(Math.ceil(duration * sampleRate));
   for (const c of placed) {
     const ratio = c.sampleRate / sampleRate;

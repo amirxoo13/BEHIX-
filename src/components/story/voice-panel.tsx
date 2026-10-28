@@ -7,7 +7,7 @@ import { lineJobs, loadClips, synthesize, type LineJob } from "@/studio/stick/vo
 import { fa } from "@/studio/format";
 
 /** وضعیت صداگذاری پروژه: صدای هر شخصیت، کلیپ‌های موجود و ساخت کلیپ‌های تازه. */
-export function useVoices(project: StoryProject | null, directed: Directed | null, commit: (f: (p: StoryProject) => StoryProject) => void) {
+export function useVoices(project: StoryProject | null, directed: Directed | null, commit: (f: (p: StoryProject) => StoryProject, group?: boolean | "silent") => void) {
   const cast = directed?.timeline.cast;
   const voices = useMemo(() => (cast ? defaultVoices(cast, project?.settings.voices) : {}), [cast, project?.settings.voices]);
   const [jobs, setJobs] = useState<LineJob[]>([]);
@@ -27,13 +27,14 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
         if (!alive) return;
         setJobs(j);
         setClips(loaded);
-        // کلیپ از قبل ذخیره‌شده (مثلاً همان جمله در دیالوگ تازه): مدت دیالوگ هم باید اندازهٔ صدایش شود
-        // مقایسه با ویرایش ذخیره‌شده (نه طول نهایی بخش که حرکت‌ها ممکن است بلندترش کنند) تا حلقه نشود
+        // کلیپ از قبل ذخیره‌شده (مثلاً همان جمله در دیالوگ تازه): مدت دیالوگ اندازهٔ صدایش می‌شود،
+        // مگر کاربر خودش مدت را انتخاب کرده باشد. مقایسه با ویرایش ذخیره‌شده است (نه طول نهایی بخش) تا حلقه نشود
+        // و اصلاح خودکار مرحلهٔ واگرد نمی‌سازد تا واگرد/ازنو را به‌هم نزند.
         const fixes = [...loaded].filter(([id, c]) => {
-          const saved = project?.edits.find((e) => !e.unresolved && e.beatId === id && e.actor === undefined)?.duration;
-          return saved === undefined || Math.abs(saved - lineDurationFor(c.samples.length / c.sampleRate)) > 0.05;
+          const saved = project?.edits.find((e) => !e.unresolved && e.beatId === id && e.actor === undefined);
+          return saved?.duration === undefined || (saved.fit === true && Math.abs(saved.duration - fitted(c)) > 0.05);
         });
-        if (fixes.length) commit((p) => fixes.reduce((acc, [id, c]) => setEdit(acc, id, { duration: lineDurationFor(c.samples.length / c.sampleRate) }), p));
+        if (fixes.length) commit((p) => fitAll(p, fixes), "silent");
       })
       .catch(() => undefined);
     return () => {
@@ -53,12 +54,14 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     setDone(0);
     setError("");
     try {
-      const made = await synthesize(missing, setDone, ctrl.signal);
-      setClips((old) => new Map([...old, ...made]));
+      const { made, error: failed } = await synthesize(missing, setDone, ctrl.signal);
+      // کلیپ‌های ساخته‌شده حتی اگر یکی خطا داد یا لغو شد نگه داشته می‌شوند؛
       // مدت هر دیالوگ به اندازهٔ صدای واقعی تا لب‌خوانی و زمان‌بندی دقیق شود
-      commit((p) => [...made].reduce((acc, [beatId, c]) => setEdit(acc, beatId, { duration: lineDurationFor(c.samples.length / c.sampleRate) }), p));
-    } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
+      if (made.size) {
+        setClips((old) => new Map([...old, ...made]));
+        commit((p) => fitAll(p, [...made]), "silent");
+      }
+      if (failed !== undefined && !(failed instanceof DOMException && failed.name === "AbortError")) setError(failed instanceof Error ? failed.message : String(failed));
     } finally {
       setBusy(false);
       abort.current = null;
@@ -70,6 +73,9 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
 }
 
 export type Voicing = ReturnType<typeof useVoices>;
+
+const fitted = (c: VoiceClip) => lineDurationFor(c.samples.length / c.sampleRate);
+const fitAll = (p: StoryProject, clips: [string, VoiceClip][]) => clips.reduce((acc, [beatId, c]) => setEdit(acc, beatId, { duration: fitted(c), fit: true }), p);
 
 /** نوار صداگذاری: تعداد دیالوگ‌های بی‌صدا، ساخت و پیشرفت. */
 export function VoicePanel({ v }: { v: Voicing }) {

@@ -65,9 +65,14 @@ export function useStoryWorkspace(sample: string, requestedId?: string) {
         }
       });
   }, [project]);
-  const commit = useCallback((change: (p: StoryProject) => StoryProject, group = false) => {
+  /** group=true: تایپ پشت‌سرهم یک مرحلهٔ واگرد است؛ "silent": اصلاح خودکار بدون مرحلهٔ واگرد. */
+  const commit = useCallback((change: (p: StoryProject) => StoryProject, group: boolean | "silent" = false) => {
     revision.current++;
     const now = Date.now();
+    if (group === "silent") {
+      setStack((h) => (h ? { ...h, present: { ...change(h.present), updatedAt: now } } : h));
+      return;
+    }
     const coalesce = group && now - typing.current < 700;
     typing.current = group ? now : 0;
     setStack((h) => (h ? remember(h, { ...change(h.present), updatedAt: now }, coalesce) : h));

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { compileProject, type StoryProject } from "@/studio/stick/project";
 import { exportStoryFilm } from "@/studio/stick/story-export";
+import { savedVoicing } from "@/studio/stick/voice-client";
 import { cuesToSrt } from "@/studio/stick/story-direct";
 import { dialogueText } from "@/studio/stick/deliverables";
 import { thumbnail } from "@/studio/stick/thumbnail";
@@ -63,8 +64,11 @@ export function BatchExport({ projects }: { projects: StoryProject[] }) {
         }
         try {
           const d = compileProject(p);
-          const film = await exportStoryFilm(d.timeline, {
+          // همان صداهای ذخیره‌شدهٔ پروژه که در ساخت تکی فیلم استفاده می‌شود
+          const voiced = await savedVoicing(d, p.settings.voices);
+          const film = await exportStoryFilm(voiced.timeline, {
             ...p.settings,
+            audio: voiced.audio,
             signal: ctrl.signal,
             onProgress: (n) => update(job.id, { status: `ساخت فیلم: ${Math.round(n * 100)}٪` }),
           });

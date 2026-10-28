@@ -10,7 +10,7 @@ import { renderStoryboard } from "@/studio/stick/storyboard";
 import { frameImage, thumbnail } from "@/studio/stick/thumbnail";
 import { fa } from "@/studio/format";
 import { VoicePanel, type Voicing } from "@/components/story/voice-panel";
-import { mixClips } from "@/studio/stick/voice";
+import { MIX_RATE, mixClips } from "@/studio/stick/voice";
 
 const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, "_").trim() || "behix";
 
@@ -69,7 +69,7 @@ export function ExportDialog({ open, onClose, directed, voicing, project, commit
     try {
       const voiced = voicing.voiced;
       const timeline = voiced?.timeline ?? directed.timeline;
-      const audio = voiced?.placed.length ? { data: mixClips(voiced.placed, timeline.duration), sampleRate: 24000 } : undefined;
+      const audio = voiced?.placed.length ? { data: mixClips(voiced.placed, timeline.duration, MIX_RATE), sampleRate: MIX_RATE } : undefined;
       const result = await exportStoryFilm(timeline, { fps, captions, format, audio, onProgress: setProgress, signal: ctrl.signal });
       setFilm(result);
       setMessage(result.notice);

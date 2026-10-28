@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { MAX_LINE, TTS_MODEL, VOICE_IDS } from "@/studio/stick/voice";
+import { reserveDaily } from "@/lib/tts-quota";
 
 /**
  * صدای فارسی دیالوگ با Gemini TTS (Cloud Text-to-Speech).
@@ -11,7 +12,6 @@ const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.e
 const ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost"]);
 const WINDOW = 10 * 60_000, PER_IP = Number(process.env.TTS_PER_IP ?? 120), PER_DAY = Number(process.env.TTS_PER_DAY ?? 3000);
 const hits = new Map<string, number[]>();
-let day = "", today = 0;
 
 const cors = (req: Request): Record<string, string> => {
   const origin = req.headers.get("origin");
@@ -29,10 +29,9 @@ async function accessToken(): Promise<string> {
   return token.value;
 }
 
+const DAILY_FULL = "سقف روزانهٔ ساخت صدا پر شده است؛ فردا دوباره امتحان کنید.";
 function limited(ip: string): string | null {
-  const now = Date.now(), d = new Date().toISOString().slice(0, 10);
-  if (d !== day) (day = d), (today = 0);
-  if (today >= PER_DAY) return "سقف روزانهٔ ساخت صدا پر شده است؛ فردا دوباره امتحان کنید.";
+  const now = Date.now();
   const list = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW);
   if (list.length >= PER_IP) return "درخواست‌ها زیاد است؛ چند دقیقه دیگر دوباره امتحان کنید.";
   list.push(now);
@@ -61,19 +60,25 @@ async function handle(req: Request): Promise<Response> {
       const cached = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(key)}?alt=media`, { headers: auth });
       if (cached.ok) return audio(await cached.arrayBuffer(), true);
     }
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "local";
+    // Cloud Run نشانی واقعی کاربر را به آخر x-forwarded-for اضافه می‌کند؛ مقدارهای قبلی را خود کاربر می‌تواند بفرستد
+    const ip = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "local";
     const block = limited(ip);
     if (block) return fail(req, 429, block);
+    if (!(await reserveDaily(auth, bucket, PER_DAY, 1))) return fail(req, 429, DAILY_FULL);
+    const refund = () => reserveDaily(auth, bucket, PER_DAY, -1).catch((e) => console.error("[tts] refund", e));
     const r = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize", {
       method: "POST",
       headers: { ...auth, "x-goog-user-project": project, "content-type": "application/json" },
       body: JSON.stringify({ input: { text, prompt }, voice: { languageCode: "fa-IR", name: voice, modelName: TTS_MODEL }, audioConfig: { audioEncoding: "MP3", sampleRateHertz: 24000 } }),
+    }).catch(async (e: unknown) => {
+      await refund();
+      throw e;
     });
     if (!r.ok) {
       console.error("[tts]", r.status, (await r.text()).slice(0, 500));
+      await refund();
       return fail(req, 502, "ساخت صدا انجام نشد؛ کمی بعد دوباره امتحان کنید.");
     }
-    today++;
     const bytes = Uint8Array.from(atob(((await r.json()) as { audioContent: string }).audioContent), (c) => c.charCodeAt(0)).buffer;
     if (bucket)
       await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(key)}`, { method: "POST", headers: { ...auth, "content-type": "audio/mpeg" }, body: bytes }).catch((e) => console.error("[tts] cache", e));
