@@ -49,7 +49,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <StorageBar notice={storageNotice} locked={storageLocked} />
       <div className="layout">
         <nav ref={railRef} className="rail" aria-label="خط تولید">
-          <Link to="/" className="step-link" aria-current={path === "/" ? "page" : undefined}>
+          <Link to="/photo" className="step-link" aria-current={path === "/photo" ? "page" : undefined}>
             <span className="step-no">00</span>
             پروژه
           </Link>

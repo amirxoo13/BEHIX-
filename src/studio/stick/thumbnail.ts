@@ -5,6 +5,11 @@ import { renderStory } from "./story-render.ts";
 import type { Directed } from "./story-direct.ts";
 import { thumbnailTime } from "./deliverables.ts";
 export async function thumbnail(directed: Directed, format: Format): Promise<Blob> {
+  return frameImage(directed, thumbnailTime(directed.cues, directed.timeline.scenes), format, false);
+}
+
+/** یک قاب دلخواه از فیلم با اندازهٔ کامل خروجی (مثل ذخیرهٔ فریم در TupiTube). */
+export async function frameImage(directed: Directed, time: number, format: Format, captions: boolean): Promise<Blob> {
   await loadRenderFonts();
   const { w, h } = frameFor(format),
     canvas = document.createElement("canvas");
@@ -17,9 +22,9 @@ export async function thumbnail(directed: Directed, format: Format): Promise<Blo
     renderStory(
       ctx,
       directed.timeline,
-      thumbnailTime(directed.cues, directed.timeline.scenes),
+      Math.max(0, Math.min(time, directed.timeline.duration - 0.001)),
       paper,
-      { captions: false, format },
+      { captions, format },
     );
     return await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(

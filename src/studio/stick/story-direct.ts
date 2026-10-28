@@ -20,10 +20,12 @@ export const WORDS_PER_SEC = 2.4;
 const OFF_LEFT = -0.16;
 const OFF_RIGHT = 1.16;
 const MAX_ON_STAGE = 5;
+/** بزرگ‌نمایی نماهای دستی: متوسط (کمر به بالا) و نزدیک (صورت و شانه). */
+export const SHOT_ZOOM = { medium: 1.18, close: 1.5 } as const;
 
 export type Cue = { beatId?:string; from: number; to: number; speaker: string; text: string; mood?: Expression; scene: number };
 
-export type BeatTiming = { id:string; scene:number; from:number; to:number; text:string; kind:Beat["kind"]; speaker?:string };
+export type BeatTiming = { id:string; scene:number; from:number; to:number; text:string; kind:Beat["kind"]; speaker?:string; shot?:Beat["shot"] };
 export type Directed = { timeline: Timeline; cues: Cue[]; warnings: string[]; beats:BeatTiming[] };
 
 const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
@@ -429,6 +431,13 @@ export function directStory(plan: StoryPlan): Directed {
         if (punch) cam(T, 1.28, punch.x, punch.sit);
         else cam(T, 1, 0.5, false);
       }
+      // نمای انتخابی کاربر روی نمای خودکار نوشته می‌شود
+      if (beat.shot) {
+        const subject = (beat.kind === "line" ? states.get(beat.speaker) : undefined) ?? punch ?? beat.acts.map((a) => states.get(a.who)).find((s) => s?.present);
+        if (beat.shot === "wide" || !subject?.present) cam(T, 1, 0.5, false);
+        else if (beat.shot === "medium") cam(T, SHOT_ZOOM.medium, (subject.x + 0.5) / 2, subject.sit);
+        else cam(T, SHOT_ZOOM.close, subject.x, subject.sit);
+      }
 
       // برگشت حرکت‌های لحظه‌ای و آرام شدن چهره
       const back = T + Math.min(dur - 0.05, Math.max(1.1, dur * 0.6));
@@ -444,7 +453,7 @@ export function directStory(plan: StoryPlan): Directed {
         }
       }
       t = T + dur;
-      if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T,to:clock+t,text:beat.text,kind:beat.kind,...(beat.kind==="line"?{speaker:beat.speaker}:{})});
+      if(beat.id) beats.push({id:beat.id,scene:sceneIndex,from:clock+T,to:clock+t,text:beat.text,kind:beat.kind,...(beat.kind==="line"?{speaker:beat.speaker}:{}),...(beat.shot?{shot:beat.shot}:{})});
     }
     const end = t + 0.8;
     cam(t, 1, 0.5, false);

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as CastRouteImport } from './routes/cast'
 import { Route as DeliverRouteImport } from './routes/deliver'
+import { Route as PhotoRouteImport } from './routes/photo'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ScenarioRouteImport } from './routes/scenario'
 import { Route as SoundRouteImport } from './routes/sound'
@@ -39,6 +40,11 @@ const CastRoute = CastRouteImport.update({
 const DeliverRoute = DeliverRouteImport.update({
   id: '/deliver',
   path: '/deliver',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PhotoRoute = PhotoRouteImport.update({
+  id: '/photo',
+  path: '/photo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/photo': typeof PhotoRoute
   '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/photo': typeof PhotoRoute
   '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/photo': typeof PhotoRoute
   '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/photo'
     | '/projects'
     | '/scenario'
     | '/sound'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/photo'
     | '/projects'
     | '/scenario'
     | '/sound'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/photo'
     | '/projects'
     | '/scenario'
     | '/sound'
@@ -164,6 +176,7 @@ export interface RootRouteChildren {
   BoardRoute: typeof BoardRoute
   CastRoute: typeof CastRoute
   DeliverRoute: typeof DeliverRoute
+  PhotoRoute: typeof PhotoRoute
   ProjectsRoute: typeof ProjectsRoute
   ScenarioRoute: typeof ScenarioRoute
   SoundRoute: typeof SoundRoute
@@ -201,6 +214,13 @@ declare module '@tanstack/react-router' {
       path: '/deliver'
       fullPath: '/deliver'
       preLoaderRoute: typeof DeliverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/photo': {
+      id: '/photo'
+      path: '/photo'
+      fullPath: '/photo'
+      preLoaderRoute: typeof PhotoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -260,6 +280,7 @@ const rootRouteChildren: RootRouteChildren = {
   BoardRoute: BoardRoute,
   CastRoute: CastRoute,
   DeliverRoute: DeliverRoute,
+  PhotoRoute: PhotoRoute,
   ProjectsRoute: ProjectsRoute,
   ScenarioRoute: ScenarioRoute,
   SoundRoute: SoundRoute,

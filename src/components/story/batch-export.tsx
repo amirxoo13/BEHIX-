@@ -106,9 +106,8 @@ export function BatchExport({ projects }: { projects: StoryProject[] }) {
     }
   };
   return (
-    <details className="panel">
-      <summary className="cursor-pointer font-bold">خروجی دسته‌ای قسمت‌ها</summary>
-      <div className="grid gap-3 mt-3">
+    <div className="grid gap-3 mt-3">
+      <div className="grid gap-3">
         <p className="text-sm text-muted">
           قسمت‌ها به ترتیب انتخاب ساخته می‌شوند. تنظیمات ذخیره‌شدهٔ هر داستان استفاده می‌شود.
         </p>
@@ -181,6 +180,6 @@ export function BatchExport({ projects }: { projects: StoryProject[] }) {
         ))}
         {error && <p role="alert">{error}</p>}
       </div>
-    </details>
+    </div>
   );
 }
