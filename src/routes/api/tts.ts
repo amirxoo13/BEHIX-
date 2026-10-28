@@ -64,8 +64,9 @@ async function handle(req: Request): Promise<Response> {
     const ip = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "local";
     const block = limited(ip);
     if (block) return fail(req, 429, block);
-    if (!(await reserveDaily(auth, bucket, PER_DAY, 1))) return fail(req, 429, DAILY_FULL);
-    const refund = () => reserveDaily(auth, bucket, PER_DAY, -1).catch((e) => console.error("[tts] refund", e));
+    const reserved = await reserveDaily(auth, bucket, PER_DAY, 1);
+    if (!reserved) return fail(req, 429, DAILY_FULL);
+    const refund = () => reserveDaily(auth, bucket, PER_DAY, -1, reserved).catch((e) => console.error("[tts] refund", e));
     const r = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize", {
       method: "POST",
       headers: { ...auth, "x-goog-user-project": project, "content-type": "application/json" },

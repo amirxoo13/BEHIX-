@@ -31,19 +31,30 @@ function fakeStorage() {
 test("concurrent reservations never exceed the shared daily limit", async () => {
   const objects = fakeStorage();
   const results = await Promise.all(Array.from({ length: 6 }, () => reserveDaily({}, "b", 3, 1)));
-  assert.equal(results.filter(Boolean).length, 3);
+  assert.equal(results.filter((r) => r !== null).length, 3);
   assert.equal([...objects.values()][0].metadata.count, "3");
 });
 
 test("a refund frees the allowance again", async () => {
   fakeStorage();
-  assert.equal(await reserveDaily({}, "b", 1, 1), true);
-  assert.equal(await reserveDaily({}, "b", 1, 1), false);
-  assert.equal(await reserveDaily({}, "b", 1, -1), true);
-  assert.equal(await reserveDaily({}, "b", 1, 1), true);
+  const day = await reserveDaily({}, "b", 1, 1);
+  assert.ok(day);
+  assert.equal(await reserveDaily({}, "b", 1, 1), null);
+  assert.equal(await reserveDaily({}, "b", 1, -1, day), day);
+  assert.ok(await reserveDaily({}, "b", 1, 1));
 });
 
 test("without a bucket the in-process counter reserves before synthesis", async () => {
   const results = await Promise.all(Array.from({ length: 4 }, () => reserveDaily({}, undefined, 2, 1)));
-  assert.equal(results.filter(Boolean).length, 2);
+  assert.equal(results.filter((r) => r !== null).length, 2);
+});
+
+test("a refund after midnight goes back to the reservation's own day", async () => {
+  const objects = fakeStorage();
+  assert.ok(await reserveDaily({}, "b", 1, 1, "2026-01-01"));
+  assert.ok(await reserveDaily({}, "b", 1, 1, "2026-01-02"));
+  await reserveDaily({}, "b", 1, -1, "2026-01-01");
+  assert.equal(objects.get("quota/2026-01-01")!.metadata.count, "0");
+  assert.equal(objects.get("quota/2026-01-02")!.metadata.count, "1");
+  assert.equal(await reserveDaily({}, "b", 1, 1, "2026-01-02"), null);
 });
