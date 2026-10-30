@@ -12,7 +12,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { MAX_SCRIPT_CHARS, type Plan } from "@/studio/script-plan";
-import { createLimiter, positiveInt } from "./rate-limit";
+import { clientIp, createLimiter, positiveInt } from "./rate-limit";
 import type { ExtraCharacter } from "@/studio/script-llm";
 
 export type ScriptAiStatus = { configured: boolean; model: string | null };
@@ -89,8 +89,8 @@ export const understandScript = createServerFn({ method: "POST" })
     const c = await config();
     if (!c) return { ok: false, error: "مدل زبانی تنظیم نشده است." };
     const lim = await limiter();
-    const { getRequestIP } = await import("@tanstack/react-start/server");
-    const verdict = lim.check(getRequestIP({ xForwardedFor: true }) ?? "unknown");
+    const { getRequest, getRequestIP } = await import("@tanstack/react-start/server");
+    const verdict = lim.check(clientIp(getRequest().headers, getRequestIP()));
     if (!verdict.ok) return verdict;
     const { buildMessages, maxOutputTokens, planFromModelReply } = await import("@/studio/script-llm");
 
