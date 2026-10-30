@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { MAX_LINE, TTS_MODEL, VOICE_IDS } from "@/studio/stick/voice";
 import { reserveDaily } from "@/lib/tts-quota";
+import { clientIp } from "@/lib/rate-limit";
 
 /**
  * صدای فارسی دیالوگ با Gemini TTS (Cloud Text-to-Speech).
@@ -60,8 +61,9 @@ async function handle(req: Request): Promise<Response> {
       const cached = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(key)}?alt=media`, { headers: auth });
       if (cached.ok) return audio(await cached.arrayBuffer(), true);
     }
-    // Cloud Run نشانی واقعی کاربر را به آخر x-forwarded-for اضافه می‌کند؛ مقدارهای قبلی را خود کاربر می‌تواند بفرستد
-    const ip = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "local";
+    // پشت Cloud Run یا nginx آدرس واقعی را پراکسی می‌نویسد؛ کدام هدر قابل‌اعتماد است را TRUSTED_IP_HEADER می‌گوید.
+    const { getRequestIP } = await import("@tanstack/react-start/server");
+    const ip = clientIp(req.headers, getRequestIP());
     const block = limited(ip);
     if (block) return fail(req, 429, block);
     const reserved = await reserveDaily(auth, bucket, PER_DAY, 1);

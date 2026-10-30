@@ -3,7 +3,7 @@ import { Copy, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { BatchExport } from "@/components/story/batch-export";
 import { FrameThumb } from "@/components/story/frame-thumb";
 import { compileProject, importProject, newProject, type StoryProject } from "@/studio/stick/project";
-import { deleteProject, listProjects, saveProject } from "@/studio/stick/project-db";
+import { deleteProject, listProjects, migrateLegacy, saveProject } from "@/studio/stick/project-db";
 import { thumbnailTime } from "@/studio/stick/deliverables";
 import { FORMATS } from "@/studio/stick/layout";
 import { fa } from "@/studio/format";
@@ -38,7 +38,15 @@ export function ProjectsHome({ brand, onOpen, extra }: { brand: (content: ReactN
 
   useEffect(() => {
     let alive = true;
-    listProjects()
+    // داستان قدیمیِ ذخیره‌شده در localStorage (پیش از IndexedDB) باید در گالری هم دیده شود،
+    // نه فقط بعد از باز کردن ویرایشگر. بدون متن قدیمی پروژهٔ خالی ساخته نمی‌شود.
+    let legacy = "";
+    try {
+      legacy = localStorage.getItem("behix-story-v1") ?? "";
+    } catch {
+      /* storage unavailable */
+    }
+    (legacy.trim() ? migrateLegacy("") : listProjects())
       .then((items) => alive && setProjects(items))
       .catch(() => alive && setError("پروژه‌های این دستگاه خوانده نشد. دسترسی ذخیره‌سازی مرورگر را بررسی کنید."))
       .finally(() => alive && setLoading(false));

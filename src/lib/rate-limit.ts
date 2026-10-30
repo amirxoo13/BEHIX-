@@ -62,13 +62,27 @@ export function createLimiter(limits: Limits, now: () => number = Date.now) {
 }
 
 /**
- * کلید سهمیهٔ هر کاربر: IP که لبهٔ Vercel خودش می‌گذارد (همان ترتیب auth/server.ts).
- * اولین مقدار x-forwarded-for در دست کلاینت است و با عوض کردنش سقف ساعتی دور زده می‌شد؛
- * پس استفاده نمی‌شود و بعد از هدرهای Vercel، آدرس اتصال (`socketIp`) می‌آید.
+ * کلید سهمیهٔ هر کاربر. هدرهای IP را کلاینت هم می‌تواند بفرستد، پس فقط هدری قبول می‌شود
+ * که پراکسیِ جلوی سرور خودش می‌نویسد:
+ * - روی Vercel: `x-vercel-forwarded-for`.
+ * - روی سرور خودتان: نام هدر در `TRUSTED_IP_HEADER` (مثلاً `x-real-ip` پشت nginx). برای
+ *   `x-forwarded-for` آخرین مقدار برداشته می‌شود، چون پراکسی (nginx، Cloud Run) آدرس واقعی را
+ *   به آخر اضافه می‌کند و مقدارهای قبلی را خود کاربر فرستاده است.
+ * - بدون این‌ها: آدرس اتصال (`socketIp`).
  */
-export function clientIp(headers: Headers, socketIp: string | undefined): string {
-  for (const name of ["x-vercel-forwarded-for", "x-real-ip"]) {
-    const value = headers.get(name)?.split(",")[0]?.trim();
+export function clientIp(
+  headers: Headers,
+  socketIp: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (env.VERCEL) {
+    const value = headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim();
+    if (value) return value;
+  }
+  const trusted = env.TRUSTED_IP_HEADER?.trim().toLowerCase();
+  if (trusted) {
+    const parts = (headers.get(trusted) ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+    const value = trusted === "x-forwarded-for" ? parts.at(-1) : parts[0];
     if (value) return value;
   }
   return socketIp || "unknown";
