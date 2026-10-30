@@ -19,7 +19,7 @@ try{
   assert.equal(await p.getByLabel('حرکت دست و بدن').inputValue(),'cheer');
   assert.equal(await p.getByLabel('مکان صحنه').inputValue(),'yard');
   await p.locator('canvas[data-render-ready=true]').waitFor();
-  await p.screenshot({path:`${process.env.WORKSPACE_ROOT}/output/studio-shell/built-mobile.png`,fullPage:true});
+  await p.screenshot({path:`${process.env.WORKSPACE_ROOT ?? "/home/vercel-sandbox/workspace"}/output/studio-shell/built-mobile.png`,fullPage:true});
   checks.push('built dashboard -> story -> actual edits -> saved navigation -> reopened edits');
   for(const route of ['/','/projects','/story','/scenario','/cast','/world','/board','/stage','/sound','/deliver']){
     const res=await p.goto(`http://127.0.0.1:8081${route}`);assert.equal(res.status(),200);
@@ -28,4 +28,4 @@ try{
     checks.push(`${route}: HTTP200, mounted, 390px no overflow`);
   }
   assert.deepEqual(errors,[]);console.log(JSON.stringify(checks,null,2));
-}finally{writeFileSync(`${process.env.WORKSPACE_ROOT}/output/studio-shell/built-report.json`,JSON.stringify({checks,errors},null,2));await c.close();await b.close();}
+}finally{writeFileSync(`${process.env.WORKSPACE_ROOT ?? "/home/vercel-sandbox/workspace"}/output/studio-shell/built-report.json`,JSON.stringify({checks,errors},null,2));await c.close();await b.close();}

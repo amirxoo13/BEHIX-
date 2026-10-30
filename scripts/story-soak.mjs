@@ -25,7 +25,7 @@ try {
   await page.getByRole("button", { name: "داستان تازه", exact: true }).click();
   await page.getByLabel("نام پروژه", { exact: true }).fill("آزمون ده دقیقه‌ای");
   await page
-    .getByLabel("سناریو", { exact: true })
+    .getByLabel("داستان", { exact: true })
     .fill(
       "صحنه: پذیرایی خانه\nعلی (مرد) و سارا (زن) نشسته‌اند.\n" +
         Array.from(
