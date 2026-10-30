@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useBlocker } from "@tanstack/react-router";
+import { ArrowRight } from "lucide-react";
 import { StoryApp } from "@/components/story/story-app";
 import { useStoryWorkspace } from "@/studio/stick/use-workspace";
 
@@ -17,7 +18,7 @@ function StoryPage() {
   return (
     <StoryApp
       workspace={workspace}
-      projectsLink={<Link to="/projects" className="btn btn-ghost">پروژه‌ها</Link>}
+      projectsLink={<Link to="/" className="back-btn" title="همهٔ پروژه‌ها"><ArrowRight size={18} aria-hidden /><span>پروژه‌ها</span></Link>}
       brand={(content) => (
         <Link to="/" className="studio-brand" aria-label="خانه">
           {content}

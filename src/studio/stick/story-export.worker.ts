@@ -6,7 +6,7 @@ export type WorkerRequest =
       id: number;
       type: "start";
       timeline: Timeline;
-      options: Pick<FilmOptions, "fps" | "captions" | "format">;
+      options: Pick<FilmOptions, "fps" | "captions" | "format" | "audio">;
     }
   | { id: number; type: "cancel" };
 export type WorkerReply =

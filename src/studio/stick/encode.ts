@@ -1,4 +1,4 @@
-import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, canEncodeVideo } from "mediabunny";
+import { AudioSample, AudioSampleSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output, canEncodeAudio, canEncodeVideo } from "mediabunny";
 import type { RenderCanvas, Ctx } from "./figure-base.ts";
 import { frameFor, type Format } from "./layout.ts";
 import { makeCanvas, makePaper } from "./paper.ts";
@@ -9,6 +9,8 @@ export type FilmOptions = {
   format?: Format;
   signal?: AbortSignal;
   onProgress?: (p: number) => void;
+  /** صدای میکس‌شدهٔ دیالوگ‌ها (تک‌کانال)؛ نبودنش یعنی فیلم بی‌صدا. */
+  audio?: { data: Float32Array; sampleRate: number };
 };
 export const bitrate = (fps: number) => (fps === 60 ? 8_000_000 : 5_000_000);
 export async function canExportMp4(fps: number, format: Format = "portrait") {
@@ -41,8 +43,23 @@ export async function encodeMp4(
     keyFrameInterval: 2,
   });
   output.addVideoTrack(video, { frameRate: opts.fps });
+  let sound: AudioSampleSource | null = null;
+  if (opts.audio?.data.length) {
+    const codec = (await canEncodeAudio("aac", { numberOfChannels: 1, sampleRate: opts.audio.sampleRate })) ? "aac" : "opus";
+    sound = new AudioSampleSource({ codec, bitrate: 128_000 });
+    output.addAudioTrack(sound);
+  }
   try {
     await output.start();
+    if (sound && opts.audio) {
+      const { data, sampleRate } = opts.audio;
+      for (let i = 0; i < data.length; i += sampleRate) {
+        const sample = new AudioSample({ data: data.subarray(i, i + sampleRate), format: "f32", numberOfChannels: 1, sampleRate, timestamp: i / sampleRate });
+        await sound.add(sample);
+        sample.close();
+      }
+      sound.close();
+    }
     const frames = Math.max(1, Math.ceil(timeline.duration * opts.fps));
     for (let i = 0; i < frames; i++) {
       opts.signal?.throwIfAborted();

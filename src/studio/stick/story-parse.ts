@@ -52,7 +52,9 @@ export type Act = {
 };
 
 export type SourceSpan = { line:number; start:number; end:number; text:string };
-export type BeatMeta = { id?:string; source?:SourceSpan; duration?:number; delay?:number };
+/** نمای دوربین که کاربر برای یک بخش انتخاب کرده (مثل زاویه‌های دوربین Plotagon). */
+export type Shot = "wide" | "medium" | "close";
+export type BeatMeta = { id?:string; source?:SourceSpan; duration?:number; delay?:number; shot?:Shot };
 export type Beat = BeatMeta & (
   | { kind: "action"; text: string; acts: Act[] }
   | { kind: "line"; speaker: string; text: string; acts: Act[] }

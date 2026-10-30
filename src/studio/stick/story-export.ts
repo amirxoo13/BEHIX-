@@ -31,7 +31,7 @@ function workerFilm(timeline:Timeline,opts:ExportOptions):Promise<ArrayBuffer> {
       if(data.type==="progress")opts.onProgress?.(data.progress);
       else {clean();if(data.type==="result")resolve(data.buffer);else reject(data.unsupported?new WorkerUnavailable():new Error(data.message));}
     };
-    worker.postMessage({id,type:"start",timeline,options:{fps:opts.fps,captions:opts.captions,format:opts.format}} satisfies WorkerRequest);
+    worker.postMessage({id,type:"start",timeline,options:{fps:opts.fps,captions:opts.captions,format:opts.format,audio:opts.audio}} satisfies WorkerRequest);
   });
 }
 export async function exportStoryFilm(tl:Timeline,opts:ExportOptions):Promise<StoryFilm> {
@@ -59,6 +59,16 @@ export async function recordLive(tl: Timeline,canvas:HTMLCanvasElement,ctx:Canva
   const types=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
   const mime=types.find(m=>MediaRecorder.isTypeSupported(m));
   const stream=canvas.captureStream(opts.fps);
+  // صدای دیالوگ‌ها هم‌زمان با تصویر در ضبط زنده
+  let audioCtx:AudioContext|null=null,audioSrc:AudioBufferSourceNode|null=null;
+  if(opts.audio?.data.length && typeof AudioContext!=="undefined"){
+    audioCtx=new AudioContext({sampleRate:opts.audio.sampleRate});
+    const buffer=audioCtx.createBuffer(1,opts.audio.data.length,opts.audio.sampleRate);
+    buffer.copyToChannel(opts.audio.data as Float32Array<ArrayBuffer>,0);
+    const dest=audioCtx.createMediaStreamDestination();
+    audioSrc=audioCtx.createBufferSource();audioSrc.buffer=buffer;audioSrc.connect(dest);
+    dest.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
+  }
   let recorder:MediaRecorder|undefined;
   let raf=0;
   let cancel=()=>{};
@@ -81,7 +91,7 @@ export async function recordLive(tl: Timeline,canvas:HTMLCanvasElement,ctx:Canva
       try{
         visibility();
         if(document.hidden)return;
-        renderStory(ctx,tl,0,paper,opts);rec.start(500);
+        renderStory(ctx,tl,0,paper,opts);rec.start(500);audioSrc?.start();
         let start:number|undefined;
         const tick=()=>{
           try{
@@ -105,5 +115,7 @@ export async function recordLive(tl: Timeline,canvas:HTMLCanvasElement,ctx:Canva
     opts.signal?.removeEventListener("abort",cancel);document.removeEventListener("visibilitychange",visibility);
     if(recorder){recorder.ondataavailable=null;recorder.onerror=null;recorder.onstop=null;if(recorder.state!=="inactive")recorder.stop();}
     stream.getTracks().forEach(track=>track.stop());
+    try{audioSrc?.stop();}catch{/* هنوز شروع نشده */}
+    void audioCtx?.close();
   }
 }

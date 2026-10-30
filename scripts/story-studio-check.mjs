@@ -93,8 +93,7 @@ try {
     await cdp.send('Storage.overrideQuotaForOrigin',{origin,quotaSize:1});
     await failure.goto(`${origin}/story`);
     await failure.getByLabel('داستان',{exact:true}).fill('علی: متن نباید گم شود');
-    await failure.locator('details[aria-label="پروژه‌ها"] > summary').click();
-    await failure.getByRole('button',{name:'داستان تازه',exact:true}).click();
+    await failure.getByRole('link',{name:'پروژه‌ها'}).click();
     await failure.waitForFunction(()=>document.body.textContent.includes('پروژه باز می‌ماند'));
     assert.equal(await failure.getByLabel('داستان',{exact:true}).inputValue(),'علی: متن نباید گم شود');
     await cdp.send('Storage.overrideQuotaForOrigin',{origin});

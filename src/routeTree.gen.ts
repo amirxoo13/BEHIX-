@@ -13,12 +13,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as CastRouteImport } from './routes/cast'
 import { Route as DeliverRouteImport } from './routes/deliver'
+import { Route as PhotoRouteImport } from './routes/photo'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ScenarioRouteImport } from './routes/scenario'
 import { Route as SoundRouteImport } from './routes/sound'
 import { Route as StageRouteImport } from './routes/stage'
 import { Route as StoryRouteImport } from './routes/story'
 import { Route as WorldRouteImport } from './routes/world'
+import { Route as ApiTtsRouteImport } from './routes/api/tts'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -39,6 +41,11 @@ const CastRoute = CastRouteImport.update({
 const DeliverRoute = DeliverRouteImport.update({
   id: '/deliver',
   path: '/deliver',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PhotoRoute = PhotoRouteImport.update({
+  id: '/photo',
+  path: '/photo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -71,6 +78,11 @@ const WorldRoute = WorldRouteImport.update({
   path: '/world',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTtsRoute = ApiTtsRouteImport.update({
+  id: '/api/tts',
+  path: '/api/tts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -82,12 +94,14 @@ export interface FileRoutesByFullPath {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/photo': typeof PhotoRoute
   '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/tts': typeof ApiTtsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -95,12 +109,14 @@ export interface FileRoutesByTo {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/photo': typeof PhotoRoute
   '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/tts': typeof ApiTtsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -109,12 +125,14 @@ export interface FileRoutesById {
   '/board': typeof BoardRoute
   '/cast': typeof CastRoute
   '/deliver': typeof DeliverRoute
+  '/photo': typeof PhotoRoute
   '/projects': typeof ProjectsRoute
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/tts': typeof ApiTtsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -124,12 +142,14 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/photo'
     | '/projects'
     | '/scenario'
     | '/sound'
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/tts'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -137,12 +157,14 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/photo'
     | '/projects'
     | '/scenario'
     | '/sound'
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/tts'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -150,12 +172,14 @@ export interface FileRouteTypes {
     | '/board'
     | '/cast'
     | '/deliver'
+    | '/photo'
     | '/projects'
     | '/scenario'
     | '/sound'
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/tts'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -164,12 +188,14 @@ export interface RootRouteChildren {
   BoardRoute: typeof BoardRoute
   CastRoute: typeof CastRoute
   DeliverRoute: typeof DeliverRoute
+  PhotoRoute: typeof PhotoRoute
   ProjectsRoute: typeof ProjectsRoute
   ScenarioRoute: typeof ScenarioRoute
   SoundRoute: typeof SoundRoute
   StageRoute: typeof StageRoute
   StoryRoute: typeof StoryRoute
   WorldRoute: typeof WorldRoute
+  ApiTtsRoute: typeof ApiTtsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -201,6 +227,13 @@ declare module '@tanstack/react-router' {
       path: '/deliver'
       fullPath: '/deliver'
       preLoaderRoute: typeof DeliverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/photo': {
+      id: '/photo'
+      path: '/photo'
+      fullPath: '/photo'
+      preLoaderRoute: typeof PhotoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -245,6 +278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorldRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tts': {
+      id: '/api/tts'
+      path: '/api/tts'
+      fullPath: '/api/tts'
+      preLoaderRoute: typeof ApiTtsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -260,12 +300,14 @@ const rootRouteChildren: RootRouteChildren = {
   BoardRoute: BoardRoute,
   CastRoute: CastRoute,
   DeliverRoute: DeliverRoute,
+  PhotoRoute: PhotoRoute,
   ProjectsRoute: ProjectsRoute,
   ScenarioRoute: ScenarioRoute,
   SoundRoute: SoundRoute,
   StageRoute: StageRoute,
   StoryRoute: StoryRoute,
   WorldRoute: WorldRoute,
+  ApiTtsRoute: ApiTtsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
