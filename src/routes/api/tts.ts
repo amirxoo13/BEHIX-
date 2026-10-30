@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { MAX_LINE, TTS_MODEL, VOICE_IDS } from "@/studio/stick/voice";
 import { reserveDaily } from "@/lib/tts-quota";
-import { clientIp } from "@/lib/rate-limit";
+import { clientIp, createIpWindow, positiveInt } from "@/lib/rate-limit";
 
 /**
  * صدای فارسی دیالوگ با Gemini TTS (Cloud Text-to-Speech).
@@ -11,8 +11,8 @@ import { clientIp } from "@/lib/rate-limit";
  */
 const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.enum(VOICE_IDS as [string, ...string[]]), prompt: z.string().max(300) }).strict();
 const ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost"]);
-const WINDOW = 10 * 60_000, PER_IP = Number(process.env.TTS_PER_IP ?? 120), PER_DAY = Number(process.env.TTS_PER_DAY ?? 3000);
-const hits = new Map<string, number[]>();
+const WINDOW = 10 * 60_000, PER_IP = positiveInt(process.env.TTS_PER_IP, 120), PER_DAY = Number(process.env.TTS_PER_DAY ?? 3000);
+const perIp = createIpWindow({ windowMs: WINDOW, max: PER_IP, maxKeys: 5000 });
 
 const cors = (req: Request): Record<string, string> => {
   const origin = req.headers.get("origin");
@@ -32,13 +32,7 @@ async function accessToken(): Promise<string> {
 
 const DAILY_FULL = "سقف روزانهٔ ساخت صدا پر شده است؛ فردا دوباره امتحان کنید.";
 function limited(ip: string): string | null {
-  const now = Date.now();
-  const list = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW);
-  if (list.length >= PER_IP) return "درخواست‌ها زیاد است؛ چند دقیقه دیگر دوباره امتحان کنید.";
-  list.push(now);
-  hits.set(ip, list);
-  if (hits.size > 5000) hits.clear();
-  return null;
+  return perIp.hit(ip) ? null : "درخواست‌ها زیاد است؛ چند دقیقه دیگر دوباره امتحان کنید.";
 }
 
 async function sha256(s: string) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clientIp, createLimiter, positiveInt } from "./rate-limit.ts";
+import { clientIp, createIpWindow, createLimiter, positiveInt } from "./rate-limit.ts";
 
 describe("model rate limit", () => {
   it("UT-RL-04 client IP trusts only the proxy header configured for this host", () => {
@@ -50,5 +50,30 @@ describe("model rate limit", () => {
     assert.equal(positiveInt("-3", 10), 10);
     assert.equal(positiveInt("abc", 10), 10);
     assert.equal(positiveInt(undefined, 10), 10);
+  });
+  it("UT-RL-05 IP window overflow prunes instead of wiping other IPs' counts", () => {
+    let t = 1_000_000;
+    const w = createIpWindow({ windowMs: 600_000, max: 2, maxKeys: 3 }, () => t);
+    assert.ok(w.hit("victim"));
+    assert.ok(w.hit("victim"));
+    assert.equal(w.hit("victim"), false);
+    for (let i = 0; i < 50; i++) { t += 1; w.hit(`flood-${i}`); w.hit("victim"); }
+    assert.ok(w.size() <= 3, "map stays bounded");
+    assert.equal(w.hit("victim"), false, "active victim keeps its count after overflow");
+  });
+  it("UT-RL-06 stale IPs are pruned first, then least-recently-used", () => {
+    let t = 0;
+    const w = createIpWindow({ windowMs: 100, max: 1, maxKeys: 2 }, () => t);
+    w.hit("old");
+    t = 200;
+    w.hit("a");
+    w.hit("b"); // overflow: "old" is stale and goes
+    assert.equal(w.size(), 2);
+    assert.equal(w.hit("a"), false);
+    assert.equal(w.hit("b"), false);
+    w.hit("c"); // no stale keys: LRU ("a") evicted
+    assert.equal(w.size(), 2);
+    assert.equal(w.hit("b"), false);
+    assert.equal(w.hit("c"), false);
   });
 });
