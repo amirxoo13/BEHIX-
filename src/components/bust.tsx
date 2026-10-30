@@ -25,7 +25,10 @@ export function Bust({
     if (!ctx) return;
     let alive = true;
     // سر عکسی: اول بارگذاری، بعد نقاشی (وگرنه یک لحظه سر پیش‌فرض دیده می‌شود).
-    void preloadHeads([findChar(charId)]).then(() => alive && paint(ctx, canvas));
+    // تصویر خراب: سر نقاشی‌شده کشیده می‌شود (headImage در این حالت null است).
+    void preloadHeads([findChar(charId)])
+      .catch(() => undefined)
+      .then(() => alive && paint(ctx, canvas));
     return () => {
       alive = false;
     };

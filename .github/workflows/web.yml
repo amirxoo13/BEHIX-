@@ -1,0 +1,59 @@
+# بررسی کیفیت نسخهٔ وب روی هر PR و هر push به main:
+# typecheck، lint، تست‌های واحد، build وب و build صفحهٔ اندروید.
+name: Web checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install packages
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: App unit tests
+        run: >-
+          node --experimental-strip-types --test
+          "src/lib/**/*.test.ts" "src/studio/*.test.ts" "src/studio/stick/*.test.ts"
+
+      # Four tests read .grok/skills/og/*, which is git-ignored platform material that
+      # exists only inside the Grok sandbox, so they cannot run on a plain checkout.
+      - name: Script unit tests
+        run: >-
+          node --test --test-skip-pattern="SKILL.md|og skill|brand-task prohibition"
+          "scripts/**/*.test.mjs"
+
+      - name: Build web app
+        run: npm run build
+        env:
+          # Never run migrations against a real database from CI.
+          DATABASE_URL: ""
+
+      - name: Build Android web bundle
+        run: npm run android:web

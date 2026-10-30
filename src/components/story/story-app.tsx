@@ -259,10 +259,16 @@ function Player({ directed,project,selected,commit }: { directed: Directed;proje
     return () => cancelAnimationFrame(raf);
   }, [playing, draw, duration]);
 
+  // Jump only when the user picks another beat. `directed` is rebuilt on every edit,
+  // so depending on it would stop playback and move the playhead after each change.
+  const beatsRef = useRef(directed.beats);
+  beatsRef.current = directed.beats;
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
   useEffect(()=>{
-    const beat=directed.beats.find(b=>b.id===selected);
-    if(beat){setPlaying(false);tRef.current=(beat.from+beat.to)/2;setT(tRef.current);draw(tRef.current);}
-  },[selected,directed.beats,draw]);
+    const beat=beatsRef.current.find(b=>b.id===selected);
+    if(beat){setPlaying(false);tRef.current=(beat.from+beat.to)/2;setT(tRef.current);drawRef.current(tRef.current);}
+  },[selected]);
   const pointerX=(event:React.PointerEvent<HTMLCanvasElement>)=>{
     const rect=event.currentTarget.getBoundingClientRect();
     const screen=(event.clientX-rect.left)/rect.width*frame.w;

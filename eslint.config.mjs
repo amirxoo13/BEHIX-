@@ -15,6 +15,8 @@ export default tseslint.config(
       ".nitro/**",
       "node_modules/**",
       "src/routeTree.gen.ts",
+      // Vendored MediaPipe/Emscripten build output (see docs/third-party.md).
+      "public/mediapipe/**",
     ],
   },
   js.configs.recommended,

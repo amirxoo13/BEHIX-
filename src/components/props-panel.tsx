@@ -21,9 +21,14 @@ export function PropsPanel({ shot, busy }: { shot: Shot; busy: boolean }) {
     // جای پیشنهادی همان چیدن خودکار است، بعد کاربر جابه‌جا می‌کند.
     const auto = placeProps([...shot.props.map((p) => p.id), adding]).find((p) => p.id === adding);
     const placed = auto ?? { id: adding, x: 0.5, layer: propDef(adding).layer };
-    const extra = auto && !shot.props.some((p) => p.id === "table") && propDef(adding).mount === "table";
+    // میز خودکار فقط وقتی جا هست اضافه می‌شود؛ شیء انتخاب‌شده هیچ‌وقت بریده نمی‌شود.
+    const extra =
+      auto &&
+      !shot.props.some((p) => p.id === "table") &&
+      propDef(adding).mount === "table" &&
+      shot.props.length + 2 <= MAX_PROPS;
     const table = placeProps(["table"])[0];
-    set([...(extra ? [table] : []), ...shot.props, placed].slice(0, MAX_PROPS));
+    set([...(extra ? [table] : []), ...shot.props, placed]);
   };
 
   return (
