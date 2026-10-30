@@ -6,6 +6,7 @@ import { FACES, type Expression } from "./face.ts";
 import { CLOTHES, type Look } from "./figure.ts";
 import { parseStory, type Beat, type StoryPlan } from "./story-parse.ts";
 import { directStory } from "./story-direct.ts";
+import { VOICE_IDS } from "./voice.ts";
 import type { Format } from "./layout.ts";
 
 const finite = z.number().finite();
@@ -61,6 +62,9 @@ const editSchema = z
     sit: z.boolean().optional(),
     place: z.enum(PLACE_IDS as [typeof PLACE_IDS[number], ...typeof PLACE_IDS]).optional(),
     night: z.boolean().optional(),
+    shot: z.enum(["wide", "medium", "close"]).optional(),
+    /** مدت را برنامه به اندازهٔ صدای دیالوگ گذاشته (نه کاربر)؛ با صدای تازه دوباره تنظیم می‌شود. */
+    fit: z.boolean().optional(),
     unresolved: z.boolean().optional(),
   })
   .strict();
@@ -80,6 +84,7 @@ export const projectSchema = z
         format: z.enum(["portrait", "square", "landscape"]),
         fps: z.union([z.literal(30), z.literal(60)]),
         captions: z.boolean(),
+        voices: z.record(z.string().max(100), z.enum(VOICE_IDS as [string, ...string[]])).optional(),
       })
       .strict(),
     updatedAt: finite.nonnegative(),
@@ -153,7 +158,7 @@ export function changeText(p: StoryProject, text: string): StoryProject {
 export function setEdit(
   p: StoryProject,
   beatId: string,
-  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night">,
+  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night" | "shot" | "fit">,
 ): StoryProject {
   const plan = parseStory(p.text);
   const match = anchors(plan).find((a) => a.beat.id === beatId);
@@ -166,6 +171,8 @@ export function setEdit(
   const edit: StoryEdit = {
     ...previous,
     ...patch,
+    // مدتی که کاربر خودش انتخاب کند دیگر خودکار عوض نمی‌شود
+    fit: patch.duration !== undefined ? patch.fit || undefined : previous?.fit,
     id: previous?.id ?? crypto.randomUUID(),
     beatId,
     anchor: match.anchor,
@@ -197,6 +204,7 @@ export function compileProject(p: StoryProject) {
         }
         if (edit.place !== undefined) scene.place = edit.place;
         if (edit.night !== undefined) scene.night = edit.night;
+        if (edit.shot && beat.kind !== "narration") beat.shot = edit.shot;
         if (beat.kind !== "narration" && edit.actor && (edit.x !== undefined || edit.face || edit.gesture || edit.move || edit.hold || edit.sit !== undefined)) {
           let act = beat.acts.find((a) => a.who === edit.actor);
           if (!act) {

@@ -32,6 +32,7 @@ async function main() {
     "src/lib/auth/trusted-hosts.test.ts",
     "src/lib/preview-path-prefix.test.ts",
     "src/lib/rate-limit.test.ts",
+    "src/lib/tts-quota.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",
   ]);

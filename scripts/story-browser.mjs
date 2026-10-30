@@ -38,7 +38,7 @@ try {
     const { makePaper } = await import("/src/studio/stick/paper.ts");
     const { loadRenderFonts } = await import("/src/studio/stick/fonts.ts");
     const { frameFor } = await import("/src/studio/stick/layout.ts");
-    const { TEMPLATES } = await import("/src/studio/stick/templates.ts");
+    const { TEMPLATES } = await import("/tests/story/fixtures.ts");
     await loadRenderFonts();
     const frames = [];
     for (const [index, template] of TEMPLATES.entries())
@@ -138,15 +138,15 @@ try {
     persistence.project && persistence.character,
   );
   // User controls, not a fabricated API: create a disposable project, edit, reload and undo.
-  await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
-  const original = await page.getByLabel("داستان‌های ذخیره‌شده").inputValue();
-  await page.getByRole("button", { name: "داستان تازه", exact: true }).click();
-  await page.waitForFunction(id => document.querySelector('details[aria-label="پروژه‌ها"] select')?.value !== id, original);
+  const original = page.url();
+  await page.getByRole("link", { name: "پروژه‌ها" }).click();
+  await page.getByRole("button", { name: "داستان تازه" }).first().click();
+  await page.waitForURL(url => url.href !== original && url.pathname.endsWith("/story"));
   await page.getByLabel("نام پروژه", { exact: true }).fill("آزمون مرورگر");
   await page.getByLabel("داستان", { exact: true }).fill("صحنه: پارک\nعلی: سلام\nعلی: خوبی؟");
   await page.getByLabel("مدت بخش (ثانیه)").fill("7");
   await page.getByLabel("مدت بخش (ثانیه)").press("Tab");
-  await page.waitForFunction(() => document.body.textContent.includes("ذخیره شد؛"));
+  await page.waitForFunction(() => document.body.textContent.includes("ذخیره شد"));
   await page.reload();
   await page.locator("canvas").waitFor();
   check(
@@ -156,8 +156,7 @@ try {
   await page
     .getByLabel("داستان", { exact: true })
     .fill("صحنه: پارک\nعلی: جملهٔ تازه\nعلی: سلام\nعلی: خوبی؟");
-  await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
-  await page.locator('details[aria-label="پروژه‌ها"]').getByRole("button", { name: "برگردان", exact: true }).click();
+  await page.locator(".studio-actions").getByRole("button", { name: "برگردان", exact: true }).click();
   check(
     "undo restores story text",
     (await page.getByLabel("داستان", { exact: true }).inputValue()).includes("جملهٔ تازه") ===
@@ -194,7 +193,6 @@ try {
     const db = await import("/src/studio/stick/project-db.ts");
     await db.deleteProject(id);
   }, testId);
-  await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
   await page.screenshot({ path: resolve(output, "desktop.png") });
   }
   check("no uncaught browser errors", errors.length === 0);

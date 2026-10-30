@@ -58,7 +58,7 @@ export const PHASES = [
 
 export type PhaseTo = (typeof PHASES)[number]["to"];
 
-export const FLOW = [{ to: "/", label: "پروژه" }, ...PHASES.map((p) => ({ to: p.to, label: p.label }))] as const;
+export const FLOW = [{ to: "/photo", label: "پروژه" }, ...PHASES.map((p) => ({ to: p.to, label: p.label }))] as const;
 
 export function phaseStatus(to: string, shots: Shot[], audioUrls: Record<string, string>) {
   if (to === "/scenario") {

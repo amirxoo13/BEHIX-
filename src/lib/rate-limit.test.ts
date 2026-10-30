@@ -3,12 +3,23 @@ import { describe, it } from "node:test";
 import { clientIp, createLimiter, positiveInt } from "./rate-limit.ts";
 
 describe("model rate limit", () => {
-  it("UT-RL-04 client IP prefers Vercel headers and never trusts x-forwarded-for", () => {
-    const spoofed = new Headers({ "x-forwarded-for": "6.6.6.6", "x-vercel-forwarded-for": "1.2.3.4" });
-    assert.equal(clientIp(spoofed, "10.0.0.1"), "1.2.3.4");
-    assert.equal(clientIp(new Headers({ "x-real-ip": "5.5.5.5, 7.7.7.7" }), undefined), "5.5.5.5");
-    assert.equal(clientIp(new Headers({ "x-forwarded-for": "6.6.6.6" }), "10.0.0.1"), "10.0.0.1");
-    assert.equal(clientIp(new Headers(), undefined), "unknown");
+  it("UT-RL-04 client IP trusts only the proxy header configured for this host", () => {
+    const spoofed = new Headers({
+      "x-forwarded-for": "6.6.6.6, 9.9.9.9",
+      "x-vercel-forwarded-for": "1.2.3.4",
+      "x-real-ip": "5.5.5.5",
+    });
+    // Own server, nothing configured: every header is client-controlled, use the socket.
+    assert.equal(clientIp(spoofed, "10.0.0.1", {}), "10.0.0.1");
+    assert.equal(clientIp(new Headers(), undefined, {}), "unknown");
+    // Vercel writes x-vercel-forwarded-for itself.
+    assert.equal(clientIp(spoofed, "10.0.0.1", { VERCEL: "1" }), "1.2.3.4");
+    // nginx: X-Real-IP $remote_addr.
+    assert.equal(clientIp(spoofed, "127.0.0.1", { TRUSTED_IP_HEADER: "X-Real-IP" }), "5.5.5.5");
+    // nginx $proxy_add_x_forwarded_for / Cloud Run append the real address last.
+    assert.equal(clientIp(spoofed, "127.0.0.1", { TRUSTED_IP_HEADER: "x-forwarded-for" }), "9.9.9.9");
+    // Configured header missing: fall back to the socket.
+    assert.equal(clientIp(new Headers(), "127.0.0.1", { TRUSTED_IP_HEADER: "x-real-ip" }), "127.0.0.1");
   });
   it("UT-RL-01 each IP gets perHour requests, then waits; other IPs are separate", () => {
     let t = Date.UTC(2026, 9, 15, 10);

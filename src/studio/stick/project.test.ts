@@ -108,3 +108,15 @@ test("moving a seated actor off a seat stands them up instead of floating", () =
   const keys = compileProject(p).timeline.scenes[0].actors[0].track.keys;
   assert.ok(keys.some((k) => k.x === 0.9 && k.pose.startsWith("stand")));
 });
+
+test("a duration the user picks clears the voice-fit marker; other edits keep it", () => {
+  let p = changeText(newProject(), "مریم (زن): سلام");
+  const id = parseStory(p.text).scenes[0].beats[0].id!;
+  p = setEdit(p, id, { duration: 2.5, fit: true });
+  assert.equal(p.edits[0].fit, true);
+  p = setEdit(p, id, { shot: "close" });
+  assert.equal(p.edits[0].fit, true);
+  p = setEdit(p, id, { duration: 12 });
+  assert.equal(p.edits[0].duration, 12);
+  assert.equal(p.edits[0].fit, undefined);
+});
