@@ -21,11 +21,13 @@ try {
   await page.locator("canvas[data-render-ready=true]").waitFor();
   await page.bringToFront();
   await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
-  await page.getByText("ذخیره نشد؛", { exact: false }).waitFor();
-  assert.ok((await page.getByLabel("سناریو", { exact: true }).inputValue()).length > 0);
+  await page.getByText("ذخیره نشد؛", { exact: false }).first().waitFor();
+  // New stories start empty (no sample text), so type while saving is failing.
+  await page.getByLabel("داستان", { exact: true }).fill("علی: هنوز قابل ویرایش");
+  assert.equal(await page.getByLabel("داستان", { exact: true }).inputValue(), "علی: هنوز قابل ویرایش");
   checks.push("actual storage quota failure is visible while story text remains editable");
   await cdp.send("Storage.overrideQuotaForOrigin", { origin });
-  await page.getByLabel("سناریو", { exact: true }).fill("علی: ذخیره دوباره");
+  await page.getByLabel("داستان", { exact: true }).fill("علی: ذخیره دوباره");
   await page.waitForFunction(async () => {
     const db = await import("/src/studio/stick/project-db.ts");
     return (await db.listProjects()).some((p) => p.text === "علی: ذخیره دوباره");

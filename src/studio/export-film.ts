@@ -275,17 +275,3 @@ export async function renderFilm(
   }
 }
 
-/** Backward-compatible: render, then trigger a download. Returns the extension. */
-export async function exportFilm(canvas: HTMLCanvasElement): Promise<"mp4" | "webm"> {
-  const film = await renderFilm(canvas);
-  const a = document.createElement("a");
-  const href = URL.createObjectURL(film.blob);
-  a.href = href;
-  a.download = `behix-${Date.now()}.${film.ext}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // BUG-03: آزاد کردن حافظه پس از شروع دانلود.
-  setTimeout(() => URL.revokeObjectURL(href), 60_000);
-  return film.ext;
-}

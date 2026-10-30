@@ -61,6 +61,19 @@ export function createLimiter(limits: Limits, now: () => number = Date.now) {
   };
 }
 
+/**
+ * کلید سهمیهٔ هر کاربر: IP که لبهٔ Vercel خودش می‌گذارد (همان ترتیب auth/server.ts).
+ * اولین مقدار x-forwarded-for در دست کلاینت است و با عوض کردنش سقف ساعتی دور زده می‌شد؛
+ * پس استفاده نمی‌شود و بعد از هدرهای Vercel، آدرس اتصال (`socketIp`) می‌آید.
+ */
+export function clientIp(headers: Headers, socketIp: string | undefined): string {
+  for (const name of ["x-vercel-forwarded-for", "x-real-ip"]) {
+    const value = headers.get(name)?.split(",")[0]?.trim();
+    if (value) return value;
+  }
+  return socketIp || "unknown";
+}
+
 /** عدد مثبت از متغیر محیطی، یا مقدار پیش‌فرض. */
 export function positiveInt(raw: string | undefined, fallback: number): number {
   const n = Number(raw);

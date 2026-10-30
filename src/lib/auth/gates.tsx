@@ -64,13 +64,25 @@ export function SignInGate({
 }
 
 export function SignInButtons() {
+  const [error, setError] = useState("");
   return (
     <div className="flex w-full max-w-sm flex-col gap-2">
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
       {GROK_PROVIDERS.map((p) => (
         <button
           key={p.providerId}
           type="button"
-          onClick={() => signIn(p.providerId, { callbackURL: "/" })}
+          onClick={() => {
+            setError("");
+            // signIn rejects when the popup is blocked or the sign-in is cancelled.
+            void signIn(p.providerId, { callbackURL: "/" }).catch((err: unknown) =>
+              setError(err instanceof Error ? err.message : "Sign-in failed"),
+            );
+          }}
           className="w-full cursor-pointer rounded-md border border-neutral-300 px-4 py-2 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
         >
           Continue with {p.label}

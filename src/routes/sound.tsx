@@ -28,12 +28,14 @@ function SoundPage() {
   useEffect(() => {
     return () => {
       if (!useStudio.getState().recording) return;
-      void stopMic().then((blob) => {
-        const s = useStudio.getState();
-        const id = s.shots[s.selected]?.id;
-        if (id) s.setAudio(id, URL.createObjectURL(blob));
-        s.setRecording(false);
-      });
+      void stopMic()
+        .then((blob) => {
+          const s = useStudio.getState();
+          const id = s.shots[s.selected]?.id;
+          if (id) s.setAudio(id, URL.createObjectURL(blob));
+        })
+        .catch(() => undefined)
+        .finally(() => useStudio.getState().setRecording(false));
     };
   }, []);
 

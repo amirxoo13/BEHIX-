@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createLimiter, positiveInt } from "./rate-limit.ts";
+import { clientIp, createLimiter, positiveInt } from "./rate-limit.ts";
 
 describe("model rate limit", () => {
+  it("UT-RL-04 client IP prefers Vercel headers and never trusts x-forwarded-for", () => {
+    const spoofed = new Headers({ "x-forwarded-for": "6.6.6.6", "x-vercel-forwarded-for": "1.2.3.4" });
+    assert.equal(clientIp(spoofed, "10.0.0.1"), "1.2.3.4");
+    assert.equal(clientIp(new Headers({ "x-real-ip": "5.5.5.5, 7.7.7.7" }), undefined), "5.5.5.5");
+    assert.equal(clientIp(new Headers({ "x-forwarded-for": "6.6.6.6" }), "10.0.0.1"), "10.0.0.1");
+    assert.equal(clientIp(new Headers(), undefined), "unknown");
+  });
   it("UT-RL-01 each IP gets perHour requests, then waits; other IPs are separate", () => {
     let t = Date.UTC(2026, 9, 15, 10);
     const lim = createLimiter({ perHour: 2, dailyTokens: 1000 }, () => t);

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-const out = `${process.env.WORKSPACE_ROOT}/output/studio-shell`;
+const out = `${process.env.WORKSPACE_ROOT ?? "/home/vercel-sandbox/workspace"}/output/studio-shell`;
 mkdirSync(out, {recursive:true});
 const browser = await chromium.connectOverCDP(execFileSync('coderabbit-agent-browser', ['get','cdp-url'], {encoding:'utf8'}).trim());
 const context = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});

@@ -16,9 +16,9 @@ try{
   const files=await page.evaluate(async()=>{const db=await import('/src/studio/stick/project-db.ts');return (await db.listArtifacts()).filter(a=>a.name.startsWith('قسمت آزمون')).map(a=>({id:a.id,name:a.name,size:a.blob.size}));});
   artifactIds=files.map(f=>f.id);assert.equal(files.length,8);assert.ok(files.every(f=>f.size>0));checks.push('two real episode exports with video, SRT, text and PNG');
   await page.locator('details[aria-label="پروژه‌ها"] > summary').click();
-  const before=await page.getByLabel('سناریو',{exact:true}).inputValue();
+  const before=await page.getByLabel('داستان',{exact:true}).inputValue();
   await page.locator('input[type=file]').setInputFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from('{')});
-  await page.getByRole('alert').filter({hasText:'فایل JSON معتبر نیست'}).waitFor();assert.equal(await page.getByLabel('سناریو',{exact:true}).inputValue(),before);checks.push('invalid JSON is rejected without replacing story');
+  await page.getByRole('alert').filter({hasText:'فایل JSON معتبر نیست'}).waitFor();assert.equal(await page.getByLabel('داستان',{exact:true}).inputValue(),before);checks.push('invalid JSON is rejected without replacing story');
   const originalId=await page.getByLabel('داستان‌های ذخیره‌شده').inputValue();
   const json=await page.evaluate(async id=>{const db=await import('/src/studio/stick/project-db.ts');return JSON.stringify((await db.listProjects()).find(p=>p.id===id));},originalId);
   await page.locator('input[type=file]').setInputFiles({name:'valid.behix.json',mimeType:'application/json',buffer:Buffer.from(json)});
@@ -28,7 +28,7 @@ try{
   await page.mouse.move(rect.x+rect.width*0.5,rect.y+rect.height*0.55);await page.mouse.down();await page.mouse.move(rect.x+rect.width*0.75,rect.y+rect.height*0.55,{steps:10});await page.mouse.up();
   await page.waitForFunction(async id=>{const db=await import('/src/studio/stick/project-db.ts');return (await db.listProjects()).find(p=>p.id===id)?.edits.some(e=>e.x>0.6);},importedId);
   checks.push('pointer drag persists an actual actor position edit');
-  await page.getByRole('button',{name:'برگردان',exact:true}).click();
+  await page.getByRole('button',{name:'برگردان',exact:true}).first().click();
   await page.waitForFunction(async id=>{const db=await import('/src/studio/stick/project-db.ts');return !(await db.listProjects()).find(p=>p.id===id)?.edits.some(e=>e.x>0.6);},importedId);
   checks.push('one undo reverses the whole drag');
   console.log(checks.join('\n'));
