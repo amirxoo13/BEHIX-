@@ -62,6 +62,45 @@ export function createLimiter(limits: Limits, now: () => number = Date.now) {
 }
 
 /**
+ * پنجرهٔ لغزان شمارش درخواست برای هر IP با سقف تعداد کلید.
+ * وقتی تعداد IPها از `maxKeys` بیشتر شود، اول IPهای بدون درخواست تازه حذف می‌شوند و اگر باز
+ * زیاد بود، قدیمی‌ترین IP (کمتر از همه اخیراً دیده‌شده، LRU) حذف می‌شود؛ هرگز همهٔ شمارنده‌ها
+ * پاک نمی‌شوند، پس پر کردن جدول با IPهای زیاد سقف بقیه را صفر نمی‌کند.
+ */
+export function createIpWindow(
+  opts: { windowMs: number; max: number; maxKeys?: number },
+  now: () => number = Date.now,
+) {
+  const hits = new Map<string, number[]>();
+  const maxKeys = opts.maxKeys ?? 5000;
+  const prune = (t: number) => {
+    for (const [k, v] of hits) if (!v.length || t - v[v.length - 1] >= opts.windowMs) hits.delete(k);
+    // Map ترتیب درج را نگه می‌دارد و هر دسترسی کلید را به آخر می‌برد، پس اولی LRU است.
+    for (const k of hits.keys()) {
+      if (hits.size <= maxKeys) break;
+      hits.delete(k);
+    }
+  };
+  return {
+    /** اگر مجاز بود درخواست را می‌شمارد و true می‌دهد. */
+    hit(ip: string): boolean {
+      const t = now();
+      const list = (hits.get(ip) ?? []).filter((x) => t - x < opts.windowMs);
+      hits.delete(ip);
+      if (list.length >= opts.max) {
+        hits.set(ip, list);
+        return false;
+      }
+      list.push(t);
+      hits.set(ip, list);
+      if (hits.size > maxKeys) prune(t);
+      return true;
+    },
+    size: () => hits.size,
+  };
+}
+
+/**
  * کلید سهمیهٔ هر کاربر. هدرهای IP را کلاینت هم می‌تواند بفرستد، پس فقط هدری قبول می‌شود
  * که پراکسیِ جلوی سرور خودش می‌نویسد:
  * - روی Vercel: `x-vercel-forwarded-for`.
