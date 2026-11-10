@@ -14,6 +14,16 @@ import type { SfxId } from "@/studio/types";
 export const Route = createFileRoute("/sound")({ component: SoundPage });
 
 const phase = PHASES[5];
+/** نمایی که ضبط روی آن شروع شد؛ برداشت به همین نما می‌رود، حتی اگر وسط ضبط نمای دیگری انتخاب شود. */
+let recordingShot: string | null = null;
+/** برداشت را به نمای شروع ضبط می‌دهد (اگر آن نما هنوز هست). */
+function saveTake(blob: Blob) {
+  const s = useStudio.getState();
+  const id = recordingShot;
+  recordingShot = null;
+  // setAudio خودش URL قبلی همان نما را revoke می‌کند
+  if (id && s.shots.some((x) => x.id === id)) s.setAudio(id, URL.createObjectURL(blob));
+}
 
 function SoundPage() {
   const shots = useStudio((s) => s.shots);
@@ -29,11 +39,7 @@ function SoundPage() {
     return () => {
       if (!useStudio.getState().recording) return;
       void stopMic()
-        .then((blob) => {
-          const s = useStudio.getState();
-          const id = s.shots[s.selected]?.id;
-          if (id) s.setAudio(id, URL.createObjectURL(blob));
-        })
+        .then(saveTake)
         .catch(() => undefined)
         .finally(() => useStudio.getState().setRecording(false));
     };
@@ -42,16 +48,18 @@ function SoundPage() {
   async function onMic() {
     const s = useStudio.getState();
     if (s.recording) {
-      const blob = await stopMic();
-      const id = s.shots[s.selected]?.id;
-      if (id) s.setAudio(id, URL.createObjectURL(blob));
-      s.setRecording(false);
+      try {
+        saveTake(await stopMic());
+      } finally {
+        s.setRecording(false);
+      }
       s.setStatus("گفتار این نما ماند و داخل خروجی ویدیو می‌رود. با بستن صفحه پاک می‌شود.");
       return;
     }
     try {
       await resumeAudio();
       await startMic();
+      recordingShot = (s.shots[s.selected] ?? s.shots[0])?.id ?? null;
       s.setRecording(true);
       s.setStatus("در حال ضبط. برای پایان، همان دکمه را بزنید.");
     } catch {
