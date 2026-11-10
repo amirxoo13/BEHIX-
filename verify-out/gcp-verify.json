@@ -1,0 +1,94 @@
+{
+  "project": "anime-512918",
+  "checkedAt": "2026-11-10T07:00:20.305Z",
+  "gemini": [
+    {
+      "model": "gemini-3.8-flash",
+      "location": "global",
+      "ok": true,
+      "status": 200,
+      "ms": 5817,
+      "modelVersion": "gemini-3.8-flash",
+      "usage": {
+        "promptTokenCount": 138,
+        "candidatesTokenCount": 163,
+        "totalTokenCount": 830,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 138
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 163
+          }
+        ],
+        "thoughtsTokenCount": 529
+      },
+      "reply": "{\"lines\":[{\"speaker\":\"سارا\",\"text\":\"سلام مریم جان! خیلی خوشحالم بالاخره دیدمت، چطوری؟\"},{\"speaker\":\"مریم\",\"text\":\"سلام عزیزم، منم همین‌طور! قربونت، بد نیستم. چی سفارش بدیم؟\"},{\"speaker\":\"سارا\",\"text\":\"من که یه لاته با کیک شکلاتی می‌خوام، تو این هوا خیلی می‌چسبه.\"},{\"speaker\":\"مریم\",\"text\":\"آره واقعا، منم چای ماسالا می‌گیرم. راستی از کار جدیدت چه خبر؟ همه چی خوب پیش می‌ره؟\"},{\"speaker\":\"سارا\",\"text",
+      "persian": true
+    },
+    {
+      "model": "gemini-3.8-flash-lite",
+      "location": "global",
+      "ok": false,
+      "status": 404,
+      "ms": 396,
+      "error": "Publisher model `projects/anime-512918/locations/global/publishers/google/models/gemini-3.8-flash-lite` was not found or your project does not have access to it. Ensure you are using a valid model name and that the model is available in the specified region. For more information, see: https://docs.c"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "location": "global",
+      "ok": true,
+      "status": 200,
+      "ms": 5119,
+      "modelVersion": "gemini-3.5-flash",
+      "usage": {
+        "promptTokenCount": 138,
+        "candidatesTokenCount": 126,
+        "totalTokenCount": 1153,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 138
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 126
+          }
+        ],
+        "thoughtsTokenCount": 889
+      },
+      "reply": "{\"lines\":[{\"speaker\":\"سهراب\",\"text\":\"چطوری پسر؟ خیلی وقت بود ندیده بودمت. چه خبر؟\"},{\"speaker\":\"نیما\",\"text\":\"قربونت، منم دلم تنگ شده بود. درگیر کارا بودم. تو چطوری؟\"},{\"speaker\":\"سهراب\",\"text\":\"سلامتی، می‌گذره. خب، چی سفارش بدیم؟ من که یه اسپرسو می‌زنم.\"},{\"speaker\":\"نیما\",\"text\":\"منم یه لاته با کیک شکلاتی سفارش می‌دم که بشوره ببره. خیلی خسته‌ام.\"}]}",
+      "persian": true
+    }
+  ],
+  "tts": [
+    {
+      "model": "gemini-2.5-pro-tts",
+      "voice": "Kore",
+      "languageCode": "fa-IR",
+      "ok": true,
+      "status": 200,
+      "ms": 5879,
+      "bytes": 19200,
+      "file": "verify-out/tts-gemini-2.5-pro-tts.mp3"
+    },
+    {
+      "model": "gemini-2.5-flash-tts",
+      "voice": "Kore",
+      "languageCode": "fa-IR",
+      "ok": true,
+      "status": 200,
+      "ms": 3942,
+      "bytes": 21408,
+      "file": "verify-out/tts-gemini-2.5-flash-tts.mp3"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "project": "anime-512918",
+  "at": "2026-11-10T10:42:12.601Z",
+  "steps": [
+    {
+      "step": "char-sheet",
+      "model": "gemini-3-pro-image",
+      "location": "global",
+      "ok": true,
+      "status": 200,
+      "ms": 25238,
+      "file": "verify-out/char-sheet.png",
+      "mimeType": "image/png",
+      "usage": {
+        "promptTokenCount": 156,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 1592,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 156
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ],
+        "thoughtsTokenCount": 316
+      }
+    },
+    {
+      "step": "keyframe",
+      "model": "gemini-3-pro-image",
+      "location": "global",
+      "ok": true,
+      "status": 200,
+      "ms": 23376,
+      "file": "verify-out/keyframe.png",
+      "mimeType": "image/png",
+      "usage": {
+        "promptTokenCount": 720,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 2163,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 160
+          },
+          {
+            "modality": "IMAGE",
+            "tokenCount": 560
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ],
+        "thoughtsTokenCount": 323
+      }
+    },
+    {
+      "step": "video",
+      "model": "veo-4.0-generate-001",
+      "location": "us-central1",
+      "ok": false,
+      "status": 404,
+      "error": "Publisher model `projects/anime-512918/locations/us-central1/publishers/google/models/veo-4.0-generate-001` was not found or your project does not have access to it. Ensure you are using a valid model name and that the model is available in the specified region. For more information, see: https://do"
+    },
+    {
+      "step": "video",
+      "model": "veo-3.5-generate-001",
+      "location": "us-central1",
+      "ok": false,
+      "status": 404,
+      "error": "Publisher model `projects/anime-512918/locations/us-central1/publishers/google/models/veo-3.5-generate-001` was not found or your project does not have access to it. Ensure you are using a valid model name and that the model is available in the specified region. For more information, see: https://do"
+    },
+    {
+      "step": "video",
+      "model": "veo-3.1-generate-001",
+      "location": "us-central1",
+      "ok": true,
+      "status": 200,
+      "operation": "projects/anime-512918/locations/us-central1/publishers/google/models/veo-3.1-generate-001/operations/e5a7c1db-4983-4140-ab97-a248639a1cf4",
+      "ms": 125399,
+      "file": "verify-out/veo-sample.mp4"
+    }
+  ]
+}

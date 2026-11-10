@@ -1,0 +1,15 @@
+{
+  "browser": "140.0.7339.16",
+  "playwright": "1.64.0",
+  "font": "5.3.0",
+  "seed": 7,
+  "formats": [
+    "portrait",
+    "square",
+    "landscape"
+  ],
+  "threshold": 0.1,
+  "maxChangedPixels": 0,
+  "selection": "midpoint of first dialogue in each TEMPLATES entry",
+  "reviewed": "2026-10-15; visual inspection of montage and full-size Persian caption/character frame"
+}

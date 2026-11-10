@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: fa-IR
+reviews:
+  profile: assertive
+  poem: false
+  high_level_summary: true
+  request_changes_workflow: false
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+  instructions: |
+    BEHIX is a Persian RTL stick-animation studio. The editor is one screen:
+    scene list, canvas, script, timeline, export. Do not restore sample stories,
+    the «نمونهٔ آماده» button, or the template picker. Do not change the
+    canvas drawing style in src/studio/stick. When you find a bug, include a
+    committable suggestion so it can be applied without a separate rewrite.
