@@ -31,7 +31,8 @@ describe("character skills cover every character AI call site", () => {
       assert.match(fm, /^source: https:\/\/github\.com\//m);
       const tasks = /^tasks: \[(.*)\]$/m.exec(fm)?.[1].split(",").map((t) => t.trim()) ?? [];
       for (const t of tasks) { assert.ok((Object.values(CHAR_TASKS) as string[]).includes(t), `${id}: unknown task ${t}`); covered.add(t); }
-      assert.ok(text.split(/\s+/).length <= 1600, `${id} over the word cap`);
+      const body = text.slice(text.indexOf("\n---\n", 4) + 5);
+      assert.ok(body.split(/\s+/).filter(Boolean).length <= 1500, `${id} body over the 1500-word cap`);
       assert.doesNotMatch(text, /gemini-2\.5|argon|veo/i);
     }
     for (const t of Object.values(CHAR_TASKS)) assert.ok(covered.has(t), `no skill for ${t}`);
