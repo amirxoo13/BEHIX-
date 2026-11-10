@@ -1,10 +1,17 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+
+/** Native plugin in android/app (MediaSavePlugin.java): copies a cache file into MediaStore Movies/BEHIX. */
+type BehixMediaPlugin = { saveVideo(options: { path: string; name: string; mime: string }): Promise<{ uri: string }> };
+const BehixMedia = registerPlugin<BehixMediaPlugin>("BehixMedia");
+/** Export folders older than this are removed before a new save (the share target has long read them). */
+const NATIVE_EXPORT_TTL_MS = 60 * 60 * 1000;
 
 /**
  * ذخیرهٔ فایل خروجی (فیلم، SRT، متن، تصویر).
  * - در مرورگر: دانلود معمولی با لینک.
- * - در اپ اندروید (Capacitor): WebView لینک دانلود blob را پشتیبانی نمی‌کند؛ پس فایل در حافظهٔ اپ
- *   نوشته می‌شود و پنجرهٔ «اشتراک‌گذاری» اندروید باز می‌شود (ذخیره در فایل‌ها، تلگرام، گالری و ...).
+ * - در اپ اندروید (Capacitor): WebView لینک دانلود blob را پشتیبانی نمی‌کند؛ پس فایل تکه‌تکه در حافظهٔ اپ
+ *   نوشته می‌شود (فقط یک تکهٔ ۳ مگابایتی هم‌زمان در حافظه)، فیلم‌ها در گالری (Movies/BEHIX، اندروید ۱۰ به بعد)
+ *   ذخیره می‌شوند و پنجرهٔ «اشتراک‌گذاری» اندروید باز می‌شود.
  * پلاگین‌ها فقط در اپ و فقط موقع نیاز بارگذاری می‌شوند تا به سایت حجمی اضافه نشود.
  */
 export function downloadBlob(blob: Blob, name: string): void {
@@ -48,9 +55,30 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-/** Write the blob to a unique cache path in chunks, then open the native share dialog. */
+/** Remove old `Cache/exports/<id>/` folders so exported films do not pile up on the phone. Never throws. */
+async function cleanNativeExports(fs: typeof import("@capacitor/filesystem")): Promise<void> {
+  try {
+    const { files } = await fs.Filesystem.readdir({ path: "exports", directory: fs.Directory.Cache });
+    const now = Date.now();
+    for (const entry of files) {
+      if (now - (entry.mtime ?? 0) < NATIVE_EXPORT_TTL_MS) continue;
+      await fs.Filesystem.rmdir({ path: `exports/${entry.name}`, directory: fs.Directory.Cache, recursive: true }).catch(() => undefined);
+    }
+  } catch {
+    /* no exports folder yet */
+  }
+}
+
+const isVideo = (blob: Blob, name: string) => blob.type.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(name);
+
+/**
+ * Stream the blob (usually a disk-backed OPFS File) into a unique cache file 3 MB at a time, save videos to the
+ * gallery, then open the native share dialog. Only one chunk's base64 exists at any time.
+ */
 async function shareNative(blob: Blob, name: string): Promise<void> {
-  const [{ Filesystem, Directory }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
+  const [fs, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
+  const { Filesystem, Directory } = fs;
+  await cleanNativeExports(fs);
   // هر خروجی پوشهٔ جدای خودش را دارد تا خروجی بعدی با همان اسم، فایلِ در حال اشتراکِ قبلی را عوض نکند
   const id = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
   const path = `exports/${id}/${safeFileName(name)}`;
@@ -66,7 +94,20 @@ async function shareNative(blob: Blob, name: string): Promise<void> {
       await Filesystem.appendFile({ path, data, directory: Directory.Cache });
     }
   }
-  await Share.share({ title: name, files: [uri], dialogTitle: "ذخیره یا ارسال فایل" });
+  let inGallery = false;
+  if (isVideo(blob, name)) {
+    try {
+      await BehixMedia.saveVideo({ path, name: safeFileName(name), mime: blob.type || "video/mp4" });
+      inGallery = true;
+    } catch {
+      /* Android 9 or older, or plugin missing: the share sheet still lets the user save it */
+    }
+  }
+  await Share.share({
+    title: name,
+    files: [uri],
+    dialogTitle: inGallery ? "فیلم در گالری ذخیره شد (Movies/BEHIX)؛ ارسال به برنامهٔ دیگر" : "ذخیره یا ارسال فایل",
+  });
 }
 
 /** Show a download error in an alert, falling back to the console if alerts throw. */
