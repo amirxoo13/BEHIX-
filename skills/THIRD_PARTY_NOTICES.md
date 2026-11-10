@@ -117,3 +117,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+<!-- Append to skills/THIRD_PARTY_NOTICES.md on master when merging branch `audio` (file does not exist on the audio branch). -->
+
+## GoogleCloudPlatform/genmedia-creative-studio
+
+Upstream: https://github.com/GoogleCloudPlatform/genmedia-creative-studio (commit 19eecec3578751bfbb1ab20109fb93e08ddb8666)  
+Used by: skills/audio-voice-direction/SKILL.md (genmedia-voice-director), skills/audio-mix/SKILL.md (genmedia-audio-engineer)  
+License: Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0  
+Changes: condensed and rewritten for Persian (fa-IR) dialogue, gemini-3.8 TTS and BEHIX mix targets.
+
+## calesthio/generative-media-skills
+
+Upstream: https://github.com/calesthio/generative-media-skills (commit 8c85352)  
+Used by: skills/audio-mix/SKILL.md (audio-mixing-mastering, providers/music-generation/google-lyria)
+
+```
+MIT License
+
+Copyright (c) 2026 generative-media-skills contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

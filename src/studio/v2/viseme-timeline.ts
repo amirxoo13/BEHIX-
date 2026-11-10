@@ -7,70 +7,13 @@
  * align.ts and fa-g2p.ts import viseme ids/types ONLY from this file.
  */
 
-// ─── TEMP: mirrors v2/mouth.ts (Characters bot); switch to import from ./mouth.ts after merge ───────────────
-// Source: master f8572f3 "v2/mouth: VisemeId + VisemeSpan". After the merge, replace this whole block with:
-//   export { VISEME_IDS, VISEME_FALLBACK, MAX_CROSSFADE, resolveViseme, normalizeSpans, type VisemeId, type Viseme2, type VisemeSpan } from "./mouth.ts";
-/** Shared mouth-shape ids (11, fixed). */
-export type VisemeId = "rest" | "mbp" | "ah" | "eh" | "ee" | "oh" | "oo" | "fv" | "l" | "sz" | "wide";
-/** Old name, for compatibility. */
-export type Viseme2 = VisemeId;
-export const VISEME_IDS: VisemeId[] = ["rest", "mbp", "ah", "eh", "ee", "oh", "oo", "fv", "l", "sz", "wide"];
-/** One mouth span in seconds from the start of the shot/line; weight 0..1 (default 1). */
-export type VisemeSpan = { id: VisemeId; start: number; end: number; weight?: number };
-/** Longest crossfade between two mouth shapes (s). */
-export const MAX_CROSSFADE = 0.06;
-/** Next shape to try when a character has no art for one. ah and rest end the chain. */
-export const VISEME_FALLBACK: Readonly<Partial<Record<VisemeId, VisemeId>>> = {
-  sz: "ee",
-  ee: "eh",
-  eh: "ah",
-  wide: "eh",
-  oh: "oo",
-  oo: "ah",
-  l: "eh",
-  fv: "mbp",
-  mbp: "rest",
-};
-/** Nearest shape whose art exists; rest if none. */
-export function resolveViseme(id: VisemeId, has: (v: VisemeId) => boolean): VisemeId {
-  let cur: VisemeId | undefined = id;
-  for (let i = 0; cur && i <= VISEME_IDS.length; i++) {
-    if (has(cur)) return cur;
-    cur = VISEME_FALLBACK[cur];
-  }
-  return "rest";
-}
-const MIRROR_MIN_CUE = 0.07;
+// Shared mouth ids/types and the span merge come from ./mouth.ts (Characters bot, master f8572f3 + 0dade38).
+// align.ts and fa-g2p.ts import them only through this file.
+import { normalizeSpans, resolveViseme, VISEME_IDS, type VisemeId, type VisemeSpan } from "./mouth.ts";
+export { MAX_CROSSFADE, normalizeSpans, resolveViseme, VISEME_FALLBACK, VISEME_IDS, type Viseme2, type VisemeId, type VisemeSpan } from "./mouth.ts";
+
 const round = (t: number) => Math.round(t * 1000) / 1000;
 const isViseme = (v: unknown): v is VisemeId => typeof v === "string" && (VISEME_IDS as string[]).includes(v);
-/** Valid, sorted, non-overlapping spans; a touching span shorter than `min` merges into prev, else next. Never throws. */
-export function normalizeSpans(spans: readonly VisemeSpan[], min = MIRROR_MIN_CUE): VisemeSpan[] {
-  const list = spans
-    .filter((s) => s && isViseme(s.id) && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start)
-    .map((s) => ({ ...s }))
-    .sort((a, b) => a.start - b.start || a.end - b.end);
-  const out: VisemeSpan[] = [];
-  for (const s of list) {
-    const prev = out[out.length - 1];
-    if (prev && s.start < prev.end) s.start = prev.end;
-    if (s.end <= s.start) continue;
-    if (prev && prev.id === s.id && s.start - prev.end < 1e-6) { prev.end = s.end; continue; }
-    out.push(s);
-  }
-  const EPS = 1e-6;
-  for (let merged = true; merged && out.length > 1; ) {
-    merged = false;
-    for (let i = 0; i < out.length && !merged; i++) {
-      const s = out[i];
-      if (s.end - s.start >= min - EPS) continue;
-      const prev = out[i - 1], next = out[i + 1];
-      if (prev && s.start - prev.end < EPS) { prev.end = s.end; out.splice(i, 1); merged = true; }
-      else if (next && next.start - s.end < EPS) { next.start = s.start; out.splice(i, 1); merged = true; }
-    }
-  }
-  return out.map((s) => ({ ...s, start: round(s.start), end: round(s.end) }));
-}
-// ─── end TEMP ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Shortest span kept on screen (s); shorter ones are merged (rig-spec §4). */
 export const MIN_SPAN = 0.07;

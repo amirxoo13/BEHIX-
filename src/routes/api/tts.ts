@@ -5,6 +5,8 @@ import { reserveDaily } from "@/lib/tts-quota";
 import { clientIp } from "@/lib/rate-limit";
 import { gcpAccessToken } from "@/lib/gcp-auth.server";
 import { cacheKey, modelChain, synthesizeGemini, TtsError, ttsConfig } from "@/lib/gemini-tts.server";
+import { gcsGet, gcsPut } from "@/lib/gcs.server";
+import { cors, DAILY_FULL, fail, RATE_MESSAGE, takeHits } from "@/lib/voice-limits.server";
 
 /**
  * صدای فارسی دیالوگ با Gemini 3.8 TTS روی Agent Platform (generateContent؛ جزئیات در gemini-tts.server.ts).
@@ -13,60 +15,35 @@ import { cacheKey, modelChain, synthesizeGemini, TtsError, ttsConfig } from "@/l
  * احراز هویت با اعتبار پیش‌فرض Google Cloud (حساب سرویس Cloud Run یا gcloud محلی)؛ هیچ کلیدی در کد یا مرورگر نیست.
  * کلیپ‌ها در Cloud Storage کش می‌شوند تا یک جمله دو بار هزینه نداشته باشد.
  */
-const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.enum(VOICE_IDS as [string, ...string[]]), prompt: z.string().max(300), preview: z.boolean().optional() }).strict();
-const ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost"]);
-const WINDOW = 10 * 60_000, PER_IP = Number(process.env.TTS_PER_IP ?? 120), PER_DAY = Number(process.env.TTS_PER_DAY ?? 3000);
-const hits = new Map<string, number[]>();
-
-const cors = (req: Request): Record<string, string> => {
-  const origin = req.headers.get("origin");
-  return origin && ORIGINS.has(origin) ? { "access-control-allow-origin": origin, "access-control-allow-headers": "content-type", "access-control-allow-methods": "POST, OPTIONS", "access-control-expose-headers": "x-tts-model, x-cache", vary: "origin" } : {};
-};
-const fail = (req: Request, status: number, message: string) => Response.json({ message }, { status, headers: { ...cors(req), "cache-control": "no-store" } });
-
-const DAILY_FULL = "سقف روزانهٔ ساخت صدا پر شده است؛ فردا دوباره امتحان کنید.";
-function limited(ip: string): string | null {
-  const now = Date.now();
-  const list = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW);
-  if (list.length >= PER_IP) return "درخواست‌ها زیاد است؛ چند دقیقه دیگر دوباره امتحان کنید.";
-  list.push(now);
-  hits.set(ip, list);
-  if (hits.size > 5000) prune(now);
-  return null;
-}
-
-/** فقط IPهایی که در پنجره درخواستی ندارند پاک می‌شوند (clear همهٔ سقف‌ها را صفر می‌کرد). */
-function prune(now: number) {
-  for (const [ip, list] of hits) if (!list.some((t) => now - t < WINDOW)) hits.delete(ip);
-  if (hits.size > 5000) hits.delete(hits.keys().next().value as string);
-}
+const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.enum(VOICE_IDS as [string, ...string[]]), prompt: z.string().max(300), preview: z.boolean().optional(), legacyPrompt: z.string().max(300).optional() }).strict();
+const PER_IP = Number(process.env.TTS_PER_IP ?? 120), PER_DAY = Number(process.env.TTS_PER_DAY ?? 3000);
 
 async function handle(req: Request): Promise<Response> {
   const project = process.env.GOOGLE_CLOUD_PROJECT, bucket = process.env.TTS_BUCKET;
   if (!project) return fail(req, 503, "سرویس صدا روی این سرور فعال نیست.");
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(req, 400, "درخواست صدا معتبر نیست.");
-  const { text, voice, prompt, preview } = parsed.data;
+  // legacyPrompt = دستور لحن قدیمی همان دیالوگ، فقط برای پیدا کردن MP3 کش‌شدهٔ 2.5 (به مدل فرستاده نمی‌شود)
+  const { text, voice, prompt, preview, legacyPrompt } = parsed.data;
   const cfg = ttsConfig();
   const models = modelChain(cfg, preview);
   // کلید کش مدل را دارد؛ اول کلیپ‌های 3.8، بعد کلیپ قدیمی MP3 همان جمله (فقط خواندن).
   const lookups = [...(await Promise.all(models.map(async (m) => ({ key: await cacheKey(m, voice, prompt, text), model: m, type: "audio/wav" })))),
-    ...(preview ? [] : [{ key: await cacheKey(LEGACY_CACHE_MODEL, voice, prompt, text, "mp3"), model: LEGACY_CACHE_MODEL, type: "audio/mpeg" }])];
+    ...(preview ? [] : [{ key: await cacheKey(LEGACY_CACHE_MODEL, voice, legacyPrompt ?? prompt, text, "mp3"), model: LEGACY_CACHE_MODEL, type: "audio/mpeg" }])];
   const audio = (bytes: ArrayBuffer | Uint8Array, hit: boolean, model: string, type: string) =>
     new Response(bytes as BodyInit, { headers: { ...cors(req), "content-type": type, "cache-control": "private, max-age=31536000, immutable", "x-cache": hit ? "hit" : "miss", "x-tts-model": model } });
   try {
     const auth = { authorization: `Bearer ${await gcpAccessToken()}` };
     if (bucket) {
       for (const l of lookups) {
-        const cached = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(l.key)}?alt=media`, { headers: auth });
-        if (cached.ok) return audio(await cached.arrayBuffer(), true, l.model, l.type);
+        const cached = await gcsGet(bucket, l.key, auth);
+        if (cached) return audio(cached.bytes, true, l.model, l.type);
       }
     }
     // پشت Cloud Run یا nginx آدرس واقعی را پراکسی می‌نویسد؛ کدام هدر قابل‌اعتماد است را TRUSTED_IP_HEADER می‌گوید.
     const { getRequestIP } = await import("@tanstack/react-start/server");
     const ip = clientIp(req.headers, getRequestIP());
-    const block = limited(ip);
-    if (block) return fail(req, 429, block);
+    if (!takeHits(ip, 1, PER_IP)) return fail(req, 429, RATE_MESSAGE);
     const reserved = await reserveDaily(auth, bucket, PER_DAY, 1);
     if (!reserved) return fail(req, 429, DAILY_FULL);
     const refund = () => reserveDaily(auth, bucket, PER_DAY, -1, reserved).catch((e) => console.error("[tts] refund", e));
@@ -80,7 +57,7 @@ async function handle(req: Request): Promise<Response> {
     }
     if (bucket) {
       const key = lookups.find((l) => l.model === made.model)?.key ?? (await cacheKey(made.model, voice, prompt, text));
-      await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(key)}`, { method: "POST", headers: { ...auth, "content-type": "audio/wav" }, body: made.bytes as BodyInit }).catch((e) => console.error("[tts] cache", e));
+      await gcsPut(bucket, key, made.bytes, "audio/wav", auth);
     }
     return audio(made.bytes, false, made.model, "audio/wav");
   } catch (e) {

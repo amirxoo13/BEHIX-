@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { compileProject, newProject } from "./project.ts";
-import { concatClips, defaultVoices, encodeWav, envelopePulses, lineDurationFor, MAX_LINE, mixClips, placeVoices, splitLine, stylePrompt, VOICES } from "./voice.ts";
+import { concatClips, defaultVoices, encodeWav, envelopePulses, lineDurationFor, MAX_LINE, mixClips, placeVoices, splitLine, stylePrompt, legacyStylePrompt, VOICES } from "./voice.ts";
 
 const tone = (sec: number, rate = 24000, gaps: [number, number][] = []) => {
   const a = new Float32Array(Math.round(sec * rate));
@@ -22,8 +22,13 @@ describe("Gemini voice casting and lip sync", () => {
     assert.equal(VOICES[v.c], "f");
     assert.equal(defaultVoices([{ id: "a", look: { kind: "man" } }], { a: "Puck" }).a, "Puck");
   });
-  it("UT-VO-02 style prompt carries mood and age, in Persian", () => {
-    assert.match(stylePrompt("angry", "boy"), /child.*Persian.*angrily/);
+  it("UT-VO-02 style is a short 3.8 style (mood + dialect, no preamble, no age); legacy prompt unchanged", () => {
+    const st = stylePrompt("angry", "boy");
+    assert.equal(st, "angrily; natural, colloquial Tehrani Persian");
+    assert.ok(st.split(/\s+/).length < 15);
+    assert.doesNotMatch(st, /Read this|Do not|child/);
+    assert.equal(stylePrompt(), "natural, colloquial Tehrani Persian");
+    assert.equal(legacyStylePrompt("angry", "boy"), "Read this line as a child in natural, colloquial Tehrani Persian, angrily. Do not add words.");
   });
   it("UT-VO-03 envelope pulses follow real speech and silences", () => {
     const p = envelopePulses(tone(1, 24000, [[0.4, 0.6]]), 24000, 10);

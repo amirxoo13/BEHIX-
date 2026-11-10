@@ -4,13 +4,17 @@
  *   - Gemini روی Vertex AI: برای هر «مدل × منطقه» یک درخواست فارسی واقعی می‌فرستد.
  *   - Gemini 3.8 TTS (Agent Platform generateContent، همان کد /api/tts): برای هر «مدل × منطقه» یک جملهٔ فارسی
  *     واقعی می‌سازد و WAV را ذخیره می‌کند (سرآیند RIFF، نرخ نمونه و مدت را گزارش می‌کند).
+ *   - (اختیاری، VERIFY_STT=1) Speech-to-Text v2 chirp_2 fa-IR روی WAV واقعی همان TTS 3.8: کلمه‌ها، زمان و اطمینان.
+ *   - (اختیاری، VERIFY_LYRIA=1 و LYRIA_MODEL) یک قطعهٔ کوتاه Lyria 3 Pro (global، Interactions) و ذخیرهٔ MP3.
  * اجرا:
  *   node --experimental-strip-types scripts/gcp-verify.mjs
- * متغیرهای اختیاری: GOOGLE_CLOUD_PROJECT، VERIFY_MODELS، VERIFY_LOCATIONS، VERIFY_TTS_MODELS، VERIFY_TTS_LOCATIONS، VERIFY_OUT
+ * متغیرهای اختیاری: GOOGLE_CLOUD_PROJECT، VERIFY_MODELS، VERIFY_LOCATIONS، VERIFY_TTS_MODELS، VERIFY_TTS_LOCATIONS، VERIFY_OUT، VERIFY_STT، STT_LOCATION، STT_MODEL، VERIFY_LYRIA، LYRIA_MODEL
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { gcpAccessToken, gcpProject } from "../src/lib/gcp-auth.server.ts";
 import { isWav, synthesizeGemini, wavPcm } from "../src/lib/gemini-tts.server.ts";
+import { recognizeWords, sttConfig } from "../src/lib/gcp-stt.server.ts";
+import { generateMusic, lyriaConfig, musicPrompt } from "../src/lib/lyria.server.ts";
 
 const list = (v, d) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : d);
 const models = list(process.env.VERIFY_MODELS, ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.5-flash"]);
@@ -27,7 +31,8 @@ if (!project) {
 const token = await gcpAccessToken();
 const auth = { authorization: `Bearer ${token}`, "x-goog-user-project": project, "content-type": "application/json" };
 await mkdir(outDir, { recursive: true });
-const report = { project, checkedAt: new Date().toISOString(), gemini: [], tts: [] };
+const report = { project, checkedAt: new Date().toISOString(), gemini: [], tts: [], stt: [], lyria: [] };
+const ttsWavs = [];
 
 for (const model of models) {
   for (const location of locations) {
@@ -98,6 +103,7 @@ for (const model of ttsModels) {
       row.seconds = Math.round((pcm.length / 2 / sampleRate) * 100) / 100;
       row.file = `${outDir}/tts-${model}-${location}.wav`;
       await writeFile(row.file, bytes);
+      ttsWavs.push({ model, location, bytes, seconds: row.seconds });
       row.ok = row.seconds > 0.5;
     } catch (e) {
       row.ms = Date.now() - started;
@@ -108,6 +114,51 @@ for (const model of ttsModels) {
   }
 }
 
+if (process.env.VERIFY_STT === "1") {
+  const cfg = { ...sttConfig(), enabled: true };
+  const src = ttsWavs[0];
+  const row = { model: cfg.model, location: cfg.location, lang: "fa-IR", ok: false };
+  const started = Date.now();
+  try {
+    if (!src) throw new Error("no TTS WAV to transcribe (all TTS probes failed)");
+    row.from = `${src.model}@${src.location}`;
+    const words = await recognizeWords({ project, wav: src.bytes, seconds: src.seconds, headers: { authorization: `Bearer ${token}` }, config: cfg });
+    row.ms = Date.now() - started;
+    row.words = words;
+    row.withConfidence = words.filter((w) => typeof w.confidence === "number").length;
+    row.ok = words.length > 0 && words.every((w) => w.end >= w.start);
+  } catch (e) {
+    row.ms = Date.now() - started;
+    row.error = String(e?.message ?? e).slice(0, 400);
+  }
+  report.stt.push(row);
+  console.log(`[stt] ${row.model} @ ${row.location}: ${row.ok ? "OK" : "FAIL"} ${row.ms}ms ${row.words?.map((w) => `${w.text}[${w.start}-${w.end}]`).join(" ") ?? ""} ${row.error ?? ""}`);
+}
+
+if (process.env.VERIFY_LYRIA === "1") {
+  const cfg = lyriaConfig();
+  const row = { model: cfg.model || "(LYRIA_MODEL unset)", location: "global", ok: false };
+  const started = Date.now();
+  try {
+    if (!cfg.enabled) throw new Error("set LYRIA_MODEL=lyria-3-pro-preview");
+    row.prompt = musicPrompt({ mood: "playful", seconds: 20 });
+    const made = await generateMusic({ project, model: cfg.model, prompt: row.prompt, headers: { authorization: `Bearer ${token}` } });
+    row.ms = Date.now() - started;
+    row.bytes = made.mp3.length;
+    row.mimeType = made.mimeType;
+    row.text = made.text?.slice(0, 300);
+    row.file = `${outDir}/lyria-${cfg.model}.mp3`;
+    await writeFile(row.file, made.mp3);
+    row.ok = made.mp3.length > 10_000;
+  } catch (e) {
+    row.ms = Date.now() - started;
+    row.error = String(e?.message ?? e).slice(0, 400);
+  }
+  report.lyria.push(row);
+  console.log(`[lyria] ${row.model}: ${row.ok ? "OK" : "FAIL"} ${row.ms}ms ${row.bytes ?? ""}B ${row.mimeType ?? ""} ${row.error ?? ""}`);
+}
+
 await writeFile(`${outDir}/gcp-verify.json`, JSON.stringify(report, null, 2));
 console.log(`گزارش: ${outDir}/gcp-verify.json`);
-process.exit(report.gemini.some((r) => r.ok) && report.tts.some((r) => r.ok) ? 0 : 2);
+const optional = [...report.stt, ...report.lyria];
+process.exit(report.gemini.some((r) => r.ok) && report.tts.some((r) => r.ok) && optional.every((r) => r.ok) ? 0 : 2);

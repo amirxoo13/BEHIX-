@@ -24,6 +24,8 @@ export const SKILL_TASKS = {
   "tts.line": "audio",
   /** Final-delivery QA review of a rendered film (skills/export-quality-qa); call site owned by the export bot. */
   "export.qa": "export",
+  /** Lyria music cue prompt (src/lib/lyria.server.ts, /api/music); owned by the audio bot. */
+  "music.cue": "audio",
 } as const satisfies Record<string, SkillOwner>;
 export type SkillTask = keyof typeof SKILL_TASKS;
 
