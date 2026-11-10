@@ -218,6 +218,8 @@ function dedupe(cues: MouthCue[]): MouthCue[] {
 }
 
 const OPEN: Record<Viseme2, number> = { rest: 0, mbp: 0, ah: 0.9, eh: 0.6, ee: 0.4, oh: 0.7, oo: 0.4, fv: 0.3, l: 0.5, sz: 0.25, wide: 0.45 };
+/** بازشدگی تقریبی دهان برای هر شکل (۰ تا ۱)؛ برای دهان ساده و انرژی حرکت سر. */
+export const visemeOpen = (id: VisemeId): number => OPEN[id];
 
 /**
  * شکل دهان در لحظهٔ t نما.

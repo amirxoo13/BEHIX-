@@ -225,6 +225,8 @@ export type DrawOpts = {
   shadow?: boolean;
   /** تصویرهای رویی (دهان و چشم) که روی سر کشیده می‌شوند. */
   overlays?: { img: Img; sw: number; sh: number; at: Vec; w: number; h: number }[];
+  /** کشیدن آزاد روی سر (بعد از overlays)، در مختصات پیکسلی تصویر مرجع. */
+  face?: (ctx: C) => void;
 };
 
 /**
@@ -262,7 +264,7 @@ export function drawPuppet(ctx: C, rig: PuppetRig, img: Img, pose: Pose, turn: n
     ctx.drawImage(img, part.src.x, part.src.y, part.src.w, part.src.h, part.off.x, part.off.y, part.src.w, part.src.h);
     ctx.restore();
   }
-  if (o.overlays?.length) {
+  if (o.overlays?.length || o.face) {
     const headBone = posedBone(sk, rig, "head");
     if (headBone) {
       const [A1, B1] = headBone;
@@ -272,7 +274,8 @@ export function drawPuppet(ctx: C, rig: PuppetRig, img: Img, pose: Pose, turn: n
       ctx.translate(A1.x, A1.y);
       ctx.rotate(rot);
       ctx.translate(-rig.joints.headCenter.x, -(rig.joints.headTop.y - 1));
-      for (const ov of o.overlays) ctx.drawImage(ov.img, 0, 0, ov.sw, ov.sh, ov.at.x - ov.w / 2, ov.at.y - ov.h / 2, ov.w, ov.h);
+      for (const ov of o.overlays ?? []) ctx.drawImage(ov.img, 0, 0, ov.sw, ov.sh, ov.at.x - ov.w / 2, ov.at.y - ov.h / 2, ov.w, ov.h);
+      o.face?.(ctx);
       ctx.restore();
     }
   }
