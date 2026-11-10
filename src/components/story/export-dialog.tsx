@@ -88,12 +88,19 @@ export function ExportDialog({ open, onClose, directed, voicing, project, commit
       .catch((err) => setMessage(err instanceof Error ? err.message : String(err)));
   };
   const names = Object.fromEntries(directed.timeline.cast.map((c) => [c.id, c.name]));
+  // Silent only when the finished film has no audio track, or (before building) when no line is voiced.
+  const silent = film ? film.audioCodec === null : !voicing.voiced?.placed.length;
+  /** Closing the dialog (X, Escape) cancels a running export instead of leaving it running unseen. */
+  const close = () => {
+    abort.current?.abort();
+    onClose();
+  };
 
   return (
     <dialog ref={ref} className="export-dialog" aria-labelledby="export-title" onClose={onClose} onCancel={() => { if (busy) abort.current?.abort(); }}>
       <header className="export-head">
         <h2 id="export-title">خروجی</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="بستن"><X size={18} aria-hidden /></button>
+        <button type="button" className="icon-btn" onClick={close} aria-label="بستن"><X size={18} aria-hidden /></button>
       </header>
 
       <div className="export-body">
@@ -165,7 +172,11 @@ export function ExportDialog({ open, onClose, directed, voicing, project, commit
           </div>
         </section>
         {message && <p className="hint" role="status">{message}</p>}
-        <p className="hint">فیلم بی‌صداست. فیلم و صدای صداپیشه را در CapCut یا Premiere روی هم بگذارید؛ زمان‌ها با SRT یکی است.</p>
+        {silent ? (
+          <p className="hint">فیلم بی‌صداست. فیلم و صدای صداپیشه را در CapCut یا Premiere روی هم بگذارید؛ زمان‌ها با SRT یکی است.</p>
+        ) : (
+          <p className="hint">صدای دیالوگ‌ها روی فیلم است؛ زیرنویس SRT با همان زمان‌ها برای ویرایش بیشتر آماده است.</p>
+        )}
       </div>
     </dialog>
   );
