@@ -9,8 +9,7 @@ import { useStudio } from "@/studio/store";
 import type { Build, CharacterDef, Viseme } from "@/studio/types";
 
 const HEAD_MAX = 360;
-const STEPS = ["mouth", "l", "r", "done"] as const;
-type Step = (typeof STEPS)[number];
+type Step = "mouth" | "l" | "r" | "done";
 
 const STEP_TEXT: Record<Step, string> = {
   mouth: "۱. روی وسط دهانِ عکس بزنید.",

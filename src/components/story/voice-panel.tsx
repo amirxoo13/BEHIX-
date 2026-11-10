@@ -48,7 +48,7 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
   }, [directed, cast, voices, project?.settings.styles]); // eslint-disable-line react-hooks/exhaustive-deps -- project.edits is read once per compile
   useEffect(() => () => abort.current?.abort(), []);
 
-  const voiced = useMemo(() => (directed ? placeVoices(directed, clips) : null), [directed, clips]);
+  const voiced = useMemo(() => (directed ? placeVoices(directed, clips, timelines) : null), [directed, clips, timelines]);
   const missing = jobs.filter((j) => !clips.has(j.beatId));
 
   const generate = useCallback(async () => {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { FILM_PLAN_JSON_SCHEMA } from "./film-plan.schema.ts";
 import { FIXTURE_PLAN, FIXTURE_STORY } from "./film-plan.fixture.ts";
 import {
-  compileFilmPlan, directFilm, filmPlanSchema, outlineVertexSchema, planSeconds, repairFilmPlan, shotsVertexSchema,
+  compileFilmPlan, compileFilmVoicing, directFilm, filmPlanSchema, outlineVertexSchema, planSeconds, repairFilmPlan, shotsVertexSchema,
   storyPlanFor, toVertexSchema, traceDialogue, EXPRESSIONS, GESTURES, HOLDS, PLACES_LIST, type FilmPlan,
 } from "./film-plan.ts";
 import { GESTURE_LABELS, HOLD_LABELS } from "./stick/edit-options.ts";
@@ -151,5 +151,15 @@ describe("film plan repair and compile", () => {
     assert.equal(bad.mode, "text");
     assert.ok(bad.warnings.some((w) => w.includes("فهم دیکشنری")));
     assert.ok(bad.story.scenes.length > 0);
+  });
+  it("UT-FP-VOICE Gemini's voice per character and delivery per line reach the voicing settings", () => {
+    const plan = repairFilmPlan(fixture(), FIXTURE_STORY).plan!;
+    const shot = plan.acts[0].scenes[0].shots.find((h) => h.dialogue.length)!;
+    shot.dialogue[0].delivery = "آرام و خسته، با مکث کوتاه";
+    const v = compileFilmVoicing(plan, FIXTURE_STORY);
+    for (const c of plan.characters) assert.equal(v.voices[c.id], c.voice.voiceId);
+    const story = compileFilmPlan(plan, FIXTURE_STORY);
+    const line = story.scenes.flatMap((s) => s.beats).find((b) => b.kind === "line" && b.text === shot.dialogue[0].text)!;
+    assert.equal(v.styles[line.id!], "آرام و خسته، با مکث کوتاه", "style is keyed by the same beat id lineJobs uses");
   });
 });

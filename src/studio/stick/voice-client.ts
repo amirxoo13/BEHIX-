@@ -291,6 +291,6 @@ export async function savedVoicing(directed: Directed, chosen: Parameters<typeof
   const jobs = await lineJobs(directed, defaultVoices(cast, chosen), Object.fromEntries(cast.map((c) => [c.id, c.look])), styles);
   const clips = await loadClips(jobs);
   const timelines = await ensureTimelines(jobs, clips, await loadTimelines(jobs));
-  const { timeline, placed } = placeVoices(directed, clips);
+  const { timeline, placed } = placeVoices(directed, clips, timelines);
   return { timeline, timelines, audio: placed.length ? { data: mixClips(placed, timeline.duration, MIX_RATE), sampleRate: MIX_RATE } : undefined };
 }

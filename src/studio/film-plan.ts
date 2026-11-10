@@ -385,6 +385,29 @@ const FRAMING: Record<FilmShot["shotType"], Shot> = {
 
 type Ev = { t: number; order: number; beat: Beat };
 
+/** لحن بیانِ هر دیالوگ که Gemini نوشته؛ پس از نام‌گذاری بخش‌ها در compileFilmVoicing خوانده می‌شود. */
+const DELIVERY = new WeakMap<Beat, string>();
+
+/**
+ * صدای هر شخصیت و لحن بیان هر دیالوگ از برنامهٔ فیلم، برای تنظیمات صداگذاری پروژه.
+ * کلید styles همان شناسهٔ بخش است (`${shot.id}-${n}`) که lineJobs با آن لحن را پیدا می‌کند.
+ */
+export function compileFilmVoicing(plan: FilmPlan, source = ""): { voices: Record<string, string>; styles: Record<string, string> } {
+  const voices: Record<string, string> = {};
+  for (const c of plan.characters) if (c.voice?.voiceId) voices[c.id] = c.voice.voiceId;
+  const styles: Record<string, string> = {};
+  const lines = source.split("\n");
+  const nameOf = (id: string) => plan.characters.find((c) => c.id === id)?.name ?? id;
+  for (const act of plan.acts)
+    for (const scene of act.scenes)
+      for (const shot of scene.shots)
+        for (const b of shotBeats(shot, nameOf, lines)) {
+          const d = DELIVERY.get(b);
+          if (d && b.id) styles[b.id] = d.slice(0, 120);
+        }
+  return { voices, styles };
+}
+
 /** برنامهٔ فیلم → StoryPlan. شناسهٔ هر بخش `${shot.id}-${n}` است تا ویرایش‌های کاربر پایدار بمانند. */
 export function compileFilmPlan(plan: FilmPlan, source = ""): StoryPlan {
   const lines = source.split("\n");
@@ -422,7 +445,8 @@ function shotBeats(shot: FilmShot, nameOf: (id: string) => string, lines: string
     .map((b) => {
       const act: Act = { who: b.characterId, x: r2(clamp(b.startX, 0.08, 0.92)) };
       if (b.sit !== undefined) act.sit = b.sit;
-      if (b.hold && b.hold !== "none") act.hold = b.hold;
+      if (b.hold === "none") act.drop = true;
+      else if (b.hold) act.hold = b.hold;
       return act;
     });
   const used = new Set<number>();
@@ -434,6 +458,7 @@ function shotBeats(shot: FilmShot, nameOf: (id: string) => string, lines: string
     if (!own && d.emotion !== "neutral") list.unshift({ who: d.speakerId, face: d.emotion });
     const at = lines.findIndex((l) => normalizeFa(l).includes(normalizeFa(d.text)));
     const beat: Beat = { kind: "line", speaker: d.speakerId, text: d.text, acts: list, duration: r2(d.endSec - d.startSec) };
+    if (d.delivery) DELIVERY.set(beat, d.delivery);
     if (at >= 0) {
       const start = Math.max(0, lines[at].indexOf(d.text));
       beat.source = { line: at, start, end: start + d.text.length, text: lines[at] };

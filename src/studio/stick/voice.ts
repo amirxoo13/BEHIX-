@@ -9,6 +9,7 @@ import type { Look } from "./figure.ts";
 import type { MouthPulse } from "./speech.ts";
 import type { Directed } from "./story-direct.ts";
 import type { Timeline } from "./story-render.ts";
+import type { VisemeId, VisemeTimeline } from "../v2/viseme-timeline.ts";
 
 /** مدل اصلی صدا (سرور می‌تواند با TTS_MODEL عوضش کند؛ این مقدار فقط کلید کش روی دستگاه است). */
 export const TTS_MODEL = "gemini-3.8-flash-tts";
@@ -124,13 +125,32 @@ export function envelopePulses(samples: Float32Array, sampleRate: number, offset
 }
 
 export type VoiceClip = { samples: Float32Array; sampleRate: number };
+
+/** باز بودن دهان آدمک برای هر شکل دهان (۰ = بسته). م/ب/پ عمداً ۰ است تا لب‌ها واقعاً روی هم بیایند. */
+const VISEME_OPEN: Record<VisemeId, number> = { rest: 0, mbp: 0, ah: 0.95, eh: 0.7, ee: 0.45, oh: 0.8, oo: 0.5, fv: 0.3, l: 0.55, sz: 0.35, wide: 0.4 };
+
+/**
+ * پالس‌های دهان از زمان‌بندی لب (STT کلمه‌به‌کلمه). offset = جای شروع کلیپ در زمان صحنه.
+ * فقط وقتی قابل اعتماد است که از خود صدا آمده باشد (نه تخمین از متن) و طولش با همین کلیپ بخواند؛
+ * وگرنه null تا پوش صدا جایگزین شود (مثلاً وقتی کلیپ دوباره ساخته شده و زمان‌بندی کهنه است).
+ */
+export function timelinePulses(t: VisemeTimeline | undefined, clipSeconds: number, offset: number): MouthPulse[] | null {
+  if (!t || t.timing === "text" || !t.visemes.length) return null;
+  if (Math.abs(t.duration - clipSeconds) > 0.25) return null;
+  const pulses: MouthPulse[] = [];
+  for (const v of t.visemes) {
+    const strength = VISEME_OPEN[v.id] ?? 0;
+    if (strength > 0 && v.end > v.start) pulses.push({ from: offset + v.start, to: offset + v.end, strength });
+  }
+  return pulses.length ? pulses : null;
+}
 export type PlacedClip = VoiceClip & { start: number; beatId: string };
 
 /**
- * کلیپ هر دیالوگ را روی بازهٔ حرف زدن همان دیالوگ می‌گذارد و پالس‌های دهان گوینده را
- * با پوش صدای واقعی جایگزین می‌کند. خط زمان ورودی دست نمی‌خورد.
+ * کلیپ هر دیالوگ را روی بازهٔ حرف زدن همان دیالوگ می‌گذارد و پالس‌های دهان گوینده را از صدای نهایی می‌سازد:
+ * اول از زمان‌بندی لب همان صدا (timelines، STT)، وگرنه از پوش صدا. خط زمان ورودی دست نمی‌خورد.
  */
-export function placeVoices(directed: Directed, clips: Map<string, VoiceClip>): { timeline: Timeline; placed: PlacedClip[] } {
+export function placeVoices(directed: Directed, clips: Map<string, VoiceClip>, timelines?: Map<string, VisemeTimeline>): { timeline: Timeline; placed: PlacedClip[] } {
   const timeline: Timeline = structuredClone(directed.timeline);
   const placed: PlacedClip[] = [];
   for (const beat of directed.beats) {
@@ -145,8 +165,9 @@ export function placeVoices(directed: Directed, clips: Map<string, VoiceClip>): 
     const track = scene.actors.find((a) => a.cast === beat.speaker)?.track;
     const talk = track?.talk.find((t) => Math.abs(t.from - span.from) < 1e-6);
     if (talk) {
-      talk.pulses = envelopePulses(clip.samples, clip.sampleRate, span.from);
-      talk.to = Math.max(talk.to, span.from + clip.samples.length / clip.sampleRate);
+      const seconds = clip.samples.length / clip.sampleRate;
+      talk.pulses = timelinePulses(timelines?.get(beat.id), seconds, span.from) ?? envelopePulses(clip.samples, clip.sampleRate, span.from);
+      talk.to = Math.max(talk.to, span.from + seconds);
     }
   }
   return { timeline, placed };

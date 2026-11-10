@@ -6,7 +6,7 @@ import { z } from "zod";
 import { FACES, type Expression } from "./face.ts";
 import { CLOTHES, type Look } from "./figure.ts";
 import { MAX_STORY_CHARS, type Beat, type StoryPlan } from "./story-parse.ts";
-import { filmPlanSchema, storyPlanFor, type FilmPlan } from "../film-plan.ts";
+import { compileFilmVoicing, filmPlanSchema, storyPlanFor, type FilmPlan } from "../film-plan.ts";
 import { directStory } from "./story-direct.ts";
 import { VOICE_IDS } from "./voice.ts";
 import type { Format } from "./layout.ts";
@@ -182,8 +182,13 @@ export function changeText(p: StoryProject, text: string): StoryProject {
 /** برنامهٔ فیلم را می‌گذارد یا (با undefined) برمی‌دارد؛ ویرایش‌ها دوباره به بخش‌های تازه وصل می‌شوند. */
 export function setPlan(p: StoryProject, plan: FilmPlan | undefined): StoryProject {
   const next: StoryProject = { ...p };
-  if (plan) next.plan = filmPlanSchema.parse(plan);
-  else delete next.plan;
+  if (plan) {
+    next.plan = filmPlanSchema.parse(plan);
+    // صدا و لحنی که Gemini برای هر شخصیت/دیالوگ انتخاب کرده؛ انتخاب خودِ کاربر همیشه مقدم است.
+    const v = compileFilmVoicing(next.plan, p.text);
+    const voices = Object.fromEntries(Object.entries(v.voices).filter(([, id]) => (VOICE_IDS as string[]).includes(id))) as NonNullable<StoryProject["settings"]["voices"]>;
+    next.settings = { ...p.settings, voices: { ...voices, ...p.settings.voices }, styles: { ...v.styles, ...p.settings.styles } };
+  } else delete next.plan;
   return { ...next, edits: reconcileEdits(p.edits, projectStory(next)) };
 }
 export function setEdit(

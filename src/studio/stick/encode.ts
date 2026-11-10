@@ -112,8 +112,11 @@ export async function encodeMp4(
     while (pushed < end) {
       const next = Math.min(end, pushed + audio.sampleRate);
       const sample = new AudioSample({ data: audio.data.subarray(pushed, next), format: "f32", numberOfChannels: 1, sampleRate: audio.sampleRate, timestamp: pushed / audio.sampleRate });
-      await sound.add(sample);
-      sample.close();
+      try {
+        await sound.add(sample);
+      } finally {
+        sample.close(); // بدون finally، خطای انکودر نمونهٔ صدا را باز می‌گذاشت
+      }
       pushed = next;
     }
   };

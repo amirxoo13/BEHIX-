@@ -17,7 +17,6 @@ import { actorAt } from "@/studio/stick/animate";
 import { loadRenderFonts } from "@/studio/stick/fonts";
 import { makePaper } from "@/studio/stick/paper";
 import { PLACES, PLACE_IDS } from "@/studio/stick/places";
-import type { Directed } from "@/studio/stick/story-direct";
 import { FRAME, renderStory, cameraAt, sceneAt, type Timeline } from "@/studio/stick/story-render";
 import { fa } from "@/studio/format";
 import { MAX_STORY_CHARS } from "@/studio/stick/story-parse";
@@ -210,7 +209,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
 
         <section className="editor-stage" aria-label="پیش‌نمایش فیلم">
           {directed && project ? (
-            <Player ref={player} directed={directed} timeline={voicing.voiced?.timeline ?? directed.timeline} audio={voicing.voiced?.placed ?? []} project={project} selected={selectedId} commit={commit} onTime={setTime} onPlaying={setPlaying}
+            <Player ref={player} timeline={voicing.voiced?.timeline ?? directed.timeline} audio={voicing.voiced?.placed ?? []} project={project} selected={selectedId} commit={commit} onTime={setTime} onPlaying={setPlaying}
               empty={!text.trim()} onStart={() => insertLine("صحنه ۱: پذیرایی خانه، روز", "پذیرایی خانه")} />
           ) : (
             <div className="ed-stage"><p className="stage-empty-text">{error ? "داستان خوانده نشد." : "در حال آماده‌سازی…"}</p></div>
@@ -336,9 +335,8 @@ function bufferOf(ac: AudioContext, c: PlacedClip): AudioBuffer {
 }
 
 /** پیش‌نمایش فیلم با پخش، جابه‌جایی زمان و کشیدن شخصیت‌ها روی صحنه. */
-function Player({ ref, directed, timeline, audio, project, selected, commit, onTime, onPlaying, empty, onStart }: {
+function Player({ ref, timeline, audio, project, selected, commit, onTime, onPlaying, empty, onStart }: {
   ref: Ref<PlayerHandle>;
-  directed: Directed;
   timeline: Timeline;
   audio: PlacedClip[];
   project: StoryProject;

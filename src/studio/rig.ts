@@ -93,7 +93,7 @@ function armTarget(
   time: number,
   side: number,
   active: boolean,
-  shoulder: Pt,
+  _shoulder: Pt,
 ): Pt {
   const wave = Math.sin(time * 7) * 7;
   if (!active || action === "idle" || action === "walk") {

@@ -15,17 +15,23 @@ export async function gcsGet(bucket: string, name: string, auth: Record<string, 
   }
 }
 
-/** Upload (overwrite). Errors are logged, not thrown: a failed cache write must not fail the request. */
-export async function gcsPut(bucket: string, name: string, body: Uint8Array | string, type: string, auth: Record<string, string>): Promise<boolean> {
+/**
+ * Upload (overwrite). Errors are logged, not thrown: a failed cache write must not fail the request.
+ * One retry on a network error, 429 or 5xx: a lost cache write means the next identical request pays again.
+ */
+export async function gcsPut(bucket: string, name: string, body: Uint8Array | string, type: string, auth: Record<string, string>, retry = true): Promise<boolean> {
   try {
     const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${enc(bucket)}/o?uploadType=media&name=${enc(name)}`, {
       method: "POST",
       headers: { ...auth, "content-type": type },
       body: body as BodyInit,
     });
-    if (!r.ok) console.error("[gcs] put", name, r.status);
-    return r.ok;
+    if (r.ok) return true;
+    if (retry && (r.status === 429 || r.status >= 500)) return gcsPut(bucket, name, body, type, auth, false);
+    console.error("[gcs] put", name, r.status);
+    return false;
   } catch (e) {
+    if (retry) return gcsPut(bucket, name, body, type, auth, false);
     console.error("[gcs] put", name, e);
     return false;
   }
