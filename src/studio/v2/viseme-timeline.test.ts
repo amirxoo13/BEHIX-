@@ -102,3 +102,8 @@ it("mouthAt: hard cuts match visemeAt; crossfade blends into each span and back 
   const has = (v: string) => ["rest", "mbp", "ah", "eh"].includes(v);
   assert.equal(mouthAt(spans, 0.8, { has }).id, "eh");
 });
+
+it("placedSpans moves a line's spans to film time", async () => {
+  const { placedSpans } = await import("./viseme-timeline.ts");
+  assert.deepEqual(placedSpans({ visemes: [{ id: "ah", start: 0.1, end: 0.3, weight: 0.5 }] }, 12.5), [{ id: "ah", start: 12.6, end: 12.8, weight: 0.5 }]);
+});

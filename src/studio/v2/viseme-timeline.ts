@@ -168,3 +168,8 @@ export function mouthAt(src: Pick<VisemeTimeline, "visemes"> | readonly VisemeSp
   }
   return frame(cur.id, cur.id, 0, w);
 }
+
+/** The line's spans moved to film (or scene) time: `start` = where its clip starts. For ActorTrack.speech. */
+export function placedSpans(t: Pick<VisemeTimeline, "visemes">, start: number): VisemeSpan[] {
+  return t.visemes.map((s) => ({ ...s, start: round(s.start + start), end: round(s.end + start) }));
+}
