@@ -1,5 +1,7 @@
 import { frameFor, stageFor, type Format } from "./layout.ts";
-import { makeCanvas } from "./paper.ts";
+import { drawSet } from "../world/draw-set.ts";
+import { layerMatrix, shotCameraAt, type CamState, type ShotCamera } from "../world/camera.ts";
+import { resolveSet } from "../world/procedural-sets.ts";
 import type { Ctx, RenderCanvas } from "./figure-base.ts";
 /**
  * کشیدن یک لحظه از فیلم داستانی: مکان، شخصیت‌ها، حباب فکر، دوربین و زیرنویس.
@@ -36,6 +38,10 @@ export type SceneTimeline = {
   thoughts: Thought[];
   /** چه کسی در هر بازه حرف می‌زند (برای نگاه شنونده‌ها). */
   speakers: { from: number; to: number; cast: string }[];
+  /** Optional layered set id (world/procedural-sets registry); default: the procedural set of `place`. */
+  set?: string;
+  /** Optional planned camera (world/camera.ts); default: the legacy `cameras` keys. */
+  camera?: ShotCamera;
 };
 
 export type Timeline = { scenes: SceneTimeline[]; cast: CastMember[]; duration: number };
@@ -77,39 +83,6 @@ export function cameraAt(keys: CameraKey[], t: number): CameraKey {
   };
 }
 
-type Stage = ReturnType<typeof stageFor>;
-let layerCanvas: { c: ReturnType<typeof makeCanvas>; w: number; h: number } | null = null;
-/**
- * Draws one place layer with the uniform stage transform. Portrait (identity stage) draws straight
- * onto the frame exactly as before. Other formats draw into a transparent layer, extend its outer
- * design columns across the side bands (walls, floor and horizon lines continue), then composite the
- * layer itself on top so art that already reaches past the design edges wins over the extension.
- */
-function drawPlaceLayer(ctx: Ctx, stage: Stage, w: number, h: number, paint: (c: Ctx) => void) {
-  if (stage.k === 1 && stage.ox === 0 && stage.oy === 0) {
-    ctx.save();
-    paint(ctx);
-    ctx.restore();
-    return;
-  }
-  if (!layerCanvas || layerCanvas.w !== w || layerCanvas.h !== h) layerCanvas = { c: makeCanvas(w, h), w, h };
-  const layer = layerCanvas.c;
-  const lc = layer.getContext("2d") as Ctx;
-  lc.setTransform(1, 0, 0, 1, 0, 0);
-  lc.clearRect(0, 0, w, h);
-  lc.save();
-  lc.translate(stage.ox, stage.oy);
-  lc.scale(stage.k, stage.k);
-  paint(lc);
-  lc.restore();
-  const left = Math.ceil(stage.ox) + 1;
-  const right = Math.floor(stage.ox + FRAME.w * stage.k) - 2;
-  // bands reach one frame width past each edge so camera moves never uncover bare paper
-  ctx.drawImage(layer, left, 0, 1, h, left - w - 1, 0, w + 1, h);
-  ctx.drawImage(layer, right, 0, 1, h, right + 1, 0, w + 1, h);
-  ctx.drawImage(layer, 0, 0);
-}
-
 export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanvas, opts: { captions: boolean; format?: Format; positions?: Record<string,number> } = { captions: true }) {
   const frame = frameFor(opts.format);
   const { w, h, floor, scale } = frame;
@@ -126,15 +99,31 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
   drawPaper(ctx, paper);
   if (scene.night) nightPaper(ctx, w, h);
 
-  const rawCam = cameraAt(scene.cameras, lt);
-  const cam = { ...rawCam, cx: stage.ox + rawCam.cx * stage.k, cy: stage.oy + rawCam.cy * stage.k };
   // لرزش خیلی ریز دوربین دستی برای زنده بودن
   const sway = Math.sin(lt * 0.9) * 2;
-  ctx.translate(cam.cx + sway, cam.cy);
-  ctx.scale(cam.zoom, cam.zoom);
-  ctx.translate(-cam.cx, -cam.cy);
+  let stageCam: CamState;
+  if (scene.camera) {
+    // planned camera: the parallax-1 layer matrix (stage space) mapped to frame pixels
+    stageCam = shotCameraAt(scene.camera, lt);
+    stageCam = { ...stageCam, sx: (stageCam.sx ?? 0) + sway / stage.k };
+    const m = layerMatrix(stageCam, 1);
+    ctx.translate(stage.ox, stage.oy);
+    ctx.scale(stage.k, stage.k);
+    ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+    ctx.scale(1 / stage.k, 1 / stage.k);
+    ctx.translate(-stage.ox, -stage.oy);
+  } else {
+    const rawCam = cameraAt(scene.cameras, lt);
+    const cam = { ...rawCam, cx: stage.ox + rawCam.cx * stage.k, cy: stage.oy + rawCam.cy * stage.k };
+    stageCam = { cx: rawCam.cx, cy: rawCam.cy, zoom: rawCam.zoom, dolly: 0, truck: 0, roll: 0, focus: 1, sx: sway / stage.k };
+    ctx.translate(cam.cx + sway, cam.cy);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.translate(-cam.cx, -cam.cy);
+  }
+  const set = resolveSet(scene.set, scene.place);
+  const setOpts = { stage, w, h, env, cam: stageCam };
 
-  drawPlaceLayer(ctx, stage, w, h, (c) => place.back(c, env));
+  drawSet(ctx, set, "back", setOpts);
 
   const speaker = scene.speakers.find((s) => lt >= s.from && lt <= s.to);
   const frames = scene.actors.map((a) => {
@@ -160,8 +149,9 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
     }
   };
   draw(true);
-  if (place.front) drawPlaceLayer(ctx, stage, w, h, (c) => place.front?.(c, env));
+  drawSet(ctx, set, "front", setOpts);
   draw(false);
+  drawSet(ctx, set, "overlay", setOpts);
 
   for (const th of scene.thoughts) {
     if (lt < th.from || lt > th.to + 0.3) continue;

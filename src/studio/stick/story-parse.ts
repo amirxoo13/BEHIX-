@@ -10,6 +10,7 @@ import { PARK_VERB, findAll, normalizeFa, sentencePlaceEntries, type Entry, type
 import type { Expression } from "./face.ts";
 import type { Hair, Hold, Kind, Look } from "./figure.ts";
 import { PLACES, PLACE_IDS, type PlaceId } from "./places.ts";
+import type { ShotCamera } from "../world/camera.ts";
 
 export type Side = "left" | "right" | "center";
 
@@ -62,7 +63,15 @@ export type Beat = BeatMeta & (
 
 export type StoryCastMember = { id: string; name: string; look: Look; side?: Side; guessed: boolean };
 
-export type StoryScene = { heading: string; place: PlaceId; night: boolean; beats: Beat[] };
+export type StoryScene = {
+  heading: string;
+  place: PlaceId;
+  night: boolean;
+  beats: Beat[];
+  /** optional world overrides (project edits); the parser itself never sets them */
+  set?: string;
+  camera?: ShotCamera;
+};
 
 export type StoryPlan = { cast: StoryCastMember[]; scenes: StoryScene[]; warnings: string[] };
 
