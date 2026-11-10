@@ -8,7 +8,8 @@ import type { Look } from "./figure.ts";
 import { readArtifact, saveArtifact } from "./project-db.ts";
 import type { Directed } from "./story-direct.ts";
 import { repairTimeline, type VisemeTimeline } from "../v2/viseme-timeline.ts";
-import { parseVoiceResults, resolveAudioUrl, VOICE_BATCH, voiceRequest } from "./voice-batch.ts";
+import { amplitudeTimeline, parseVoiceResults, resolveAudioUrl, VOICE_BATCH, voiceRequest } from "./voice-batch.ts";
+export { amplitudeTimeline };
 import { clipKey, concatClips, defaultVoices, encodeWav, LEGACY_CACHE_MODEL, mixClips, MIX_RATE, placeVoices, legacyStylePrompt, splitLine, stylePrompt, TTS_PREVIEW_MODEL, type Voice, type VoiceClip } from "./voice.ts";
 
 const API = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -85,6 +86,30 @@ export async function loadTimelines(jobs: LineJob[]): Promise<Map<string, Viseme
   return out;
 }
 
+/**
+ * هر دیالوگی که کلیپ دارد ولی زمان‌بندی ندارد، زمان‌بندی دامنه‌ای می‌گیرد و مثل کلیپ‌ها در IndexedDB (`viseme:<key>`)
+ * ذخیره می‌شود. خروجی: نقشهٔ کامل beatId → VisemeTimeline (فقط برای دیالوگ‌هایی که کلیپ دارند).
+ */
+export async function ensureTimelines(jobs: LineJob[], clips: Map<string, VoiceClip>, have: Map<string, VisemeTimeline>): Promise<Map<string, VisemeTimeline>> {
+  const out = new Map<string, VisemeTimeline>();
+  for (const j of jobs) {
+    const clip = clips.get(j.beatId);
+    if (!clip) continue;
+    const t = have.get(j.beatId);
+    if (t) {
+      out.set(j.beatId, t);
+      continue;
+    }
+    const made = amplitudeTimeline(j, clip);
+    out.set(j.beatId, made);
+    await saveTimeline(j, made);
+  }
+  return out;
+}
+
+const saveTimeline = (j: LineJob, t: VisemeTimeline) =>
+  saveArtifact({ id: `viseme:${j.key}`, name: `${j.text.slice(0, 40)}.viseme.json`, blob: new Blob([JSON.stringify(t)], { type: "application/json" }) }).catch(() => undefined);
+
 /** خطای یک دیالوگ؛ بقیهٔ دیالوگ‌ها ادامه می‌دهند. fatal یعنی کل کار بایستد (سقف، سرور خاموش). */
 export class LineError extends Error {
   readonly beatId: string;
@@ -136,7 +161,7 @@ async function fetchVoices(jobs: LineJob[], signal?: AbortSignal): Promise<(Made
 
 async function save(j: LineJob, m: Made) {
   await saveArtifact({ id: `voice:${j.key}`, name: `${j.text.slice(0, 40)}.${/mpeg|mp3/.test(m.blob.type) ? "mp3" : "wav"}`, blob: m.blob }).catch(() => undefined);
-  if (m.timeline) await saveArtifact({ id: `viseme:${j.key}`, name: `${j.text.slice(0, 40)}.viseme.json`, blob: new Blob([JSON.stringify(m.timeline)], { type: "application/json" }) }).catch(() => undefined);
+  if (m.timeline) await saveTimeline(j, m.timeline);
 }
 
 /** راه قدیمی: /api/tts، تکه‌تکه برای دیالوگ بلند، بدون زمان‌بندی لب. */
@@ -220,10 +245,12 @@ export async function synthesize(
   return { made, timelines, error, failures };
 }
 
-/** صدای ذخیره‌شدهٔ یک پروژه برای ساخت فیلم (مثلاً ساخت گروهی): تایم‌لاین صداگذاری‌شده و صدای میکس‌شده. */
+/** صدای ذخیره‌شدهٔ یک پروژه برای ساخت فیلم (مثلاً ساخت گروهی): تایم‌لاین صداگذاری‌شده، صدای میکس‌شده و زمان‌بندی لب هر دیالوگ. */
 export async function savedVoicing(directed: Directed, chosen: Parameters<typeof defaultVoices>[1]) {
   const cast = directed.timeline.cast;
   const jobs = await lineJobs(directed, defaultVoices(cast, chosen), Object.fromEntries(cast.map((c) => [c.id, c.look])));
-  const { timeline, placed } = placeVoices(directed, await loadClips(jobs));
-  return { timeline, audio: placed.length ? { data: mixClips(placed, timeline.duration, MIX_RATE), sampleRate: MIX_RATE } : undefined };
+  const clips = await loadClips(jobs);
+  const timelines = await ensureTimelines(jobs, clips, await loadTimelines(jobs));
+  const { timeline, placed } = placeVoices(directed, clips);
+  return { timeline, timelines, audio: placed.length ? { data: mixClips(placed, timeline.duration, MIX_RATE), sampleRate: MIX_RATE } : undefined };
 }

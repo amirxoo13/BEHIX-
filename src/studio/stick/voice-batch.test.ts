@@ -32,3 +32,15 @@ test("audio URLs resolve against the API base", () => {
   assert.equal(resolveAudioUrl("https://api.example", "/api/voice?clip=1.wav"), "https://api.example/api/voice?clip=1.wav");
   assert.equal(resolveAudioUrl("https://api.example", "data:audio/wav;base64,AA"), "data:audio/wav;base64,AA");
 });
+
+test("clips without STT get an amplitude timeline keyed like the clip", async () => {
+  const { amplitudeTimeline } = await import("./voice-batch.ts");
+  const rate = 24000, samples = new Float32Array(rate);
+  for (let i = 4800; i < 18000; i++) samples[i] = Math.sin(i / 10) * 0.5;
+  const t = amplitudeTimeline({ beatId: "b1", text: "سلام دنیا", voice: "Kore", key: "k1" }, { samples, sampleRate: rate });
+  assert.equal(t.timing, "amplitude");
+  assert.equal(t.clipKey, "k1");
+  assert.equal(t.lineId, "b1");
+  assert.equal(t.duration, 1);
+  assert.ok(t.visemes.length > 1);
+});

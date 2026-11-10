@@ -3,7 +3,8 @@ import { Mic } from "lucide-react";
 import { setEdit, type StoryProject } from "@/studio/stick/project";
 import type { Directed } from "@/studio/stick/story-direct";
 import { defaultVoices, lineDurationFor, placeVoices, type Voice, type VoiceClip } from "@/studio/stick/voice";
-import { lineJobs, loadClips, synthesize, type LineJob } from "@/studio/stick/voice-client";
+import { ensureTimelines, lineJobs, loadClips, loadTimelines, synthesize, type LineJob } from "@/studio/stick/voice-client";
+import type { VisemeTimeline } from "@/studio/v2/viseme-timeline";
 import { fa } from "@/studio/format";
 
 /** وضعیت صداگذاری پروژه: صدای هر شخصیت، کلیپ‌های موجود و ساخت کلیپ‌های تازه. */
@@ -12,6 +13,8 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
   const voices = useMemo(() => (cast ? defaultVoices(cast, project?.settings.voices) : {}), [cast, project?.settings.voices]);
   const [jobs, setJobs] = useState<LineJob[]>([]);
   const [clips, setClips] = useState<Map<string, VoiceClip>>(new Map());
+  // زمان‌بندی لب هر دیالوگ (beatId → VisemeTimeline): از STT در /api/voice، یا دامنه‌ای برای کلیپ‌های بدون آن
+  const [timelines, setTimelines] = useState<Map<string, VisemeTimeline>>(new Map());
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0);
   const [error, setError] = useState("");
@@ -24,9 +27,11 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     void lineJobs(directed, voices, looks)
       .then(async (j) => {
         const loaded = await loadClips(j);
+        const times = await ensureTimelines(j, loaded, await loadTimelines(j));
         if (!alive) return;
         setJobs(j);
         setClips(loaded);
+        setTimelines(times);
         // کلیپ از قبل ذخیره‌شده (مثلاً همان جمله در دیالوگ تازه): مدت دیالوگ اندازهٔ صدایش می‌شود،
         // مگر کاربر خودش مدت را انتخاب کرده باشد. مقایسه با ویرایش ذخیره‌شده است (نه طول نهایی بخش) تا حلقه نشود
         // و اصلاح خودکار مرحلهٔ واگرد نمی‌سازد تا واگرد/ازنو را به‌هم نزند.
@@ -54,11 +59,13 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     setDone(0);
     setError("");
     try {
-      const { made, error: failed } = await synthesize(missing, setDone, ctrl.signal);
+      const { made, timelines: madeTimes, error: failed } = await synthesize(missing, setDone, ctrl.signal);
       // کلیپ‌های ساخته‌شده حتی اگر یکی خطا داد یا لغو شد نگه داشته می‌شوند؛
       // مدت هر دیالوگ به اندازهٔ صدای واقعی تا لب‌خوانی و زمان‌بندی دقیق شود
       if (made.size) {
         setClips((old) => new Map([...old, ...made]));
+        const times = await ensureTimelines(missing.filter((j) => made.has(j.beatId)), made, madeTimes);
+        setTimelines((old) => new Map([...old, ...times]));
         commit((p) => fitAll(p, [...made]), "silent");
       }
       if (failed !== undefined && !(failed instanceof DOMException && failed.name === "AbortError")) setError(failed instanceof Error ? failed.message : String(failed));
@@ -69,7 +76,7 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
   }, [busy, missing, commit]);
 
   const setVoice = (castId: string, voice: Voice) => commit((p) => ({ ...p, settings: { ...p.settings, voices: { ...p.settings.voices, [castId]: voice } } }));
-  return { voices, setVoice, jobs, missing: missing.length, voiced, generate, busy, done, error, cancel: () => abort.current?.abort() };
+  return { voices, setVoice, jobs, missing: missing.length, voiced, timelines, generate, busy, done, error, cancel: () => abort.current?.abort() };
 }
 
 export type Voicing = ReturnType<typeof useVoices>;
