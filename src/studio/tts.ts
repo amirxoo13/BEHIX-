@@ -1,22 +1,32 @@
 /**
- * ساخت صدای فارسی از متن دیالوگ، کاملاً داخل مرورگر (بدون سرور و بدون توکن):
- * موتور Piper (MIT) با onnxruntime-web؛ صداهای فارسی fa_IR «amir» و «gyro».
- * بار اول فایل صدا (حدود ۶۳ مگابایت) از Hugging Face دانلود و در حافظهٔ مرورگر (OPFS) نگه داشته می‌شود؛
- * دفعه‌های بعد بدون دانلود ساخته می‌شود.
- * هر کلیپ یک VisemeTimeline دامنه‌ای (`timing: "amplitude"`) هم دارد (piperTimeline → align.ts).
+ * صدای فارسی دیالوگ‌ها با Gemini 3.8 TTS روی Google Cloud (سرور خود BEHIX، مسیر /api/voice).
+ * سرور: Gemini TTS ← Speech-to-Text v2 (chirp_2، زمان واقعی هر کلمه) ← زمان‌بندی لب (VisemeTimeline)؛ کلیپ در Cloud Storage کش می‌شود.
+ * هیچ سرویس یا کلیدی بیرون از Google Cloud نیست؛ کاربر باید وارد حساب (Firebase) شده باشد چون ساخت صدا هزینه دارد.
  */
+import { authFetch } from "../lib/user-auth.ts";
 import { splitDirections } from "./script-plan.ts";
-import { alignLine } from "./v2/align.ts";
 import type { VisemeTimeline } from "./v2/viseme-timeline.ts";
 
-export type VoiceId = "fa_IR-amir-medium" | "fa_IR-gyro-medium";
+/** صداهای Gemini TTS (شناسه‌های رسمی مدل) با برچسب فارسی. */
+export const VOICES = [
+  { id: "Charon", label: "کارون (مرد، بم)" },
+  { id: "Kore", label: "کوره (زن)" },
+  { id: "Orus", label: "اوروس (مرد)" },
+  { id: "Aoede", label: "آئوده (زن)" },
+  { id: "Iapetus", label: "یاپتوس (مرد)" },
+  { id: "Leda", label: "لدا (زن)" },
+  { id: "Alnilam", label: "النیلام (مرد)" },
+  { id: "Zephyr", label: "زفیر (زن)" },
+  { id: "Puck", label: "پاک (مرد)" },
+  { id: "Despina", label: "دسپینا (زن)" },
+] as const;
+export type VoiceId = (typeof VOICES)[number]["id"];
 
-export const VOICES: { id: VoiceId; label: string }[] = [
-  { id: "fa_IR-amir-medium", label: "امیر (صدای مرد)" },
-  { id: "fa_IR-gyro-medium", label: "جایرو (صدای مرد)" },
-];
+/** سقف طول یک دیالوگ در سرور (همان MAX_LINE در /api/voice). */
+export const MAX_SPOKEN = 400;
+const API = ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE ?? "").replace(/\/$/, "");
 
-export type TtsProgress = { phase: "download" | "speak"; ratio: number };
+export type TtsProgress = { phase: "speak"; ratio: number };
 
 /** متنی که خوانده می‌شود: بدون پرانتزهای توضیح بازیگری و بدون فاصله‌های اضافه. */
 export function speakableText(dialogue: string): string {
@@ -41,7 +51,7 @@ export function wavDuration(buf: ArrayBuffer): number {
   return 0;
 }
 
-/** First channel of a 16-bit PCM WAV as floats (Piper writes 22.05 kHz mono). Empty for anything else. */
+/** First channel of a 16-bit PCM WAV as floats. Empty for anything else. */
 export function wavMono(buf: ArrayBuffer): { samples: Float32Array; sampleRate: number } {
   const v = new DataView(buf);
   if (buf.byteLength < 44 || v.getUint32(0, false) !== 0x52494646) return { samples: new Float32Array(0), sampleRate: 0 };
@@ -61,50 +71,37 @@ export function wavMono(buf: ArrayBuffer): { samples: Float32Array; sampleRate: 
   return { samples: new Float32Array(0), sampleRate: rate };
 }
 
-/** Lip timing for an offline Piper clip: amplitude runs aligned to the script words (no STT offline). */
-export function piperTimeline(text: string, wav: ArrayBuffer, voice: string): VisemeTimeline {
-  const { samples, sampleRate } = wavMono(wav);
-  const duration = sampleRate ? samples.length / sampleRate : wavDuration(wav);
-  return alignLine(samples.length ? { text, duration, samples, sampleRate } : { text, duration }, { voice: { engine: "piper", name: voice } });
+/** دستور لحن برای Gemini: توضیح داخل پرانتز دیالوگ (مثلاً «با عصبانیت») + لهجهٔ محاوره‌ای تهرانی. */
+export function voiceStyle(dialogue: string): string {
+  const d = splitDirections(dialogue).directions.trim();
+  return (d ? `${d}; natural, colloquial Tehrani Persian` : "natural, colloquial Tehrani Persian").slice(0, 300);
 }
 
-type Session = { predict(text: string): Promise<Blob> };
-let current: { voice: VoiceId; session: Promise<Session> } | null = null;
+type VoiceOut = { id: string; audioUrl: string; timeline: VisemeTimeline; model: string } | { id: string; error: string; fatal?: boolean };
 
-async function session(voice: VoiceId, onProgress?: (p: TtsProgress) => void): Promise<Session> {
-  if (current?.voice === voice) return current.session;
-  const lib = await import("@mintplex-labs/piper-tts-web");
-  // کتابخانه فقط یک جلسه نگه می‌دارد؛ برای عوض کردن صدا باید جلسهٔ قبلی کنار برود.
-  (lib.TtsSession as unknown as { _instance: unknown })._instance = null;
-  const s = lib.TtsSession.create({
-    voiceId: voice,
-    progress: (p: { url: string; loaded: number; total: number }) => {
-      if (p.total > 0 && p.url.includes(".onnx") && !p.url.endsWith(".json")) {
-        onProgress?.({ phase: "download", ratio: p.loaded / p.total });
-      }
-    },
-  }) as Promise<Session>;
-  current = { voice, session: s };
-  s.catch(() => {
-    if (current?.session === s) current = null;
-  });
-  return s;
-}
-
-/** صدای یک جمله؛ خروجی WAV و مدت آن. */
+/** صدای یک دیالوگ با Gemini؛ خروجی WAV، مدت آن و زمان‌بندی لب از روی کلمه‌های واقعی. */
 export async function speak(
   text: string,
   voice: VoiceId,
   onProgress?: (p: TtsProgress) => void,
-): Promise<{ blob: Blob; seconds: number; timeline: VisemeTimeline }> {
+  id = "line",
+): Promise<{ blob: Blob; seconds: number; timeline: VisemeTimeline; model: string }> {
   const clean = speakableText(text);
   if (!clean) throw new Error("این نما متنی برای خواندن ندارد.");
-  const s = await session(voice, onProgress);
+  if (clean.length > MAX_SPOKEN) throw new Error(`دیالوگ بیش از ${MAX_SPOKEN} حرف است؛ کوتاهش کنید یا در دو نما بنویسید.`);
   onProgress?.({ phase: "speak", ratio: 0 });
-  const blob = await s.predict(clean);
-  const buf = await blob.arrayBuffer();
-  const seconds = wavDuration(buf);
-  const timeline = piperTimeline(clean, buf, voice);
+  const r = await authFetch(`${API}/api/voice`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lines: [{ id, text: clean, voice, style: voiceStyle(text) }] }),
+  });
+  const j = (await r.json().catch(() => null)) as VoiceOut[] | { message?: string } | null;
+  if (!r.ok || !Array.isArray(j)) throw new Error((j && !Array.isArray(j) && j.message) || `سرور صدا خطای ${r.status} داد.`);
+  const out = j[0];
+  if (!out || "error" in out) throw new Error(out?.error ?? "سرور صدایی برنگرداند.");
+  const a = await authFetch(/^(https?:|data:)/.test(out.audioUrl) ? out.audioUrl : `${API}${out.audioUrl}`);
+  if (!a.ok) throw new Error(`دریافت فایل صدا انجام نشد (${a.status}).`);
+  const buf = await a.arrayBuffer();
   onProgress?.({ phase: "speak", ratio: 1 });
-  return { blob, seconds, timeline };
+  return { blob: new Blob([buf], { type: "audio/wav" }), seconds: wavDuration(buf), timeline: out.timeline, model: out.model };
 }

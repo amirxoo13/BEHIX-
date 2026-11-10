@@ -26,7 +26,7 @@ function speakerOf(shot: Shot): string | null {
   return null;
 }
 
-/** صدای فارسی خودکار برای دیالوگ‌ها (داخل مرورگر). */
+/** صدای فارسی خودکار برای دیالوگ‌ها با Gemini روی Google Cloud. */
 export function VoicePanel() {
   const shots = useStudio((s) => s.shots);
   const selected = useStudio((s) => s.selected);
@@ -54,10 +54,7 @@ export function VoicePanel() {
     }
   };
 
-  const progressText = (p: TtsProgress, label: string) =>
-    p.phase === "download"
-      ? `دانلود صدای فارسی (فقط بار اول، حدود ۶۳ مگابایت): ${fa(Math.round(p.ratio * 100))}٪`
-      : label;
+  const progressText = (_p: TtsProgress, label: string) => label;
 
   const make = async (indexes: number[]) => {
     setWorking(true);
@@ -70,7 +67,7 @@ export function VoicePanel() {
         if (!shot || !who || !speakableText(shot.dialogue)) continue;
         const label = `در حال ساخت صدای نمای ${fa(i + 1)} (${fa(done + 1)} از ${fa(indexes.length)})…`;
         setNote(label);
-        const { blob, seconds, timeline } = await speak(shot.dialogue, voiceFor(who), (p) => setNote(progressText(p, label)));
+        const { blob, seconds, timeline } = await speak(shot.dialogue, voiceFor(who), (p) => setNote(progressText(p, label)), shot.id);
         const s = useStudio.getState();
         const url = URL.createObjectURL(blob);
         // زمان‌بندی لب دامنه‌ای همین کلیپ (timing: amplitude)، با کلید همان آدرس کلیپ
@@ -88,7 +85,7 @@ export function VoicePanel() {
       );
     } catch (err) {
       setError(
-        `ساخت صدا انجام نشد: ${err instanceof Error ? err.message : "خطای نامشخص"}. اگر بار اول است، اتصال اینترنت (Hugging Face) را بررسی کنید.`,
+        `ساخت صدا انجام نشد: ${err instanceof Error ? err.message : "خطای نامشخص"}`,
       );
       setNote("");
     } finally {
@@ -110,7 +107,7 @@ export function VoicePanel() {
         صدای فارسی خودکار از متن دیالوگ
       </h2>
       <p className="mt-1 text-sm leading-6 text-muted">
-        بدون ضبط، از روی متن هر دیالوگ صدای فارسی ساخته می‌شود (موتور متن‌باز Piper، داخل همین مرورگر، بدون مصرف توکن).
+        بدون ضبط، از روی متن هر دیالوگ صدای فارسی با Gemini روی Google Cloud ساخته می‌شود؛ دهان شخصیت با زمان واقعی هر کلمه تکان می‌خورد. توضیح داخل پرانتز (مثلاً «(با عصبانیت)») لحن صدا را تعیین می‌کند. برای ساخت صدا وارد حساب شوید (دکمهٔ آدمک بالای صفحه).
         فعلاً فقط دو صدای مرد فارسی موجود است؛ برای شخصیت زن یا بچه، «زیروبم پخش» را بالاتر ببرید.
       </p>
 

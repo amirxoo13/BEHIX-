@@ -1,19 +1,14 @@
 /**
- * تماس با مدل زبانی برای فهم سناریو — فقط روی سرور، تا کلید API به مرورگر نرسد.
- *
- * هر سرویسی که «API سازگار با OpenAI» دارد کار می‌کند (Qwen، Grok/xAI، OpenAI، DeepSeek، ...).
- * عوض کردن مدل فقط با تغییر این سه متغیر محیطی در متغیرهای محیطی سرور است، بدون تغییر کد:
- *   SCRIPT_AI_BASE_URL  آدرس پایهٔ API، مثلاً https://.../v1
- *   SCRIPT_AI_API_KEY   کلید API
- *   SCRIPT_AI_MODEL     اسم مدل
- * و یک متغیر اختیاری برای تنظیم‌های مخصوص هر سرویس (JSON که به بدنهٔ درخواست اضافه می‌شود):
- *   SCRIPT_AI_EXTRA_BODY  مثلاً برای Qwen: {"enable_thinking":false}
- *                         (بدون آن، مدل‌های Qwen 3.x اول «فکر» می‌کنند و بیش از یک دقیقه طول می‌کشد)
+ * فهم سناریو با Gemini روی Vertex AI (Google Cloud) — فقط روی سرور.
+ * generateContent، مدل SCRIPT_AI_GEMINI_MODEL (پیش‌فرض gemini-3.8-flash، منطقهٔ global با SCRIPT_AI_GEMINI_LOCATION)،
+ * احراز با اعتبار پیش‌فرض Google Cloud (حساب سرویس Cloud Run)؛ هیچ کلید یا سرویسی بیرون از Google Cloud نیست.
+ * فقط کاربر واردشده (Firebase Auth) می‌تواند درخواست بدهد.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { MAX_SCRIPT_CHARS, type Plan } from "@/studio/script-plan";
 import { clientIp, createLimiter, positiveInt } from "./rate-limit";
 import type { ExtraCharacter } from "@/studio/script-llm";
+import { vertexReply, vertexRequest, vertexUrl, type ChatMessage } from "./script-ai-vertex.ts";
 
 export type ScriptAiStatus = { configured: boolean; model: string | null };
 
@@ -25,23 +20,31 @@ export type UnderstandResult =
 
 const TIMEOUT_MS = 60_000;
 
+/** پروژهٔ Google Cloud و مدل Gemini؛ بدون پروژه (مثلاً اجرای محلی بدون gcloud) هوش مصنوعی خاموش است. */
 async function config() {
   const { env } = await import("./env.server.ts");
-  const baseUrl = env("SCRIPT_AI_BASE_URL");
-  const apiKey = env("SCRIPT_AI_API_KEY");
-  const model = env("SCRIPT_AI_MODEL");
-  if (!baseUrl || !apiKey || !model) return null;
-  let extra: Record<string, unknown> = {};
-  const rawExtra = env("SCRIPT_AI_EXTRA_BODY");
-  if (rawExtra) {
-    try {
-      const parsed: unknown = JSON.parse(rawExtra);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) extra = parsed as Record<string, unknown>;
-    } catch {
-      // مقدار نامعتبر نادیده گرفته می‌شود؛ درخواست بدون تنظیم اضافه فرستاده می‌شود.
-    }
+  const project = env("GOOGLE_CLOUD_PROJECT")?.trim() || env("GCLOUD_PROJECT")?.trim();
+  if (!project) return null;
+  const m = env("SCRIPT_AI_GEMINI_MODEL")?.trim();
+  return { project, model: m && !/gemini-[12]\./i.test(m) ? m : "gemini-3.8-flash", location: env("SCRIPT_AI_GEMINI_LOCATION")?.trim() || "global" };
+}
+
+type ModelReply = { content: unknown; truncated: boolean; usage: TokenUsage | null } | { status: number };
+
+/** یک تماس با سرویس مدل. خطای شبکه/زمان را پرتاب می‌کند؛ خطای HTTP را با status برمی‌گرداند. */
+async function callModel(c: NonNullable<Awaited<ReturnType<typeof config>>>, messages: ChatMessage[], maxTokens: number): Promise<ModelReply> {
+  const { gcpAccessToken } = await import("./gcp-auth.server.ts");
+  const res = await fetch(vertexUrl(c), {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${await gcpAccessToken()}`, "x-goog-user-project": c.project },
+    body: JSON.stringify(vertexRequest(messages, maxTokens)),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    console.error("[script-ai] vertex", res.status, (await res.text().catch(() => "")).slice(0, 300));
+    return { status: res.status };
   }
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, model, extra };
+  return vertexReply(await res.json());
 }
 
 // سقف‌ها از متغیر محیطی (اختیاری): SCRIPT_AI_PER_HOUR (پیش‌فرض ۱۰ درخواست در ساعت برای هر IP)
@@ -104,57 +107,33 @@ export const understandScript = createServerFn({ method: "POST" })
     let counted = false;
     let failure: string | null = null;
     for (const range of chunkScript(data.script)) {
-      let res: Response;
+      const budget = maxOutputTokens(data.script, range);
+      let reply: ModelReply;
       try {
-        res = await fetch(`${c.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${c.apiKey}` },
-          body: JSON.stringify({
-            ...c.extra,
-            model: c.model,
-            messages: buildMessages(data.script, data.cast, range),
-            temperature: 0,
-            max_tokens: maxOutputTokens(data.script, range),
-          }),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
+        reply = await callModel(c, buildMessages(data.script, data.cast, range), budget);
       } catch (err) {
+        lim.record(budget);
         const timedOut = err instanceof Error && err.name === "TimeoutError";
-        failure = timedOut ? "مدل در زمان مجاز جواب نداد." : "اتصال به مدل برقرار نشد.";
+        failure = timedOut ? "مدل در زمان مجاز جواب نداد." : err instanceof SyntaxError ? "پاسخ سرویس مدل خوانا نبود." : "اتصال به مدل برقرار نشد.";
         break;
       }
-      if (!res.ok) {
-        failure = `سرویس مدل خطای ${res.status} برگرداند.`;
+      if ("status" in reply) {
+        lim.record(budget);
+        failure = `سرویس مدل خطای ${reply.status} برگرداند.`;
         break;
       }
-      let content: unknown;
-      let finish: unknown;
-      let spent = maxOutputTokens(data.script, range);
-      try {
-        const body = (await res.json()) as {
-          choices?: { message?: { content?: unknown }; finish_reason?: unknown }[];
-          usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
-        };
-        content = body.choices?.[0]?.message?.content;
-        finish = body.choices?.[0]?.finish_reason;
-        const u = body.usage;
-        if (u && typeof u.prompt_tokens === "number" && typeof u.completion_tokens === "number") {
-          total.input += u.prompt_tokens;
-          total.output += u.completion_tokens;
-          counted = true;
-          spent = u.prompt_tokens + u.completion_tokens;
-        }
-      } catch {
-        failure = "پاسخ سرویس مدل خوانا نبود.";
-        break;
-      } finally {
-        lim.record(spent);
+      if (reply.usage) {
+        total.input += reply.usage.input;
+        total.output += reply.usage.output;
+        counted = true;
       }
+      lim.record(reply.usage ? reply.usage.input + reply.usage.output : budget);
+      const content = reply.content;
       if (typeof content !== "string") {
         failure = "پاسخ مدل متن نداشت.";
         break;
       }
-      replies.push({ content, truncated: finish === "length", range });
+      replies.push({ content, truncated: reply.truncated, range });
     }
     if (replies.length === 0) return { ok: false, error: failure ?? "مدل جوابی نداد." };
     const parsed = planFromModelReplies(replies, data.script, data.cast);

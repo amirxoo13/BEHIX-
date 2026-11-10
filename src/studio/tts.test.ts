@@ -36,8 +36,8 @@ describe("Persian text to speech helpers", () => {
   });
 });
 
-it("Piper WAV → amplitude VisemeTimeline via align.ts", async () => {
-  const { piperTimeline, wavMono } = await import("./tts.ts");
+it("16-bit WAV → mono samples (wavMono)", async () => {
+  const { wavMono } = await import("./tts.ts");
   const rate = 22050, n = rate;
   const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
   const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -48,10 +48,12 @@ it("Piper WAV → amplitude VisemeTimeline via align.ts", async () => {
   const mono = wavMono(buf);
   assert.equal(mono.sampleRate, rate);
   assert.equal(mono.samples.length, n);
-  const t = piperTimeline("سلام دنیا", buf, "fa_IR-amir-medium");
-  assert.equal(t.timing, "amplitude");
-  assert.equal(t.voice?.engine, "piper");
-  assert.equal(t.duration, 1);
-  assert.ok(t.visemes.some((s) => s.id !== "rest"));
-  assert.equal(piperTimeline("سلام", new ArrayBuffer(8), "x").timing, "text", "unreadable WAV → text timing");
+});
+
+it("UT-TTS-03 Gemini voice style comes from the (direction) in the dialogue", async () => {
+  const { voiceStyle, VOICES } = await import("./tts.ts");
+  assert.equal(voiceStyle("(با عصبانیت) برو بیرون!"), "با عصبانیت; natural, colloquial Tehrani Persian");
+  assert.equal(voiceStyle("سلام"), "natural, colloquial Tehrani Persian");
+  const { VOICE_IDS } = await import("./stick/voice.ts");
+  for (const v of VOICES) assert.ok((VOICE_IDS as string[]).includes(v.id), `${v.id} must be a Gemini TTS voice the server accepts`);
 });

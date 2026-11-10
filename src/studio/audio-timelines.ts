@@ -1,5 +1,5 @@
 /**
- * Studio (Piper / mic) lip timing, keyed by the clip's blob URL in `useStudio().audioUrls`.
+ * Studio (Gemini TTS / mic) lip timing, keyed by the clip's blob URL in `useStudio().audioUrls`.
  * Keying by URL keeps it in step with the store without changing it: a replaced or revoked clip has a new URL,
  * so a stale timeline is simply never looked up. In-memory only, like the blob URLs themselves.
  */
