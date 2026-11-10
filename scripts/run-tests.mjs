@@ -45,6 +45,8 @@ async function main() {
     "src/lib/voice-limits.test.ts",
     "src/lib/voice-line.test.ts",
     "src/lib/lyria.test.ts",
+    "src/lib/voice-direction.test.ts",
+    "src/lib/music-cue.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",
     "src/studio/v2/*.test.ts",

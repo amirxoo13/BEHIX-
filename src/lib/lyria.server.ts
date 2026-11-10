@@ -42,7 +42,8 @@ const MOOD_TEXT: Record<MusicMood, string> = {
 };
 
 /** Only plain English words survive in free-text fields (keeps the prompt in a supported language). */
-export const englishOnly = (s: string | undefined, max = 120) => (s ?? "").replace(/[^A-Za-z0-9 ,.'&/-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+export const englishOnly = (s: string | undefined, max = 120) =>
+  (s ?? "").replace(/[^A-Za-z0-9 ,.'&/-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max).replace(/^[\s,.'&/-]+|[\s,.'&/-]+$/g, "");
 
 /** English, instrumental, length-bounded prompt for a background cue under dialogue. */
 export function musicPrompt(c: MusicCue): string {
