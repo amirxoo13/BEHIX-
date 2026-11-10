@@ -1,5 +1,5 @@
 /**
- * صداگذاری دیالوگ‌ها با Gemini TTS (بخش خالص و قابل آزمون).
+ * صداگذاری دیالوگ‌ها با Gemini 3.8 TTS روی Agent Platform (بخش خالص و قابل آزمون).
  * - صدای هر شخصیت از ۳۰ صدای Gemini، پیش‌فرض بر اساس جنسیت و سن
  * - حالت چهرهٔ دیالوگ به دستور لحن تبدیل می‌شود
  * - دهان شخصیت از روی پوش (envelope) صدای واقعی باز و بسته می‌شود
@@ -10,7 +10,15 @@ import type { MouthPulse } from "./speech.ts";
 import type { Directed } from "./story-direct.ts";
 import type { Timeline } from "./story-render.ts";
 
-export const TTS_MODEL = "gemini-2.5-pro-tts";
+/** مدل اصلی صدا (سرور می‌تواند با TTS_MODEL عوضش کند؛ این مقدار فقط کلید کش روی دستگاه است). */
+export const TTS_MODEL = "gemini-3.8-flash-tts";
+/** مدل پیش‌نمایش و جایگزین وقتی Flash خطا داد (سرور: TTS_PREVIEW_MODEL). */
+export const TTS_PREVIEW_MODEL = "gemini-3.8-flash-lite-tts";
+/**
+ * مدل کلیپ‌های قدیمی MP3. فقط برای پیدا کردن کلیپ‌های از قبل ذخیره‌شده با کلید قدیمی (IndexedDB و GCS)؛
+ * هرگز به هیچ API فرستاده نمی‌شود.
+ */
+export const LEGACY_CACHE_MODEL = "gemini-2.5-pro-tts";
 /** صداهای Gemini TTS (مستندات Google Cloud) با جنسیت برای انتخاب پیش‌فرض. */
 export const VOICES = {
   Kore: "f", Aoede: "f", Leda: "f", Zephyr: "f", Callirrhoe: "f", Autonoe: "f", Despina: "f", Erinome: "f",
@@ -62,9 +70,9 @@ export function stylePrompt(mood?: Expression, kind?: Look["kind"]): string {
   return `Read this line as ${who} in natural, colloquial Tehrani Persian${mood && MOODS[mood] ? `, ${MOODS[mood]}` : ""}. Do not add words.`;
 }
 
-/** کلید پایدار هر کلیپ؛ با تغییر متن، صدا یا لحن عوض می‌شود. */
-export async function clipKey(text: string, voice: Voice, prompt: string): Promise<string> {
-  const data = new TextEncoder().encode(`${TTS_MODEL}|${voice}|${prompt}|${text}`);
+/** کلید پایدار هر کلیپ؛ با تغییر مدل، متن، صدا یا لحن عوض می‌شود. */
+export async function clipKey(text: string, voice: Voice, prompt: string, model: string = TTS_MODEL): Promise<string> {
+  const data = new TextEncoder().encode(`${model}|${voice}|${prompt}|${text}`);
   const hash = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

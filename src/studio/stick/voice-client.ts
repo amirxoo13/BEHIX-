@@ -6,10 +6,20 @@ import type { Expression } from "./face.ts";
 import type { Look } from "./figure.ts";
 import { readArtifact, saveArtifact } from "./project-db.ts";
 import type { Directed } from "./story-direct.ts";
-import { clipKey, defaultVoices, mixClips, MIX_RATE, placeVoices, stylePrompt, type Voice, type VoiceClip } from "./voice.ts";
+import { clipKey, defaultVoices, LEGACY_CACHE_MODEL, mixClips, MIX_RATE, placeVoices, stylePrompt, TTS_PREVIEW_MODEL, type Voice, type VoiceClip } from "./voice.ts";
 
 const API = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? "";
-export type LineJob = { beatId: string; text: string; voice: Voice; prompt: string; key: string };
+/**
+ * key = کلید مدل اصلی (3.8 Flash) که کلیپ تازه زیرش ذخیره می‌شود.
+ * altKeys = کلیدهای دیگری که فقط خوانده می‌شوند: Flash-Lite (جایگزین) و MP3 قدیمی Gemini 2.5.
+ */
+export type LineJob = { beatId: string; text: string; voice: Voice; prompt: string; key: string; altKeys: string[] };
+
+/** کلیدهای ذخیرهٔ یک دیالوگ روی دستگاه، به ترتیب جستجو. */
+export async function jobKeys(text: string, voice: Voice, prompt: string): Promise<{ key: string; altKeys: string[] }> {
+  const [key, lite, legacy] = await Promise.all([clipKey(text, voice, prompt), clipKey(text, voice, prompt, TTS_PREVIEW_MODEL), clipKey(text, voice, prompt, LEGACY_CACHE_MODEL)]);
+  return { key, altKeys: [lite, legacy] };
+}
 
 let ctx: AudioContext | null = null;
 export const audioContext = () => (ctx ??= new AudioContext());
@@ -21,11 +31,12 @@ export async function lineJobs(directed: Directed, voices: Record<string, Voice>
     if (b.kind !== "line" || !b.speaker || !voices[b.speaker]) continue;
     const mood: Expression | undefined = directed.cues.find((c) => c.beatId === b.id)?.mood;
     const prompt = stylePrompt(mood, looks[b.speaker]?.kind);
-    jobs.push({ beatId: b.id, text: b.text, voice: voices[b.speaker], prompt, key: await clipKey(b.text, voices[b.speaker], prompt) });
+    jobs.push({ beatId: b.id, text: b.text, voice: voices[b.speaker], prompt, ...(await jobKeys(b.text, voices[b.speaker], prompt)) });
   }
   return jobs;
 }
 
+/** WAV (3.8) و MP3 (کلیپ‌های قدیمی) هر دو با decodeAudioData خوانده می‌شوند. */
 async function decode(blob: Blob): Promise<VoiceClip> {
   const buf = await audioContext().decodeAudioData(await blob.arrayBuffer());
   return { samples: buf.getChannelData(0).slice(), sampleRate: buf.sampleRate };
@@ -36,8 +47,13 @@ export async function loadClips(jobs: LineJob[]): Promise<Map<string, VoiceClip>
   const out = new Map<string, VoiceClip>();
   await Promise.all(jobs.map(async (j) => {
     try {
-      const a = await readArtifact(`voice:${j.key}`);
-      if (a) out.set(j.beatId, await decode(a.blob));
+      for (const k of [j.key, ...j.altKeys]) {
+        const a = await readArtifact(`voice:${k}`);
+        if (a) {
+          out.set(j.beatId, await decode(a.blob));
+          return;
+        }
+      }
     } catch {
       /* کلیپ خراب یا ناموجود: دوباره ساخته می‌شود */
     }
@@ -59,7 +75,7 @@ export async function synthesize(jobs: LineJob[], onProgress: (done: number) => 
         const r = await fetch(`${API}/api/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: j.text, voice: j.voice, prompt: j.prompt }), signal });
         if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { message?: string } | null)?.message ?? `خطای سرور صدا (${r.status})`);
         const blob = await r.blob();
-        await saveArtifact({ id: `voice:${j.key}`, name: `${j.text.slice(0, 40)}.mp3`, blob }).catch(() => undefined);
+        await saveArtifact({ id: `voice:${j.key}`, name: `${j.text.slice(0, 40)}.${/mpeg|mp3/.test(blob.type) ? "mp3" : "wav"}`, blob }).catch(() => undefined);
         made.set(j.beatId, await decode(blob));
         onProgress(++done);
       } catch (e) {
