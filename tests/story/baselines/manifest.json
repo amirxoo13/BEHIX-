@@ -11,5 +11,8 @@
   "threshold": 0.1,
   "maxChangedPixels": 0,
   "selection": "midpoint of first dialogue in each TEMPLATES entry",
-  "reviewed": "2026-10-15; visual inspection of montage and full-size Persian caption/character frame"
+  "reviewed": "2026-10-15; visual inspection of montage and full-size Persian caption/character frame",
+  "updated": [
+    "2026-11-10: template-3-* re-baselined (Chrome 156.0.8078.47 headless) after the extra-places night tone fix; templates 0-2 unchanged"
+  ]
 }
