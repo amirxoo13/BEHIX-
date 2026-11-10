@@ -35,8 +35,8 @@ Strict rules:
 - TORSO box: neck stub at the top (no head), shoulders, chest with the clothing, waist and hips/pelvis at the bottom. The torso has NO arms and NO sleeves: the clothing is cut off cleanly at the shoulders (the arms are separate parts).
 - UPPER ARM: sleeve (or bare arm) from shoulder to elbow, vertical. FOREARM: from elbow to wrist, vertical. HAND: open relaxed hand, palm toward the viewer, fingers pointing down.
 - THIGH: from hip to knee, vertical. SHIN: from knee to ankle, vertical. FOOT: shoe seen from the front-side, toe pointing to the viewer's left.
-- Every part that connects to another part must have a ROUNDED end (round joint cap) at the red dot and the blue dot, so parts overlap without visible seams when rotated.
-- The top of each part must touch the red dot; the bottom must touch the blue dot.
+- The top end and the bottom end of every arm and leg part are joints: draw both ends as ROUNDED caps (like a capsule), so parts overlap without visible seams when rotated. Each part fills its box from top to bottom.
+- Plain clothing only: no dots, circles, markers, stitches or symbols that are not part of the described clothing.
 - Keep the background PURE flat green #00FF00 everywhere outside the parts. Remove the dashed boxes, dots and text labels from the result.
 - Do not draw anything else. No shadows on the background.`;
 }
