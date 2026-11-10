@@ -7,7 +7,7 @@ import { gcpAccessToken } from "@/lib/gcp-auth.server";
 import { synthesizeGemini, TtsError, ttsConfig } from "@/lib/gemini-tts.server";
 import { recognizeWords, sttConfig } from "@/lib/gcp-stt.server";
 import { gcsGet, gcsPut } from "@/lib/gcs.server";
-import { cors, DAILY_FULL, fail, RATE_MESSAGE, takeHits } from "@/lib/voice-limits.server";
+import { cors, DAILY_FULL, fail, RATE_MESSAGE, requireUser, takeHits } from "@/lib/voice-limits.server";
 import { voiceLine, type VoiceDeps, type VoiceLineOut } from "@/lib/voice-line.server";
 
 /**
@@ -30,6 +30,8 @@ async function post(req: Request): Promise<Response> {
   const project = process.env.GOOGLE_CLOUD_PROJECT, bucket = process.env.TTS_BUCKET;
   // بدون باکت، سهمیهٔ روزانهٔ پایدار و کش وجود ندارد؛ پس سرویس پولی روشن نمی‌شود (سند self-host هم همین را می‌گوید).
   if (!project || !bucket) return fail(req, 503, "سرویس صدا روی این سرور فعال نیست.");
+  const denied = await requireUser(req);
+  if (denied) return denied;
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(req, 400, "درخواست صدا معتبر نیست.");
   try {

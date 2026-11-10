@@ -1,3 +1,4 @@
+import { authHeaders } from "@/lib/user-auth";
 import { useEffect, useState } from "react";
 import { getScriptAiStatus, understandScript, type ScriptAiStatus } from "@/lib/script-ai";
 import { autoLayout, type AutoMethod, type AutoResult } from "@/studio/auto-layout";
@@ -74,7 +75,7 @@ export function AutoScript() {
     setResult(null);
     try {
       const cast = useStudio.getState().characters.map((c) => ({ id: c.id, name: c.name }));
-      const callModel = ai?.configured ? (text: string) => understandScript({ data: { script: text, cast } }) : null;
+      const callModel = ai?.configured ? async (text: string) => understandScript({ headers: await authHeaders(), data: { script: text, cast } }) : null;
       const r = await autoLayout(script, method, callModel);
       if (r.shots.length === 0) setError("در این متن هیچ دیالوگ یا توضیح صحنه‌ای پیدا نشد.");
       else setResult(r);

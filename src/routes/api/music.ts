@@ -4,7 +4,7 @@ import { reserveDaily } from "@/lib/tts-quota";
 import { clientIp } from "@/lib/rate-limit";
 import { gcpAccessToken } from "@/lib/gcp-auth.server";
 import { gcsGet, gcsPut } from "@/lib/gcs.server";
-import { cors, DAILY_FULL, fail, RATE_MESSAGE, takeHits } from "@/lib/voice-limits.server";
+import { cors, DAILY_FULL, fail, RATE_MESSAGE, requireUser, takeHits } from "@/lib/voice-limits.server";
 import { generateMusic, LYRIA_MAX_SECONDS, lyriaConfig, MUSIC_MOODS, musicKey, musicPrompt, type MusicCue } from "@/lib/lyria.server";
 import { skillSystem } from "@/ai/skills";
 import { geminiJson } from "@/lib/gemini-text.server";
@@ -36,6 +36,8 @@ async function post(req: Request): Promise<Response> {
   const cfg = lyriaConfig();
   if (!project || !cfg.enabled) return fail(req, 503, "ساخت موسیقی روی این سرور فعال نیست.");
   if (!bucket) return fail(req, 503, "برای موسیقی فضای ذخیره (TTS_BUCKET) لازم است.");
+  const denied = await requireUser(req);
+  if (denied) return denied;
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(req, 400, "درخواست موسیقی معتبر نیست.");
   let auth: Record<string, string>, ip: string;

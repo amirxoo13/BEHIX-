@@ -88,8 +88,11 @@ export const understandScript = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<UnderstandResult> => {
     const c = await config();
     if (!c) return { ok: false, error: "مدل زبانی تنظیم نشده است." };
-    const lim = await limiter();
     const { getRequest, getRequestIP } = await import("@tanstack/react-start/server");
+    const { verifyStudioRequest } = await import("./studio-auth.server.ts");
+    const who = await verifyStudioRequest(getRequest().headers);
+    if (!who.ok) return { ok: false, error: who.message };
+    const lim = await limiter();
     const verdict = lim.check(clientIp(getRequest().headers, getRequestIP()));
     if (!verdict.ok) return verdict;
     const { buildMessages, chunkScript, maxOutputTokens, planFromModelReplies } = await import("@/studio/script-llm");

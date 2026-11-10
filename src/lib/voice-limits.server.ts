@@ -2,6 +2,14 @@
  * Shared per-IP sliding-window limit and CORS for the paid audio routes (/api/tts, /api/voice, /api/music).
  * One counter for all routes, so splitting work across endpoints doesn't dodge the limit.
  */
+import { verifyStudioRequest } from "./studio-auth.server.ts";
+
+/** فقط کاربر واردشده (Firebase) سرویس پولی می‌گیرد؛ null یعنی مجاز، وگرنه پاسخ خطا. */
+export async function requireUser(req: Request): Promise<Response | null> {
+  const r = await verifyStudioRequest(req.headers);
+  return r.ok ? null : fail(req, r.status, r.message);
+}
+
 const ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost"]);
 export const WINDOW_MS = 10 * 60_000;
 const hits = new Map<string, number[]>();

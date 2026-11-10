@@ -7,7 +7,7 @@ import type { FilmPlanAiResult } from "@/lib/film-plan-ai";
 
 const OFFLINE = "برنامهٔ فیلم با Gemini فعلاً فقط در نسخهٔ وب در دسترس است.";
 
-export async function planFilmFromStory(_: { data: unknown }): Promise<FilmPlanAiResult> {
+export async function planFilmFromStory(_: { data: unknown; headers?: unknown }): Promise<FilmPlanAiResult> {
   return { ok: false, error: OFFLINE, warnings: [] };
 }
 

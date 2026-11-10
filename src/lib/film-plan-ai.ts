@@ -47,8 +47,11 @@ export const planFilmFromStory = createServerFn({ method: "POST" })
     const { defaultDeps, planFilm } = await import("./film-plan.server.ts");
     const deps = await defaultDeps();
     if (!deps) return { ok: false, error: "Google Cloud برای برنامهٔ فیلم تنظیم نشده است (GOOGLE_CLOUD_PROJECT).", warnings: [] };
-    const lim = await limiter();
     const { getRequest, getRequestIP } = await import("@tanstack/react-start/server");
+    const { verifyStudioRequest } = await import("./studio-auth.server.ts");
+    const who = await verifyStudioRequest(getRequest().headers);
+    if (!who.ok) return { ok: false, error: who.message, warnings: [] };
+    const lim = await limiter();
     const verdict = lim.check(clientIp(getRequest().headers, getRequestIP()));
     if (!verdict.ok) return { ok: false, error: verdict.error, warnings: [] };
     const res = await planFilm(data, deps);

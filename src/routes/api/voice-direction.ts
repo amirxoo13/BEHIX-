@@ -7,6 +7,7 @@ import { clientIp } from "@/lib/rate-limit";
 import { gcpAccessToken } from "@/lib/gcp-auth.server";
 import { geminiJson } from "@/lib/gemini-text.server";
 import { cors, fail, takeHits } from "@/lib/voice-limits.server";
+import { verifyStudioRequest } from "@/lib/studio-auth.server";
 import { directionPrompt, directionSchema, directionSystem, fallbackDirection, MAX_DIRECTION_LINES, repairDirection, type DirectionIn } from "@/lib/voice-direction";
 
 /**
@@ -29,6 +30,7 @@ async function post(req: Request): Promise<Response> {
   const reply = (o: unknown) => Response.json(o, { headers: { ...cors(req), "cache-control": "no-store" } });
   const project = process.env.GOOGLE_CLOUD_PROJECT, bucket = process.env.TTS_BUCKET;
   if (!project) return reply(fallbackDirection(input, "کارگردانی هوشمند روی این سرور فعال نیست؛ انتخاب فعلی ماند."));
+  if (!(await verifyStudioRequest(req.headers)).ok) return reply(fallbackDirection(input, "برای کارگردانی هوشمند وارد حساب شوید؛ انتخاب فعلی ماند."));
   try {
     const auth = { authorization: `Bearer ${await gcpAccessToken()}` };
     const { getRequestIP } = await import("@tanstack/react-start/server");

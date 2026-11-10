@@ -147,6 +147,12 @@ export function isOwnApi(url: string, base = env.VITE_API_BASE ?? "", here = glo
   }
 }
 
+/** هدر ورود برای server function ها (برنامهٔ فیلم و فهم فیلمنامه). */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getIdToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 /** fetch با توکن کاربر (اگر وارد شده) برای مسیرهای پولی سرور BEHIX. */
 export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const token = isOwnApi(input) ? await getIdToken() : null;

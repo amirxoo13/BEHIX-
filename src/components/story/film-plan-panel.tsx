@@ -1,3 +1,4 @@
+import { authHeaders } from "@/lib/user-auth";
 import { useState } from "react";
 import { Sparkles, X } from "lucide-react";
 import { planFilmFromStory } from "@/lib/film-plan-ai";
@@ -19,7 +20,7 @@ export function FilmPlanPanel({ project, commit }: { project: StoryProject; comm
     setError("");
     setNotes([]);
     try {
-      const res = await planFilmFromStory({ data: { story: project.text, targetDurationSec: target, format: project.settings.format, quality: high ? "high" : "standard" } });
+      const res = await planFilmFromStory({ headers: await authHeaders(), data: { story: project.text, targetDurationSec: target, format: project.settings.format, quality: high ? "high" : "standard" } });
       setNotes(res.warnings);
       if (res.ok) commit((p) => setPlan(p, res.plan));
       else setError(res.error);
