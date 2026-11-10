@@ -78,6 +78,23 @@ type CallErr = { ok: false; error: string; timedOut: boolean };
 
 const host = (loc: string) => (loc === "global" ? "aiplatform.googleapis.com" : `${loc}-aiplatform.googleapis.com`);
 
+/**
+ * Vertex (gemini-3.8-flash@global, 2026-11-10) کل درخواست را با 400 «invalid argument» رد می‌کند وقتی responseSchema
+ * minItems/maxItems/minimum/maximum دارد (آزمون زنده: همان شِما بدون این چهار کلید جواب درست داد).
+ * پس این قیدها فقط از شِمای درخواست حذف می‌شوند؛ repairFilmPlan همچنان بعد از جواب آن‌ها را اعمال می‌کند.
+ */
+const VERTEX_DROPPED = new Set(["minItems", "maxItems", "minimum", "maximum"]);
+export function vertexRequestSchema(o: unknown): unknown {
+  if (Array.isArray(o)) return o.map(vertexRequestSchema);
+  if (!o || typeof o !== "object") return o;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (VERTEX_DROPPED.has(k)) continue;
+    out[k] = k === "enum" || k === "required" || k === "propertyOrdering" ? v : vertexRequestSchema(v);
+  }
+  return out;
+}
+
 async function generate(deps: Deps, cfg: FilmPlanConfig, stage: StageConfig, req: { system: string; prompt: string; schema: unknown; maxOutputTokens: number }, usage: Usage): Promise<CallOk | CallErr> {
   const url = `https://${host(cfg.location)}/v1/projects/${encodeURIComponent(deps.project)}/locations/${encodeURIComponent(cfg.location)}/publishers/google/models/${encodeURIComponent(stage.model)}:generateContent`;
   let res: Response;
@@ -92,7 +109,7 @@ async function generate(deps: Deps, cfg: FilmPlanConfig, stage: StageConfig, req
           temperature: FILM_PLAN_AI.temperature,
           maxOutputTokens: req.maxOutputTokens,
           responseMimeType: "application/json",
-          responseSchema: req.schema,
+          responseSchema: vertexRequestSchema(req.schema),
           thinkingConfig: { thinkingBudget: stage.thinkingBudget },
         },
       }),

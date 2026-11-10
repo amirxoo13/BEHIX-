@@ -137,7 +137,8 @@ export async function verifyStudioRequest(headers: Headers, cfg: StudioAuthConfi
   let uid: string;
   try {
     uid = (await verifyIdToken(bearer, cfg.projectId, deps.idKeys ?? firebaseIdTokenKeys(), nowSec)).sub;
-  } catch {
+  } catch (e) {
+    console.warn("[auth] id token rejected:", e instanceof Error ? `${e.name}: ${e.message}` : e);
     return deny(401, "نشست ورود معتبر نیست؛ دوباره وارد شوید.");
   }
 

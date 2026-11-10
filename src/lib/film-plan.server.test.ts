@@ -157,3 +157,11 @@ describe("film plan on Vertex (mocked fetch)", () => {
     assert.ok(m.calls.every((c) => c.model === "gemini-3.8-flash"));
   });
 });
+
+describe("vertexRequestSchema", () => {
+  it("UT-FP-VX drops min/max (Vertex 400) and keeps everything else", async () => {
+    const { vertexRequestSchema } = await import("./film-plan.server.ts");
+    const s = { type: "OBJECT", properties: { cast: { type: "ARRAY", minItems: 1, maxItems: 6, items: { type: "OBJECT", properties: { age: { type: "INTEGER", minimum: 1, maximum: 99, nullable: true }, kind: { type: "STRING", enum: ["minimum", "x"] } }, required: ["age"] } } }, required: ["cast"], propertyOrdering: ["cast"] };
+    assert.deepEqual(vertexRequestSchema(s), { type: "OBJECT", properties: { cast: { type: "ARRAY", items: { type: "OBJECT", properties: { age: { type: "INTEGER", nullable: true }, kind: { type: "STRING", enum: ["minimum", "x"] } }, required: ["age"] } } }, required: ["cast"], propertyOrdering: ["cast"] });
+  });
+});

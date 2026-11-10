@@ -565,7 +565,7 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
   stadium: {
     id: "stadium",
     label: "ورزشگاه",
-    aliases: ["ورزشگاه", "استادیوم", "زمین فوتبال", "ورزشگاه آزادی", "سکو", "سکوها"],
+    aliases: ["ورزشگاه", "استادیوم", "زمین فوتبال", "ورزشگاه آزادی", "سکوهای ورزشگاه", "سکوها"],
     interior: false,
     seats: [0.3, 0.5, 0.7],
     spots: [0.3, 0.7, 0.5],
