@@ -3,7 +3,7 @@
  * راه اصلی: WebCodecs + mediabunny ← MP4 (H.264)، فریم‌به‌فریم و دقیق (سریع‌تر از زمان واقعی).
  * راه جایگزین برای مرورگرهای بدون WebCodecs: ضبط زندهٔ بوم با MediaRecorder.
  */
-import { bitrate, canExportMp4, encodeMp4, type FilmOptions } from "./encode.ts";
+import { bitrate, canExportMp4, encodeMp4, type AudioCodecChoice, type EncodedFilm, type FilmOptions } from "./encode.ts";
 import { loadRenderFonts } from "./fonts.ts";
 import { frameFor } from "./layout.ts";
 import { makePaper } from "./paper.ts";
@@ -11,11 +11,25 @@ import { renderStory, type Timeline } from "./story-render.ts";
 import type { RenderCanvas } from "./figure-base.ts";
 import type { WorkerReply, WorkerRequest } from "./story-export.worker.ts";
 export { canExportMp4 };
-export type StoryFilm = { blob: Blob; ext: "mp4" | "webm"; notice: string | null };
+/** audioCodec: codec written into the file ("recorded" = whatever MediaRecorder chose); null = silent film. */
+export type StoryFilm = { blob: Blob; ext: "mp4" | "webm"; notice: string | null; audioCodec: AudioCodecChoice | "recorded" };
+/** Persian warning when the requested soundtrack is missing or not AAC. */
+export function audioNotice(wanted: boolean, codec: AudioCodecChoice): string | null {
+  if (!wanted) return null;
+  if (codec === "opus") return "این مرورگر رمزگذار AAC ندارد و صدای فیلم با Opus ذخیره شد؛ بعضی برنامه‌ها (مثل اینستاگرام یا آیفون) ممکن است صدای آن را پخش نکنند.";
+  if (codec === null) return "این مرورگر رمزگذار صدا ندارد؛ فیلم بی‌صدا ساخته شد. صدا را جداگانه روی فیلم بگذارید.";
+  return null;
+}
+const toFilm = ({ buffer, audioCodec }: EncodedFilm, wanted: boolean): StoryFilm => ({
+  blob: new Blob([buffer], { type: "video/mp4" }),
+  ext: "mp4",
+  notice: audioNotice(wanted, audioCodec),
+  audioCodec,
+});
 export type ExportOptions = FilmOptions & { worker?: boolean };
 let requestId = 0;
 class WorkerUnavailable extends Error {}
-function workerFilm(timeline:Timeline,opts:ExportOptions):Promise<ArrayBuffer> {
+function workerFilm(timeline:Timeline,opts:ExportOptions):Promise<EncodedFilm> {
   return new Promise((resolve,reject)=>{
     const id=++requestId;
     let worker:Worker;
@@ -29,20 +43,21 @@ function workerFilm(timeline:Timeline,opts:ExportOptions):Promise<ArrayBuffer> {
     worker.onmessage=({data}:MessageEvent<WorkerReply>)=>{
       if(data.id!==id)return;
       if(data.type==="progress")opts.onProgress?.(data.progress);
-      else {clean();if(data.type==="result")resolve(data.buffer);else reject(data.unsupported?new WorkerUnavailable():new Error(data.message));}
+      else {clean();if(data.type==="result")resolve({buffer:data.buffer,audioCodec:data.audioCodec});else reject(data.unsupported?new WorkerUnavailable():new Error(data.message));}
     };
     worker.postMessage({id,type:"start",timeline,options:{fps:opts.fps,captions:opts.captions,format:opts.format,audio:opts.audio}} satisfies WorkerRequest);
   });
 }
 export async function exportStoryFilm(tl:Timeline,opts:ExportOptions):Promise<StoryFilm> {
   opts.signal?.throwIfAborted();
+  const wanted=!!opts.audio?.data.length;
   if(opts.worker!==false && typeof Worker!=="undefined" && typeof OffscreenCanvas!=="undefined"){
-    try {return {blob:new Blob([await workerFilm(tl,opts)],{type:"video/mp4"}),ext:"mp4",notice:null};}
+    try {return toFilm(await workerFilm(tl,opts),wanted);}
     catch(error){if(!(error instanceof WorkerUnavailable))throw error;}
   }
   await loadRenderFonts();
   opts.signal?.throwIfAborted();
-  if(await canExportMp4(opts.fps,opts.format))return {blob:new Blob([await encodeMp4(tl,opts)],{type:"video/mp4"}),ext:"mp4",notice:null};
+  if(await canExportMp4(opts.fps,opts.format))return toFilm(await encodeMp4(tl,opts),wanted);
   const {w,h}=frameFor(opts.format);
   const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext("2d");
@@ -109,7 +124,7 @@ export async function recordLive(tl: Timeline,canvas:HTMLCanvasElement,ctx:Canva
     });
     const type=rec.mimeType || chunks[0]?.type;
     if(!type || !chunks.length)throw new Error("مرورگر فایل ویدیویی تولید نکرد.");
-    return {blob:new Blob(chunks,{type}),ext:type.startsWith("video/mp4")?"mp4":"webm",notice:"ضبط زنده است؛ افت فریم و تفاوت جزئی زمان‌بندی ممکن است. برای خروجی فریم‌دقیق از مرورگر دارای WebCodecs استفاده کنید."};
+    return {blob:new Blob(chunks,{type}),ext:type.startsWith("video/mp4")?"mp4":"webm",audioCodec:audioSrc?"recorded":null,notice:"ضبط زنده است؛ افت فریم و تفاوت جزئی زمان‌بندی ممکن است. برای خروجی فریم‌دقیق از مرورگر دارای WebCodecs استفاده کنید."};
   }finally{
     clearTimeout(stopTimer);cancelAnimationFrame(raf);
     opts.signal?.removeEventListener("abort",cancel);document.removeEventListener("visibilitychange",visibility);

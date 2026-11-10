@@ -13,6 +13,39 @@ export type FilmOptions = {
   audio?: { data: Float32Array; sampleRate: number };
 };
 export const bitrate = (fps: number) => (fps === 60 ? 8_000_000 : 5_000_000);
+export const AUDIO_BITRATE = 128_000;
+/** Audio codec actually written into the MP4; null means the film has no audio track. */
+export type AudioCodecChoice = "aac" | "opus" | null;
+export type EncodedFilm = { buffer: ArrayBuffer; audioCodec: AudioCodecChoice };
+
+let aacPolyfill: Promise<void> | undefined;
+async function canEncode(codec: "aac" | "opus", sampleRate: number) {
+  try {
+    return await canEncodeAudio(codec, { numberOfChannels: 1, sampleRate, bitrate: AUDIO_BITRATE });
+  } catch {
+    return false;
+  }
+}
+/**
+ * AAC when possible: native encoder first, else the lazily loaded `@mediabunny/aac-encoder` WASM
+ * (same approach as src/studio/export-film.ts). Opus only when AAC is impossible; null when neither works.
+ */
+export async function storyAudioCodec(sampleRate: number): Promise<AudioCodecChoice> {
+  if (await canEncode("aac", sampleRate)) return "aac";
+  aacPolyfill ??= import("@mediabunny/aac-encoder")
+    .then(({ registerAacEncoder }) => registerAacEncoder())
+    .catch((error) => {
+      aacPolyfill = undefined;
+      throw error;
+    });
+  try {
+    await aacPolyfill;
+    if (await canEncode("aac", sampleRate)) return "aac";
+  } catch {
+    /* WASM unavailable: try Opus */
+  }
+  return (await canEncode("opus", sampleRate)) ? "opus" : null;
+}
 export async function canExportMp4(fps: number, format: Format = "portrait") {
   if (typeof VideoEncoder === "undefined") return false;
   const { w, h } = frameFor(format);
@@ -26,7 +59,7 @@ export async function encodeMp4(
   timeline: Timeline,
   opts: FilmOptions,
   canvas?: RenderCanvas,
-): Promise<ArrayBuffer> {
+): Promise<EncodedFilm> {
   opts.signal?.throwIfAborted();
   const { w, h } = frameFor(opts.format);
   const surface = canvas ?? makeCanvas(w, h);
@@ -44,9 +77,9 @@ export async function encodeMp4(
   });
   output.addVideoTrack(video, { frameRate: opts.fps });
   let sound: AudioSampleSource | null = null;
-  if (opts.audio?.data.length) {
-    const codec = (await canEncodeAudio("aac", { numberOfChannels: 1, sampleRate: opts.audio.sampleRate })) ? "aac" : "opus";
-    sound = new AudioSampleSource({ codec, bitrate: 128_000 });
+  const audioCodec = opts.audio?.data.length ? await storyAudioCodec(opts.audio.sampleRate) : null;
+  if (audioCodec) {
+    sound = new AudioSampleSource({ codec: audioCodec, bitrate: AUDIO_BITRATE });
     output.addAudioTrack(sound);
   }
   try {
@@ -76,7 +109,7 @@ export async function encodeMp4(
     await output.finalize();
     if (!output.target.buffer) throw new Error("فایل ویدیو ساخته نشد.");
     opts.onProgress?.(1);
-    return output.target.buffer;
+    return { buffer: output.target.buffer, audioCodec };
   } catch (error) {
     await output.cancel().catch(() => undefined);
     throw error;
