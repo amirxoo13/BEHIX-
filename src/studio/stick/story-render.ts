@@ -1,4 +1,5 @@
-import { frameFor, type Format } from "./layout.ts";
+import { frameFor, stageFor, type Format } from "./layout.ts";
+import { makeCanvas } from "./paper.ts";
 import type { Ctx, RenderCanvas } from "./figure-base.ts";
 /**
  * کشیدن یک لحظه از فیلم داستانی: مکان، شخصیت‌ها، حباب فکر، دوربین و زیرنویس.
@@ -76,11 +77,45 @@ export function cameraAt(keys: CameraKey[], t: number): CameraKey {
   };
 }
 
+type Stage = ReturnType<typeof stageFor>;
+let layerCanvas: { c: ReturnType<typeof makeCanvas>; w: number; h: number } | null = null;
+/**
+ * Draws one place layer with the uniform stage transform. Portrait (identity stage) draws straight
+ * onto the frame exactly as before. Other formats draw into a transparent layer, extend its outer
+ * design columns across the side bands (walls, floor and horizon lines continue), then composite the
+ * layer itself on top so art that already reaches past the design edges wins over the extension.
+ */
+function drawPlaceLayer(ctx: Ctx, stage: Stage, w: number, h: number, paint: (c: Ctx) => void) {
+  if (stage.k === 1 && stage.ox === 0 && stage.oy === 0) {
+    ctx.save();
+    paint(ctx);
+    ctx.restore();
+    return;
+  }
+  if (!layerCanvas || layerCanvas.w !== w || layerCanvas.h !== h) layerCanvas = { c: makeCanvas(w, h), w, h };
+  const layer = layerCanvas.c;
+  const lc = layer.getContext("2d") as Ctx;
+  lc.setTransform(1, 0, 0, 1, 0, 0);
+  lc.clearRect(0, 0, w, h);
+  lc.save();
+  lc.translate(stage.ox, stage.oy);
+  lc.scale(stage.k, stage.k);
+  paint(lc);
+  lc.restore();
+  const left = Math.ceil(stage.ox) + 1;
+  const right = Math.floor(stage.ox + FRAME.w * stage.k) - 2;
+  // bands reach one frame width past each edge so camera moves never uncover bare paper
+  ctx.drawImage(layer, left, 0, 1, h, left - w - 1, 0, w + 1, h);
+  ctx.drawImage(layer, right, 0, 1, h, right + 1, 0, w + 1, h);
+  ctx.drawImage(layer, 0, 0);
+}
+
 export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanvas, opts: { captions: boolean; format?: Format; positions?: Record<string,number> } = { captions: true }) {
   const frame = frameFor(opts.format);
   const { w, h, floor, scale } = frame;
   if (!tl.scenes.length) { ctx.clearRect(0, 0, w, h); return; }
-  const seatTop = SEAT_TOP * h / FRAME.h;
+  const stage = stageFor(opts.format);
+  const seatTop = stage.oy + SEAT_TOP * stage.k;
   const scene = sceneAt(tl, t);
   const lt = t - scene.start;
   const place = PLACES[scene.place];
@@ -92,16 +127,14 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
   if (scene.night) nightPaper(ctx, w, h);
 
   const rawCam = cameraAt(scene.cameras, lt);
-  const cam = { ...rawCam, cx: rawCam.cx * w / FRAME.w, cy: rawCam.cy * h / FRAME.h };
+  const cam = { ...rawCam, cx: stage.ox + rawCam.cx * stage.k, cy: stage.oy + rawCam.cy * stage.k };
   // لرزش خیلی ریز دوربین دستی برای زنده بودن
   const sway = Math.sin(lt * 0.9) * 2;
   ctx.translate(cam.cx + sway, cam.cy);
   ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-cam.cx, -cam.cy);
 
-  ctx.save(); ctx.scale(w / FRAME.w, h / FRAME.h);
-  place.back(ctx, env);
-  ctx.restore();
+  drawPlaceLayer(ctx, stage, w, h, (c) => place.back(c, env));
 
   const speaker = scene.speakers.find((s) => lt >= s.from && lt <= s.to);
   const frames = scene.actors.map((a) => {
@@ -118,7 +151,7 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
       const sitting = f.state.pose.thigh < 0.7;
       if (sitting !== sittingPass) continue;
       const sc = scale * kindScale(member.look.kind);
-      const px = w * (opts.positions?.[a.cast] ?? f.x);
+      const px = stage.ox + FRAME.w * stage.k * (opts.positions?.[a.cast] ?? f.x);
       // نشسته: لگن روی نشیمن (پای بچه آویزان می‌ماند)؛ ایستاده: کف پا روی زمین
       const py = hipHeight(f.state.pose,sc,floor,seatTop,place.seats.length>0);
       drawFigure(ctx, member.look, f.state, px, py, sc);
@@ -127,9 +160,7 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
     }
   };
   draw(true);
-  ctx.save(); ctx.scale(w / FRAME.w, h / FRAME.h);
-  place.front?.(ctx, env);
-  ctx.restore();
+  if (place.front) drawPlaceLayer(ctx, stage, w, h, (c) => place.front?.(c, env));
   draw(false);
 
   for (const th of scene.thoughts) {
