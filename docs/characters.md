@@ -17,3 +17,13 @@
 | `STUDIO_DEV_AUTH_BYPASS` | فقط مقدار `1` و فقط در توسعهٔ محلی: درخواست بی‌توکن کاربر `dev-local` می‌شود. اگر `NODE_ENV=production` باشد یا `K_SERVICE`/`VERCEL`/`GROK_PROJECT_ID` تنظیم شده باشد، نادیده گرفته می‌شود. |
 | `MEDIA_BUCKET` | باکت Cloud Storage استودیو (بدون آن 503). |
 | `STUDIO_PER_IP` | سقف کوتاه‌مدت هر نشانی در ده دقیقه (حافظهٔ همان نمونه؛ فقط ضد رگبار). |
+| `STUDIO_PER_USER_DAY` | سقف روزانهٔ ساخت هر کاربر (پیش‌فرض ۲۰). پایدار. |
+| `STUDIO_PER_DAY` | سقف روزانهٔ ساخت کل سرور (پیش‌فرض ۴۰۰). پایدار. |
+
+## سهمیهٔ روزانه
+
+شمارنده‌ها در همان `MEDIA_BUCKET` زیر `quota/studio/<YYYY-MM-DD>/u/<owner>` و `quota/studio/<YYYY-MM-DD>/all` هستند
+(metadata یک شیء خالی، نوشتن با `ifMetagenerationMatch`)، پس بین همهٔ نمونه‌های سرور مشترک‌اند و با راه‌اندازی دوباره صفر نمی‌شوند.
+`<owner>` = ۲۴ رقم اول sha256 از uid (خود uid در نشانی‌ها نمی‌آید). سهم پیش از کار پولی رزرو و اگر کار شکست خورد پس داده می‌شود.
+حساب سرویس سرور باید روی این باکت `storage.objects.create/get/update` داشته باشد (مثلاً نقش Storage Object User).
+پیشنهاد: قانون Lifecycle برای پاک کردن `quota/` بعد از ۷ روز.

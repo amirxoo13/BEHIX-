@@ -128,6 +128,8 @@ describe("/api/studio handler rejects unauthenticated calls before any paid work
       ip: async () => "1.2.3.4",
       run: async (b) => { calls.push(b.action); return { key: "cast/x.png" }; },
       getObject: async () => { calls.push("get"); return new Response("img", { headers: { "content-type": "image/png" } }); },
+      reserve: async () => { calls.push("reserve"); return { day: "d", keys: [] }; },
+      refund: async () => { calls.push("refund"); },
       ...over,
     });
     return { api, calls };
@@ -152,7 +154,7 @@ describe("/api/studio handler rejects unauthenticated calls before any paid work
     h.set("content-type", "application/json");
     const r = await api.post(post(bodies[0], h));
     assert.equal(r.status, 200);
-    assert.deepEqual(calls, ["character"]);
+    assert.deepEqual(calls, ["reserve", "character"]);
   });
   it("removed actions (video/status) are rejected as invalid", async () => {
     const { api, calls } = make();

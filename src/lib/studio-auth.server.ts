@@ -15,6 +15,7 @@
  *   STUDIO_DEV_AUTH_BYPASS=1  فقط توسعهٔ محلی: کاربر «dev-local» بدون توکن. وقتی NODE_ENV=production است
  *                             یا روی سرور مستقر (K_SERVICE، VERCEL، GROK_PROJECT_ID) هستیم، نادیده گرفته می‌شود.
  */
+import { createHash } from "node:crypto";
 import { createRemoteJWKSet, importX509, jwtVerify, type JWTPayload, type JWTVerifyGetKey, type CryptoKey, type KeyObject } from "jose";
 
 export type AppCheckMode = "off" | "verify" | "enforce";
@@ -154,4 +155,12 @@ export async function verifyStudioRequest(headers: Headers, cfg: StudioAuthConfi
     }
   }
   return { ok: true, user: { uid, appId, dev: false } };
+}
+
+/**
+ * شناسهٔ پایدار و غیرقابل‌برگشت صاحب فایل‌ها (sha256 از uid، ۲۴ رقم hex).
+ * در مسیر فایل‌ها و شمارنده‌ها به‌جای خود uid می‌آید تا uid در نشانی فایل‌ها پیدا نباشد.
+ */
+export function ownerId(uid: string): string {
+  return createHash("sha256").update(`behix-owner:${uid}`).digest("hex").slice(0, 24);
 }
