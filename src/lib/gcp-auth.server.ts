@@ -95,7 +95,7 @@ async function fromGcloudCli(): Promise<Token> {
       (err, stdout) => (err ? reject(new Error("gcloud cli token failed")) : resolve(String(stdout).trim())),
     );
   });
-  if (!/^[\w.\-]{20,}$/.test(value)) throw new Error("gcloud cli returned no token");
+  if (!/^[\w.-]{20,}$/.test(value)) throw new Error("gcloud cli returned no token");
   return { value, until: Date.now() + 45 * 60_000 };
 }
 
