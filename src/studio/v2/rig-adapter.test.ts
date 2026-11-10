@@ -94,4 +94,13 @@ describe("rig validation and migration", () => {
   it("garbage never throws", () => {
     for (const v of [null, 1, "x", [], {}, { format: "behix.rig" }, { joints: {}, parts: [], id: "a", u: 1, ground: 1 }]) assert.ok("error" in migrate(v));
   });
+  it("alpha QA results survive the upgrade and the way back", () => {
+    const qa = { passed: false, checks: { haloScore: 0.2, bboxOk: true } };
+    const old = legacyPuppet();
+    const rig = fromPuppetRig({ ...old, qa });
+    assert.deepEqual(rig.source.qa, qa);
+    assert.ok("rig" in validateRig(rig));
+    assert.deepEqual(toPuppetRig(rig).qa, qa);
+    assert.equal("qa" in toPuppetRig(fromPuppetRig(old)), false);
+  });
 });

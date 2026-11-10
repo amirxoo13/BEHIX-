@@ -36,6 +36,7 @@ async function main() {
     "src/lib/studio-quota.test.ts",
     "src/lib/studio-keys.test.ts",
     "src/lib/studio-ai-tasks.test.ts",
+    "src/lib/alpha-qa.test.ts",
     "src/lib/tts-quota.test.ts",
     "src/lib/gemini-tts.test.ts",
     "src/studio/*.test.ts",

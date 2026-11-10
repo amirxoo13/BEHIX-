@@ -134,7 +134,7 @@ export function fromPuppetRig(old: PuppetRig): BehixRig {
   return {
     format: RIG_FORMAT, version: RIG_VERSION, id: old.id, name: old.name, body: { ...old.body },
     views: { threeQuarter: partial },
-    source: { generator: "legacy-puppet" },
+    source: { generator: "legacy-puppet", ...(old.qa ? { qa: old.qa } : {}) },
   };
 }
 
@@ -156,7 +156,7 @@ export function toPuppetRig(rig: BehixRig, viewId: ViewId = "threeQuarter"): Pup
     parts.push({ name, a, b: V(off.x + layer.tip.x, off.y + layer.tip.y), src: { ...layer.image.rect }, off });
   }
   const image = v.layers.find((l) => (PART_NAMES as readonly string[]).includes(l.id))?.image.key ?? "";
-  return { id: rig.id, name: rig.name, image, w: v.canvas.w, h: v.canvas.h, joints, parts, body: { ...rig.body }, u: v.pxPerUnit, ground: v.ground, near: v.near === "l" ? "L" : "R" };
+  return { id: rig.id, name: rig.name, image, w: v.canvas.w, h: v.canvas.h, joints, parts, body: { ...rig.body }, u: v.pxPerUnit, ground: v.ground, near: v.near === "l" ? "L" : "R", ...(rig.source.qa ? { qa: rig.source.qa } : {}) };
 }
 
 /**

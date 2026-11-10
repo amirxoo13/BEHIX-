@@ -6,6 +6,7 @@ import { PNG } from "pngjs";
 import { gcpAccessToken, gcpProject } from "./gcp-auth.server.ts";
 import { STYLE, generateImage, putObject } from "./studio-media.server.ts";
 import { puppetKeys } from "./studio-keys.ts";
+import { runAlphaQa } from "./alpha-qa.ts";
 import { CHAR_TASKS, systemPart, type AiOpts } from "./studio-ai-tasks.ts";
 import { JOINT_NAMES, PART_DEPTH, bonesOf, jointsToPixels, measureBody, validateJoints, type Bone, type Joints, type Part, type PuppetRig } from "../studio/v2/puppet.ts";
 
@@ -209,7 +210,11 @@ export async function createPuppet(id: string, name: string, who: string, owner:
   const img = await generateImage(refPosePrompt(who), [], "3:4", ai.system?.(CHAR_TASKS.refpose));
   const joints1000 = await measureJoints(img, ai);
   const png = keyOutBackground(PNG.sync.read(Buffer.from(img.data, "base64")));
+  const qa = runAlphaQa(png);
+  // فقط گزارش: ساخت را متوقف نمی‌کند (آستانه‌ها هنوز روی تصاویر واقعی تنظیم نشده‌اند).
+  if (!qa.passed) console.warn(`[puppet] alpha QA for ${id}: ${qa.reasons.join(", ")}`);
   const { rig, atlas } = assemblePuppet(id, name, keys.png, png, jointsToPixels(joints1000, png.width, png.height));
+  rig.qa = { passed: qa.passed, checks: Object.fromEntries(Object.entries(qa.checks).filter((e): e is [string, number | boolean] => e[1] !== null)) };
   await putObject(keys.png, PNG.sync.write(atlas), "image/png");
   await putObject(keys.json, Buffer.from(JSON.stringify(rig)), "application/json");
   return rig;

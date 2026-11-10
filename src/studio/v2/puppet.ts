@@ -88,6 +88,8 @@ export type PuppetRig = {
   ground: number;
   /** کدام سمت بدن به دوربین نزدیک‌تر است (در تصویر مرجع). */
   near: "L" | "R";
+  /** نتیجهٔ بررسی کیفیت بُرش هنگام ساخت (فقط گزارش؛ اختیاری). */
+  qa?: { passed: boolean; checks: Record<string, number | boolean> };
 };
 
 const V = (x: number, y: number): Vec => ({ x, y });
