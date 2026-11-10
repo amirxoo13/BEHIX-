@@ -40,9 +40,12 @@ describe("v2/mouth VisemeId set", () => {
 });
 
 describe("v2/mouth text map", () => {
-  it("S/Z letters give sz, not ee", () => {
-    for (const ch of ["س", "ز", "ص", "ض", "ظ", "ذ", "ث"]) assert.ok(visemesOfText(`ا${ch}ا`).includes("sz"), ch);
-    assert.ok(visemesOfText("شا").includes("ee"));
+  it("sibilants s z ʃ ʒ tʃ dʒ give sz, never ee", () => {
+    for (const ch of ["س", "ز", "ص", "ض", "ظ", "ذ", "ث", "ش", "ژ", "چ", "ج"]) {
+      const seq = visemesOfText(`ا${ch}ا`);
+      assert.deepEqual(seq, ["ah", "sz", "ah"], ch);
+    }
+    assert.deepEqual(visemesOfText("ای"), ["ah", "ee"]);
   });
   it("damma produces oh", () => {
     assert.ok(visemesOfText("بُ").includes("oh"));
