@@ -85,7 +85,10 @@ location / {
 | `SCRIPT_AI_PER_HOUR`، `SCRIPT_AI_DAILY_TOKENS` | سقف مصرف مدل (پیش‌فرض ۱۰ درخواست در ساعت برای هر IP، ۳۰٬۰۰۰ توکن در روز) |
 | `GOOGLE_CLOUD_PROJECT`، `TTS_BUCKET` | صدای Gemini؛ فقط روی Google Cloud کار می‌کند (از metadata server توکن می‌گیرد). بدون آن‌ها `/api/tts` پیام «فعال نیست» برمی‌گرداند و بقیهٔ برنامه کار می‌کند. |
 | `TTS_MODEL`، `TTS_PREVIEW_MODEL`، `TTS_LOCATION`، `TTS_FALLBACK` | مدل صدا روی Agent Platform. پیش‌فرض‌ها: `gemini-3.8-flash-tts`، `gemini-3.8-flash-lite-tts`، `global` (یا `us` / `eu`). `TTS_FALLBACK=off` جایگزینی Flash به Flash-Lite را خاموش می‌کند. بخش «مهاجرت صدا به Gemini 3.8» را ببینید. |
-| `TTS_PER_IP`، `TTS_PER_DAY` | سقف ساخت صدا: ۱۲۰ درخواست در ۱۰ دقیقه برای هر IP و ۳۰۰۰ در روز (پیش‌فرض). |
+| `TTS_PER_IP`، `TTS_PER_DAY` | سقف ساخت صدا (مشترک بین `/api/tts`، `/api/voice` و `/api/music`، بر حسب «واحد»): ۱۲۰ واحد در ۱۰ دقیقه برای هر IP و ۳۰۰۰ در روز (پیش‌فرض). |
+| `STT_ENABLED`، `STT_LOCATION`، `STT_MODEL` | زمان‌بندی لب با Speech-to-Text v2 در `/api/voice`. پیش‌فرض‌ها: روشن، `europe-west4`، `chirp_2`. `STT_ENABLED=off` آن را خاموش می‌کند (زمان‌بندی از دامنهٔ صدا ساخته می‌شود). |
+| `VOICE_STT_COST` | وزن هر STT در سهمیه (پیش‌فرض ۱؛ هر TTS = ۱). |
+| `LYRIA_MODEL`، `MUSIC_COST` | موسیقی پس‌زمینه با Lyria در `/api/music`. پیش‌فرض **خاموش**؛ با `LYRIA_MODEL=lyria-3-pro-preview` روشن می‌شود. `MUSIC_COST` وزن هر قطعه (پیش‌فرض ۵ واحد). |
 | `DATABASE_URL` | فقط اگر ورود کاربران را فعال کنید (Postgres). برای ساخت و ذخیرهٔ داستان لازم نیست؛ داستان‌ها در مرورگر کاربر ذخیره می‌شوند. |
 | `NITRO_PRESET` | برای ساخت روی میزبان دیگر (مثلاً `vercel`)؛ پیش‌فرض `node-server` است. |
 
@@ -111,6 +114,34 @@ location / {
   2.5 ساخته نمی‌شود. ترتیب جستجو: کلید Flash، کلید Flash-Lite، کلید قدیمی MP3. پاسخ هدر `x-tts-model` دارد.
 - **بررسی زنده:** `node --experimental-strip-types scripts/gcp-verify.mjs` هر دو مدل 3.8 را در `global`، `us` و
   `eu` می‌آزماید و WAVها را در `verify-out/` می‌نویسد.
+
+## زمان‌بندی لب (STT) و موسیقی (Lyria)
+
+- **`/api/voice`** (POST `{lines:[{id,text,voice,style,preview?}]}`، حداکثر ۸ دیالوگ): برای هر دیالوگ صدای Gemini 3.8 TTS
+  ساخته می‌شود، با Speech-to-Text v2 (`chirp_2`، `fa-IR`، زمان و اطمینان هر کلمه، recognizer ضمنی `_` در
+  `https://{STT_LOCATION}-speech.googleapis.com`) زمان کلمه‌ها گرفته می‌شود و به VisemeTimeline تبدیل می‌شود. اگر STT
+  خطا داد یا کلیپ از ۵۵ ثانیه بلندتر بود، زمان‌بندی از دامنهٔ صدا (`timing: "amplitude"`) یا متن ساخته می‌شود و واحد STT
+  برمی‌گردد. صدا و `tts/<hash>.viseme.json` با یک کلید در `TTS_BUCKET` کش می‌شوند. `/api/tts` بدون تغییر می‌ماند.
+- **`/api/music`**: یک پرامپت انگلیسی، فقط سازی، حداکثر ۱۸۴ ثانیه به `lyria-3-pro-preview` (منطقهٔ `global`، Interactions API)؛
+  MP3 در `music/<hash>.mp3` همان سطل ذخیره می‌شود. بدون `TTS_BUCKET` کار نمی‌کند.
+- **APIهایی که باید فعال باشند:** `aiplatform.googleapis.com` (TTS و Lyria)، `speech.googleapis.com` (STT)،
+  `storage.googleapis.com` (کش).
+  ```sh
+  gcloud services enable aiplatform.googleapis.com speech.googleapis.com storage.googleapis.com
+  ```
+- **نقش‌های حساب سرویس (روی پروژهٔ خودتان بررسی کنید):**
+  - `roles/aiplatform.user` — فراخوانی TTS و Lyria.
+  - `roles/speech.client` (Cloud Speech Client) — شامل `speech.recognizers.recognize` است که Recognize با recognizer `_`
+    لازم دارد ([فهرست نقش‌ها](https://cloud.google.com/iam/docs/roles-permissions/speech)). نقش Editor/Admin لازم نیست چون
+    recognizer ساخته نمی‌شود.
+  - `roles/storage.objectUser` روی `TTS_BUCKET` — خواندن/نوشتن کش و شمارندهٔ سهمیه (شمارنده از metadata و
+    `ifMetagenerationMatch` استفاده می‌کند).
+- **منطقه‌ها:** `chirp_2` برای `fa-IR` طبق جدول زبان‌های Speech-to-Text در `europe-west4`، `us-central1` و
+  `asia-southeast1` هست (برچسب «Private GA»؛ ممکن است پروژه نیاز به دسترسی داشته باشد). Lyria فقط `global` است.
+- **آزمون زنده (اختیاری، هزینه دارد):**
+  ```sh
+  VERIFY_STT=1 VERIFY_LYRIA=1 LYRIA_MODEL=lyria-3-pro-preview node --experimental-strip-types scripts/gcp-verify.mjs
+  ```
 
 ## بررسی سلامت
 
