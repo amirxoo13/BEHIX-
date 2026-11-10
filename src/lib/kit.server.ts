@@ -77,10 +77,14 @@ async function headers(project: string) {
   return { authorization: `Bearer ${await gcpAccessToken()}`, "content-type": "application/json", "x-goog-user-project": project };
 }
 
-/** یک تصویر از Gemini (پاسخ‌های بدون تصویر یک بار دوباره امتحان می‌شوند). */
+/** یک تصویر از Gemini؛ سهمیهٔ پر (429) و خطای سرور با مکث ۵، ۱۵ و ۳۰ ثانیه دوباره امتحان می‌شود. */
 export async function geminiImage(project: string, prompt: string, refs: Img[], aspectRatio = "1:1"): Promise<Img> {
   let last = "";
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // 429 (سهمیهٔ لحظه‌ای Vertex) و 5xx با مکث بیشتر دوباره امتحان می‌شوند؛ پاسخ بدون تصویر یک بار
+  const waits = [5_000, 15_000, 30_000];
+  for (let attempt = 0; attempt <= waits.length; attempt++) {
+    if (attempt > 0 && /^(429|5\d\d)/.test(last)) await new Promise((res) => setTimeout(res, waits[attempt - 1]));
+    else if (attempt > 1) break;
     const r = await fetch(modelUrl(project, KIT_IMAGE_MODEL), {
       method: "POST",
       headers: await headers(project),
