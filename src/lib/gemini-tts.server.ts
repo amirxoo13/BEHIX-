@@ -49,7 +49,12 @@ export function ttsUrl(project: string, location: string, model: string): string
   return `https://${ttsHost(location)}/v1/projects/${encodeURIComponent(project)}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
 }
 
-/** Request body for one single-speaker line. The style prompt goes in `speechMetadata.style`. */
+/**
+ * Request body for one single-speaker line. The style prompt goes in `speechMetadata.style`.
+ * TODO(skills): AI skill task id "tts.line" (skills/audio-voice-direction, owner audio). The loader
+ * src/ai/skills.ts (story branch) isn't in this worktree; once merged, the style text should be built with
+ * skillsFor("tts.line") guidance (see stylePrompt in src/studio/stick/voice.ts, the other half of this call site).
+ */
 export function buildTtsRequest(text: string, voice: string, style?: string) {
   const part: { text: string; speechMetadata?: { style: string } } = { text };
   if (style?.trim()) part.speechMetadata = { style: style.trim() };

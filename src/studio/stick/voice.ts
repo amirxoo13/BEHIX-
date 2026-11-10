@@ -64,7 +64,10 @@ const MOODS: Partial<Record<Expression, string>> = {
   content: "calmly", kiss: "affectionately", sideEye: "suspiciously", annoyed: "irritated",
   embarrassed: "shyly, embarrassed", thinking: "thoughtfully, slowly", sleepy: "sleepily",
 };
-/** دستور لحن برای Gemini TTS؛ فارسی محاوره‌ای طبیعی. */
+/**
+ * دستور لحن برای Gemini TTS (speechMetadata.style)؛ فارسی محاوره‌ای طبیعی.
+ * TODO(skills): AI skill task id "tts.line" (skills/audio-voice-direction)؛ بارگذار src/ai/skills.ts هنوز در این شاخه نیست.
+ */
 export function stylePrompt(mood?: Expression, kind?: Look["kind"]): string {
   const who = kind === "boy" || kind === "girl" ? "a child" : kind === "oldMan" || kind === "oldWoman" ? "an elderly person" : "an adult";
   return `Read this line as ${who} in natural, colloquial Tehrani Persian${mood && MOODS[mood] ? `, ${MOODS[mood]}` : ""}. Do not add words.`;
