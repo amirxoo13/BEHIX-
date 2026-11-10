@@ -26,6 +26,12 @@ export const SKILL_TASKS = {
   "export.qa": "export",
   /** Lyria music cue prompt (src/lib/lyria.server.ts, /api/music); owned by the audio bot. */
   "music.cue": "audio",
+  /** WORLD_TASKS in src/studio/world/ai-tasks.ts (set design, layer art, split, edit, camera plan). */
+  "world-set.design": "world",
+  "world-set.split": "world",
+  "world-camera.plan": "world",
+  "world-set.layer-art": "world",
+  "world-set.edit": "world",
 } as const satisfies Record<string, SkillOwner>;
 export type SkillTask = keyof typeof SKILL_TASKS;
 

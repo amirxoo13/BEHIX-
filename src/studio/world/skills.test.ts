@@ -13,9 +13,9 @@ function frontmatter(path: string) {
     const kv = /^([a-z]+):\s*(.*)$/.exec(line);
     if (kv) fields[kv[1]] = kv[2];
   }
-  const list = (v: string) => v.replace(/^\[|\]$/g, "").split(",").map((s) => s.trim()).filter(Boolean);
   return { fields, tasks: list(fields.tasks ?? ""), sources: list(fields.source ?? ""), body: m[2] };
 }
+const list = (v: string) => v.replace(/^\[|\]$/g, "").split(",").map((s) => s.trim()).filter(Boolean);
 const SKILLS = { "world-set-design": "../../../skills/world-set-design/SKILL.md", "world-camera": "../../../skills/world-camera/SKILL.md" };
 
 describe("world in-app skills", () => {
@@ -28,7 +28,8 @@ describe("world in-app skills", () => {
       assert.equal(f.fields.owner, "world");
       assert.ok(f.tasks.length > 0, id);
       assert.ok(f.sources.length > 0 && f.sources.every((s) => s.startsWith("https://github.com/")), id);
-      assert.match(f.fields.license, /^(MIT|Apache-2\.0)( AND (MIT|Apache-2\.0))*$/);
+      const licenses = list(f.fields.license ?? "");
+      assert.ok(licenses.length > 0 && licenses.every((l) => l === "MIT" || l === "Apache-2.0"), id);
     }
   });
   it("task ids match the world call-site ids and every call site has a skill", () => {

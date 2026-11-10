@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { CHAR_TASKS } from "../lib/studio-ai-tasks.ts";
+import { WORLD_TASK_IDS } from "../studio/world/ai-tasks.ts";
 import { loadSkills, MAX_SKILL_WORDS, parseFrontmatter, parseSkill, SKILL_OWNERS, SKILL_TASKS, SkillError, skillsFor, withSkills } from "./skills.ts";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
@@ -91,6 +92,7 @@ describe("repo skills (/skills/*/SKILL.md)", () => {
       for (const m of readFileSync(f, "utf8").matchAll(/(?:withSkills|skillsFor|skillSystem)\(\s*"([^"]+)"/g)) used.add(m[1]);
     }
     for (const t of Object.values(CHAR_TASKS)) used.add(t); // character call sites pass CHAR_TASKS.* through (ai.system ?? skillSystem)
+    for (const t of WORLD_TASK_IDS) used.add(t);
     for (const t of used) assert.ok(t in SKILL_TASKS, `unregistered task ${t}`);
   });
   it("UT-SK-08 story skills load with attribution and feed both film-plan stages", () => {

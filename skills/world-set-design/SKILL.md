@@ -5,7 +5,7 @@ version: 1
 owner: world
 tasks: [world-set.design, world-set.layer-art, world-set.split, world-set.edit]
 source: [https://github.com/calesthio/generative-media-skills, https://github.com/omer-metin/skills-for-antigravity]
-license: MIT AND Apache-2.0
+license: [MIT, Apache-2.0]
 ---
 
 # Designing a BEHIX set (SetDef v1)
