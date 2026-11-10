@@ -5,6 +5,10 @@
  * شناسهٔ مدل‌ها و منطقه‌ها با فراخوانی واقعی تأیید شده‌اند (scripts/gcp-media-probe.mjs) و با متغیر محیطی قابل تغییرند.
  */
 import { gcpAccessToken, gcpProject } from "./gcp-auth.server.ts";
+import { KEY_RE, assetKey } from "./studio-keys.ts";
+import { CHAR_TASKS, systemPart, type AiOpts } from "./studio-ai-tasks.ts";
+
+export { KEY_RE };
 
 export const IMAGE_MODEL = process.env.STUDIO_IMAGE_MODEL || "gemini-3-pro-image";
 export const IMAGE_LOCATION = process.env.STUDIO_IMAGE_LOCATION || "global";
@@ -14,7 +18,6 @@ export const mediaBucket = () => process.env.MEDIA_BUCKET || process.env.TTS_BUC
 export const STYLE =
   "Style: premium adult 2D animation, like a prestige animated feature or graphic-novel adaptation. Realistic adult proportions, anatomically believable hands and faces, painterly cel shading, soft cinematic lighting, muted sophisticated palette, clean confident linework. NOT chibi, NOT childish, no oversized heads, no text, no captions, no watermark.";
 
-export const KEY_RE = /^(cast|frames)\/[A-Za-z0-9_\-/.]{1,200}$/;
 export type Img = { mimeType: string; data: string };
 
 async function ctx() {
@@ -29,17 +32,40 @@ const model = (project: string, loc: string, id: string) => `https://${host(loc)
 
 /* ---------- Cloud Storage ---------- */
 
-export async function putObject(key: string, bytes: Uint8Array | ArrayBuffer, contentType: string): Promise<void> {
-  const { headers } = await ctx();
-  const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${mediaBucket()}/o?uploadType=media&name=${encodeURIComponent(key)}`, {
+/** فایلی با همین نام از قبل هست؛ نوشتن تغییرناپذیر رد شد (HTTP 412). */
+export class ObjectExistsError extends Error {
+  readonly key: string;
+  constructor(key: string) {
+    super(`storage object exists: ${key}`);
+    this.name = "ObjectExistsError";
+    this.key = key;
+  }
+}
+
+/**
+ * نوشتن یک شیء. پیش‌فرض تغییرناپذیر است (ifGenerationMatch=0: فقط اگر شیء وجود ندارد)؛
+ * بازنویسی فقط با overwrite: true (هیچ مسیر استودیو از آن استفاده نمی‌کند).
+ */
+export async function putObjectWith(
+  f: typeof fetch, authorization: string, bucket: string,
+  key: string, bytes: Uint8Array | ArrayBuffer, contentType: string, opts: { overwrite?: boolean } = {},
+): Promise<void> {
+  const pre = opts.overwrite ? "" : "&ifGenerationMatch=0";
+  const r = await f(`https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media${pre}&name=${encodeURIComponent(key)}`, {
     method: "POST",
-    headers: { authorization: headers.authorization, "content-type": contentType },
+    headers: { authorization, "content-type": contentType },
     body: bytes as BodyInit,
   });
+  if (r.status === 412 && !opts.overwrite) throw new ObjectExistsError(key);
   if (!r.ok) throw new Error(`storage put ${r.status}`);
 }
 
-/** پاسخ خام Cloud Storage برای یک شیء (پشتیبانی از Range برای پخش ویدیو در مرورگر). */
+export async function putObject(key: string, bytes: Uint8Array | ArrayBuffer, contentType: string, opts: { overwrite?: boolean } = {}): Promise<void> {
+  const { headers } = await ctx();
+  await putObjectWith(fetch, headers.authorization, mediaBucket(), key, bytes, contentType, opts);
+}
+
+/** پاسخ خام Cloud Storage برای یک شیء (با پشتیبانی از Range). */
 export async function getObject(key: string, range?: string | null): Promise<Response> {
   const { headers } = await ctx();
   return fetch(`https://storage.googleapis.com/storage/v1/b/${mediaBucket()}/o/${encodeURIComponent(key)}?alt=media`, {
@@ -53,16 +79,16 @@ async function readImage(key: string): Promise<Img> {
   return { mimeType: r.headers.get("content-type") || "image/png", data: Buffer.from(await r.arrayBuffer()).toString("base64") };
 }
 
-const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-
 /* ---------- Gemini Image ---------- */
 
-export async function generateImage(prompt: string, refs: Img[] = [], aspectRatio = "16:9"): Promise<Img> {
+/** systemInstruction اختیاری است؛ بدون آن بدنهٔ درخواست دقیقاً مثل قبل است. */
+export async function generateImage(prompt: string, refs: Img[] = [], aspectRatio = "16:9", systemInstruction?: string): Promise<Img> {
   const { project, headers } = await ctx();
   const r = await fetch(`${model(project, IMAGE_LOCATION, IMAGE_MODEL)}:generateContent`, {
     method: "POST",
     headers,
     body: JSON.stringify({
+      ...systemPart(systemInstruction),
       contents: [{ role: "user", parts: [...refs.map((inlineData) => ({ inlineData })), { text: prompt }] }],
       generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { aspectRatio } },
     }),
@@ -75,26 +101,27 @@ export async function generateImage(prompt: string, refs: Img[] = [], aspectRati
   return img;
 }
 
-async function saveImage(folder: "cast" | "frames", img: Img): Promise<string> {
-  const key = `${folder}/${newId()}.${img.mimeType.includes("jpeg") ? "jpg" : "png"}`;
+async function saveImage(folder: "cast" | "frames", owner: string, img: Img): Promise<string> {
+  const key = assetKey(folder, owner, img.mimeType);
   await putObject(key, Buffer.from(img.data, "base64"), img.mimeType);
   return key;
 }
 
 /** شناسنامهٔ بازیگر: یک برگهٔ سه‌زاویه (روبه‌رو، سه‌رخ، نیم‌رخ) که مرجع همهٔ نماهای بعدی است. */
-export async function createCharacter(description: string): Promise<{ key: string }> {
+export async function createCharacter(description: string, owner: string, ai: AiOpts = {}): Promise<{ key: string }> {
   const img = await generateImage(
     `Character design sheet on a plain light-grey background. Character: ${description}. Show the SAME character three times, full body, standing: front view, three-quarter view, side profile. Identical face, hair and clothes in all three. ${STYLE}`,
+    [], undefined, ai.system?.(CHAR_TASKS.generate),
   );
-  return { key: await saveImage("cast", img) };
+  return { key: await saveImage("cast", owner, img) };
 }
 
-/** فریم کلیدی یک نما با همان شخصیت‌ها (حداکثر ۳ برگهٔ مرجع). */
-export async function createKeyframe(castKeys: string[], direction: string): Promise<{ key: string }> {
+/** فریم کلیدی یک نما با همان شخصیت‌ها (حداکثر ۳ برگهٔ مرجع؛ دسترسی به مرجع‌ها را studio-api بررسی می‌کند). */
+export async function createKeyframe(castKeys: string[], direction: string, owner: string, ai: AiOpts = {}): Promise<{ key: string }> {
   const refs = await Promise.all(castKeys.slice(0, 3).map(readImage));
   const img = await generateImage(
     `Using exactly the character(s) from the reference sheet(s) (same faces, hair, clothes), create ONE cinematic 16:9 film frame. ${direction} Each character appears only once. Layered background with depth. ${STYLE}`,
-    refs,
+    refs, undefined, ai.system?.(CHAR_TASKS.keyframe),
   );
-  return { key: await saveImage("frames", img) };
+  return { key: await saveImage("frames", owner, img) };
 }

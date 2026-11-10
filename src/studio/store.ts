@@ -29,7 +29,10 @@ export function consumeShotAudio(index: number) {
   s.selectDuringPlay(index);
   if (shot.sfx !== "none") playSfx(shot.sfx);
   const url = s.audioUrls[shot.id];
-  if (url && shot.speaker !== "none") void playUrl(url, shot.pitch);
+  if (url && shot.speaker !== "none")
+    void playUrl(url, shot.pitch).then((ok) => {
+      if (!ok) useStudio.getState().setStatus("صدای این نما پخش نشد؛ دوباره ضبط کنید.");
+    });
 }
 
 export function finishPlayback() {
