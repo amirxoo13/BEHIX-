@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { clientIp } from "@/lib/rate-limit";
 import { KEY_RE, OP_RE, createCharacter, createKeyframe, getObject, mediaBucket, startVideo, videoStatus } from "@/lib/studio-media.server";
+import { createPuppet } from "@/lib/puppet-build.server";
 
 /**
  * API استودیو: شناسنامهٔ بازیگر، فریم کلیدی، نمای متحرک (Veo) و خواندن فایل‌ها از Cloud Storage.
@@ -12,6 +13,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("character"), description: z.string().trim().min(10).max(600) }).strict(),
   z.object({ action: z.literal("keyframe"), cast: z.array(key).min(1).max(3), direction: z.string().trim().min(10).max(900) }).strict(),
   z.object({ action: z.literal("video"), frame: key, prompt: z.string().trim().min(10).max(1200), seconds: z.union([z.literal(4), z.literal(6), z.literal(8)]) }).strict(),
+  z.object({ action: z.literal("puppet"), id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,30}$/), name: z.string().trim().min(1).max(40), who: z.string().trim().min(10).max(600) }).strict(),
   z.object({ action: z.literal("status"), op: z.string().regex(OP_RE) }).strict(),
 ]);
 
@@ -44,7 +46,11 @@ async function post(req: Request): Promise<Response> {
     const { getRequestIP } = await import("@tanstack/react-start/server");
     const block = limited(clientIp(req.headers, getRequestIP()));
     if (block) return fail(429, block);
-    const result = b.action === "character" ? await createCharacter(b.description) : b.action === "keyframe" ? await createKeyframe(b.cast, b.direction) : await startVideo(b.frame, b.prompt, b.seconds);
+    const result =
+      b.action === "puppet" ? await createPuppet(b.id, b.name, b.who)
+      : b.action === "character" ? await createCharacter(b.description)
+      : b.action === "keyframe" ? await createKeyframe(b.cast, b.direction)
+      : await startVideo(b.frame, b.prompt, b.seconds);
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     console.error("[studio]", b.action, e);
