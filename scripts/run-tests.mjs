@@ -38,6 +38,7 @@ async function main() {
     "src/lib/studio-ai-tasks.test.ts",
     "src/lib/tts-quota.test.ts",
     "src/lib/gemini-tts.test.ts",
+    "src/lib/gcp-stt.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",
     "src/studio/v2/*.test.ts",
