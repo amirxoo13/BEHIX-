@@ -9,7 +9,7 @@
 
 // Shared mouth ids/types and the span merge come from ./mouth.ts (Characters bot, master f8572f3 + 0dade38).
 // align.ts and fa-g2p.ts import them only through this file.
-import { normalizeSpans, resolveViseme, VISEME_IDS, type VisemeId, type VisemeSpan } from "./mouth.ts";
+import { MAX_CROSSFADE, normalizeSpans, resolveViseme, VISEME_IDS, type VisemeId, type VisemeSpan } from "./mouth.ts";
 export { MAX_CROSSFADE, normalizeSpans, resolveViseme, VISEME_FALLBACK, VISEME_IDS, type Viseme2, type VisemeId, type VisemeSpan } from "./mouth.ts";
 
 const round = (t: number) => Math.round(t * 1000) / 1000;
@@ -127,4 +127,44 @@ export function repairTimeline(raw: unknown): VisemeTimeline | undefined {
     words: words.sort((a, b) => a.start - b.start),
     visemes: normalizeSpans(spans, MIN_SPAN),
   };
+}
+
+/** One rendered mouth frame: show `id`, blending toward `nextId` by `mix` (0 = only id, 1 = only nextId). */
+export type MouthFrame = { id: VisemeId; nextId: VisemeId; mix: number; weight: number };
+
+/**
+ * Mouth shape at `t` seconds into the CLIP (film time − clip start; `lead` is already baked into the spans).
+ * Pure and stateless, so scrubbing and frame-by-frame export agree.
+ *  - crossfade (s, ≤ MAX_CROSSFADE): blend from the previous shape (or rest after a gap) into each span;
+ *    after the last span, blend back to rest. 0 = hard cuts (mix is always 0).
+ *  - has: the rig's available art; ids resolve through VISEME_FALLBACK (sz→ee→eh→ah …).
+ * Same timing convention as mouth.ts visemeAt (fade at the START of a span).
+ */
+export function mouthAt(src: Pick<VisemeTimeline, "visemes"> | readonly VisemeSpan[], t: number, opts: { crossfade?: number; has?: (v: VisemeId) => boolean } = {}): MouthFrame {
+  const spans: readonly VisemeSpan[] = Array.isArray(src) ? src : (src as Pick<VisemeTimeline, "visemes">).visemes;
+  const xf = Math.max(0, Math.min(MAX_CROSSFADE, opts.crossfade ?? 0));
+  const map = (v: VisemeId) => (opts.has ? resolveViseme(v, opts.has) : v);
+  const frame = (id: VisemeId, nextId: VisemeId, mix: number, weight: number): MouthFrame => {
+    const a = map(id), b = map(nextId);
+    const m = a === b ? 0 : Math.min(1, Math.max(0, mix));
+    return { id: a, nextId: b, mix: m, weight: Math.min(1, Math.max(0, weight)) };
+  };
+  let lo = 0, hi = spans.length - 1, idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (spans[mid].start <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  const cur = idx >= 0 && t < spans[idx].end ? spans[idx] : null;
+  if (!cur) {
+    const p = idx >= 0 ? spans[idx] : null;
+    if (p && xf > 0 && t - p.end < xf) return frame(p.id, "rest", (t - p.end) / xf, p.weight ?? 1);
+    return frame("rest", "rest", 0, 1);
+  }
+  const w = cur.weight ?? 1;
+  if (xf > 0 && t - cur.start < xf) {
+    const p = idx > 0 ? spans[idx - 1] : null;
+    const prev: VisemeId = p && cur.start - p.end < 1e-6 ? p.id : "rest";
+    return frame(prev, cur.id, (t - cur.start) / xf, w);
+  }
+  return frame(cur.id, cur.id, 0, w);
 }
