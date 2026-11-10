@@ -24,7 +24,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "android:web": "vite build --config vite.android.config.ts",
-    "android:sync": "npm run android:web && cap sync android"
+    "android:sync": "npm run android:web && cap sync android",
+    "check:skills": "node scripts/check-skills-bundle.mjs dist-android .output/public .output/server"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
