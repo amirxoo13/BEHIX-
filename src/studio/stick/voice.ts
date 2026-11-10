@@ -158,3 +158,99 @@ export function mixClips(placed: PlacedClip[], duration: number, sampleRate = MI
   for (let i = 0; i < out.length; i++) out[i] = Math.max(-1, Math.min(1, out[i]));
   return out;
 }
+
+const SENTENCE = /[.!?؟…]+["»)\]]*\s+|\n+/g;
+const CLAUSE = /[،,؛;:]\s*|\s[-–—]\s/g;
+
+/**
+ * دیالوگ بلندتر از max به تکه‌های ≤ max، اول سر مرز جمله، بعد سر ویرگول/نقطه‌ویرگول، در آخر سر فاصله.
+ * هیچ حرفی جا نمی‌افتد (به‌جز فاصله‌های سر مرز). سرور هم همین سقف را دارد.
+ */
+export function splitLine(text: string, max = MAX_LINE): string[] {
+  const t = text.trim();
+  if (t.length <= max) return t ? [t] : [];
+  const pieces = (s: string, re: RegExp) => {
+    const out: string[] = [];
+    let last = 0;
+    for (const m of s.matchAll(re)) {
+      const end = (m.index ?? 0) + m[0].length;
+      out.push(s.slice(last, end));
+      last = end;
+    }
+    out.push(s.slice(last));
+    return out.filter((x) => x.trim());
+  };
+  const hard = (s: string) => {
+    const out: string[] = [];
+    let rest = s.trim();
+    while (rest.length > max) {
+      let cut = rest.lastIndexOf(" ", max);
+      if (cut < max / 2) cut = max;
+      out.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    if (rest) out.push(rest);
+    return out;
+  };
+  const units = pieces(t, SENTENCE).flatMap((s) => (s.trim().length <= max ? [s] : pieces(s, CLAUSE).flatMap((c) => (c.trim().length <= max ? [c] : hard(c)))));
+  const chunks: string[] = [];
+  let cur = "";
+  for (const u of units) {
+    if ((cur + u).trim().length <= max) cur += u;
+    else {
+      if (cur.trim()) chunks.push(cur.trim());
+      cur = u;
+    }
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks;
+}
+
+/** چند کلیپ پشت‌سرهم با مکث کوتاه بین‌شان (همه به نرخ کلیپ اول). */
+export function concatClips(clips: VoiceClip[], gap = 0.12): VoiceClip {
+  if (clips.length === 1) return clips[0];
+  const sampleRate = clips[0]?.sampleRate ?? MIX_RATE;
+  const pad = Math.round(gap * sampleRate);
+  const parts = clips.map((c) => (c.sampleRate === sampleRate ? c.samples : resample(c.samples, c.sampleRate, sampleRate)));
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0) + pad * Math.max(0, parts.length - 1));
+  let at = 0;
+  parts.forEach((p, i) => {
+    out.set(p, at);
+    at += p.length + (i < parts.length - 1 ? pad : 0);
+  });
+  return { samples: out, sampleRate };
+}
+
+function resample(x: Float32Array, from: number, to: number): Float32Array {
+  const out = new Float32Array(Math.floor((x.length * to) / from));
+  for (let i = 0; i < out.length; i++) {
+    const p = (i * from) / to, k = Math.floor(p), f = p - k;
+    out[i] = (x[k] ?? 0) * (1 - f) + (x[k + 1] ?? x[k] ?? 0) * f;
+  }
+  return out;
+}
+
+/** WAV شانزده‌بیتی تک‌کاناله از نمونه‌ها (برای ذخیرهٔ کلیپ چندتکه روی دستگاه). */
+export function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array {
+  const out = new Uint8Array(44 + samples.length * 2);
+  const v = new DataView(out.buffer);
+  const ascii = (at: number, s: string) => { for (let i = 0; i < s.length; i++) out[at + i] = s.charCodeAt(i); };
+  ascii(0, "RIFF");
+  v.setUint32(4, 36 + samples.length * 2, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  ascii(36, "data");
+  v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const x = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+  }
+  return out;
+}
