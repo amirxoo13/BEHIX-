@@ -1,23 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { clientIp } from "@/lib/rate-limit";
-import { KEY_RE, OP_RE, createCharacter, createKeyframe, getObject, mediaBucket, startVideo, videoStatus } from "@/lib/studio-media.server";
+import { KEY_RE, createCharacter, createKeyframe, getObject, mediaBucket } from "@/lib/studio-media.server";
 import { createPuppet } from "@/lib/puppet-build.server";
 
 /**
- * API استودیو: شناسنامهٔ بازیگر، فریم کلیدی، نمای متحرک (Veo) و خواندن فایل‌ها از Cloud Storage.
+ * API استودیو: شناسنامهٔ بازیگر، فریم کلیدی، عروسک و خواندن فایل‌ها از Cloud Storage.
  * هیچ کلیدی در مرورگر نیست؛ سرور با حساب سرویس Google Cloud کار می‌کند.
  */
 const key = z.string().regex(KEY_RE);
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("character"), description: z.string().trim().min(10).max(600) }).strict(),
   z.object({ action: z.literal("keyframe"), cast: z.array(key).min(1).max(3), direction: z.string().trim().min(10).max(900) }).strict(),
-  z.object({ action: z.literal("video"), frame: key, prompt: z.string().trim().min(10).max(1200), seconds: z.union([z.literal(4), z.literal(6), z.literal(8)]) }).strict(),
   z.object({ action: z.literal("puppet"), id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,30}$/), name: z.string().trim().min(1).max(40), who: z.string().trim().min(10).max(600) }).strict(),
-  z.object({ action: z.literal("status"), op: z.string().regex(OP_RE) }).strict(),
 ]);
 
-// سقف ساخت برای هر نشانی در ده دقیقه و سقف کل روزانهٔ همین نمونهٔ سرور (ویدیو گران است).
+// سقف ساخت برای هر نشانی در ده دقیقه و سقف کل روزانهٔ همین نمونهٔ سرور.
 const WINDOW = 10 * 60_000, PER_IP = Number(process.env.STUDIO_PER_IP ?? 30), PER_DAY = Number(process.env.STUDIO_PER_DAY ?? 400);
 const hits = new Map<string, number[]>();
 let day = "", today = 0;
@@ -42,15 +40,13 @@ async function post(req: Request): Promise<Response> {
   if (!parsed.success) return fail(400, "درخواست معتبر نیست.");
   const b = parsed.data;
   try {
-    if (b.action === "status") return Response.json(await videoStatus(b.op), { headers: { "cache-control": "no-store" } });
     const { getRequestIP } = await import("@tanstack/react-start/server");
     const block = limited(clientIp(req.headers, getRequestIP()));
     if (block) return fail(429, block);
     const result =
       b.action === "puppet" ? await createPuppet(b.id, b.name, b.who)
       : b.action === "character" ? await createCharacter(b.description)
-      : b.action === "keyframe" ? await createKeyframe(b.cast, b.direction)
-      : await startVideo(b.frame, b.prompt, b.seconds);
+      : await createKeyframe(b.cast, b.direction);
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     console.error("[studio]", b.action, e);
