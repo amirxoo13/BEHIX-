@@ -112,3 +112,15 @@ test("generateMusic polls a background interaction and fetches a gs:// URI with 
   const none = (async () => Response.json({ status: "completed", steps: [] })) as unknown as typeof fetch;
   await assert.rejects(generateMusic({ project: "p", model: "m", prompt: "x", headers: {}, fetchImpl: none }), /no audio in Lyria response; key tree: \{"status":"completed","steps":\[\]\}/);
 });
+
+test("response_modalities is opt-in via LYRIA_RESPONSE_MODALITIES; the live empty shape gets a clear error", async () => {
+  const { lyriaConfig: cfg, buildLyriaRequest: build } = await import("./lyria.server.ts");
+  assert.deepEqual(cfg({ LYRIA_MODEL: "m", LYRIA_RESPONSE_MODALITIES: "AUDIO, text, bogus" }).modalities, ["audio", "text"]);
+  assert.equal(cfg({ LYRIA_MODEL: "m" }).modalities, undefined);
+  assert.deepEqual(build("m", "x", ["audio", "text"]).response_modalities, ["audio", "text"]);
+  assert.ok(!("response_modalities" in build("m", "x")));
+  // exact key tree seen live on 2026-11-10 (anime-512918, 22.5 s, 141 bytes)
+  const live = { status: "completed", created: "2026-11-10T13:41:28Z", updated: "2026-11-10T13:41:28Z", object: "interaction", model: "lyria-3-pro-preview" };
+  const f = (async () => Response.json(live)) as unknown as typeof fetch;
+  await assert.rejects(generateMusic({ project: "p", model: "m", prompt: "x", headers: {}, fetchImpl: f }), /empty completed interaction .*LYRIA_RESPONSE_MODALITIES=audio,text/);
+});

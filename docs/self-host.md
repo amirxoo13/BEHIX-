@@ -89,6 +89,7 @@ location / {
 | `STT_ENABLED`، `STT_LOCATION`، `STT_MODEL` | زمان‌بندی لب با Speech-to-Text v2 در `/api/voice`. پیش‌فرض‌ها: روشن، `europe-west4`، `chirp_2`. `STT_ENABLED=off` آن را خاموش می‌کند (زمان‌بندی از دامنهٔ صدا ساخته می‌شود). |
 | `VOICE_STT_COST` | وزن هر STT در سهمیه (پیش‌فرض ۱؛ هر TTS = ۱). |
 | `LYRIA_MODEL`، `MUSIC_COST` | موسیقی پس‌زمینه با Lyria در `/api/music`. پیش‌فرض **خاموش**؛ با `LYRIA_MODEL=lyria-3-pro-preview` روشن می‌شود. `MUSIC_COST` وزن هر قطعه (پیش‌فرض ۵ واحد). |
+| `LYRIA_RESPONSE_MODALITIES` | اختیاری، مثلاً `audio,text`: به‌صورت `response_modalities` به Interactions فرستاده می‌شود. آزمون زندهٔ ۲۰ آبان ۱۴۰۵ بدون آن پاسخ «completed» بدون هیچ خروجی داد. |
 | `DATABASE_URL` | فقط اگر ورود کاربران را فعال کنید (Postgres). برای ساخت و ذخیرهٔ داستان لازم نیست؛ داستان‌ها در مرورگر کاربر ذخیره می‌شوند. |
 | `NITRO_PRESET` | برای ساخت روی میزبان دیگر (مثلاً `vercel`)؛ پیش‌فرض `node-server` است. |
 

@@ -18,10 +18,17 @@ export const LYRIA_DOCS_URL = "https://docs.cloud.google.com/gemini-enterprise-a
 export const LYRIA_MAX_SECONDS = 184;
 export const LYRIA_LOCATION = "global";
 
-export type LyriaConfig = { model: string; enabled: boolean };
+export type LyriaConfig = { model: string; enabled: boolean; modalities?: string[] };
+const MODALITIES = new Set(["text", "image", "audio", "video", "document"]);
+/**
+ * LYRIA_RESPONSE_MODALITIES (optional, e.g. "audio,text"): sent as Interactions `response_modalities`.
+ * Live 2026-11-10 (anime-512918): the documented request without it returned
+ * {status:"completed", created, updated, object, model} — no id, no steps, no audio.
+ */
 export function lyriaConfig(env: Record<string, string | undefined> = process.env): LyriaConfig {
   const model = (env.LYRIA_MODEL ?? "").trim();
-  return { model, enabled: model.length > 0 };
+  const modalities = (env.LYRIA_RESPONSE_MODALITIES ?? "").split(",").map((m) => m.trim().toLowerCase()).filter((m) => MODALITIES.has(m));
+  return { model, enabled: model.length > 0, ...(modalities.length ? { modalities } : {}) };
 }
 
 export const MUSIC_MOODS = ["calm", "happy", "playful", "tense", "sad", "mysterious", "romantic", "epic", "funny", "hopeful"] as const;
@@ -63,7 +70,14 @@ export function musicPrompt(c: MusicCue): string {
 
 export const lyriaUrl = (project: string) => `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${LYRIA_LOCATION}/interactions`;
 
-export const buildLyriaRequest = (model: string, prompt: string) => ({ model, input: [{ type: "user_input", content: [{ type: "text", text: prompt }] }] });
+export const buildLyriaRequest = (model: string, prompt: string, modalities?: string[]) => ({
+  model,
+  input: [{ type: "user_input", content: [{ type: "text", text: prompt }] }],
+  ...(modalities?.length ? { response_modalities: modalities } : {}),
+});
+
+/** A completed interaction that carries no output at all (seen live): clearer than "no audio". */
+const emptyCompleted = (j: Record<string, unknown>) => j.status === "completed" && !j.steps && !j.outputs && !j.id;
 
 export class LyriaError extends Error {
   readonly status?: number;
@@ -166,12 +180,12 @@ export function mediaUrl(uri: string): string {
   return m ? `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(m[1])}/o/${encodeURIComponent(m[2])}?alt=media` : uri;
 }
 
-export async function generateMusic(opts: { project: string; model: string; prompt: string; headers: Record<string, string>; fetchImpl?: typeof fetch; timeoutMs?: number; pollMs?: number }) {
+export async function generateMusic(opts: { project: string; model: string; prompt: string; headers: Record<string, string>; fetchImpl?: typeof fetch; timeoutMs?: number; pollMs?: number; modalities?: string[] }) {
   const f = opts.fetchImpl ?? fetch;
   const deadline = Date.now() + (opts.timeoutMs ?? 180_000);
   const headers = { ...opts.headers, "x-goog-user-project": opts.project, "content-type": "application/json" };
   const left = () => Math.max(1000, deadline - Date.now());
-  const r = await f(lyriaUrl(opts.project), { method: "POST", headers, body: JSON.stringify(buildLyriaRequest(opts.model, opts.prompt)), signal: AbortSignal.timeout(left()) });
+  const r = await f(lyriaUrl(opts.project), { method: "POST", headers, body: JSON.stringify(buildLyriaRequest(opts.model, opts.prompt, opts.modalities ?? lyriaConfig().modalities)), signal: AbortSignal.timeout(left()) });
   if (!r.ok) {
     const msg = ((await r.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? r.statusText;
     throw new LyriaError(`Lyria ${r.status}: ${String(msg).slice(0, 300)}`, r.status);
@@ -188,6 +202,7 @@ export async function generateMusic(opts: { project: string; model: string; prom
   const st = (json as { status?: string; error?: { message?: string } });
   if (st.status && FAILED.has(st.status)) throw new LyriaError(`interaction ${st.status}${st.error?.message ? `: ${st.error.message.slice(0, 200)}` : ""}`);
   const a = extractLyriaAudio(json);
+  if (!a && emptyCompleted(json as Record<string, unknown>)) throw new LyriaError(`Lyria returned an empty completed interaction (no id, no steps); try LYRIA_RESPONSE_MODALITIES=audio,text; key tree: ${keyTreeText(json)}`);
   if (!a) throw new LyriaError(`no audio in Lyria response; key tree: ${keyTreeText(json)}`);
   if (a.kind === "inline") return { mp3: a.bytes, mimeType: a.mimeType, text: a.text };
   const isGoogle = /^gs:|^https:\/\/[^/]*googleapis\.com\//.test(a.uri);

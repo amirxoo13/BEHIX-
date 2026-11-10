@@ -6,7 +6,7 @@
  *     واقعی می‌سازد و WAV را ذخیره می‌کند (سرآیند RIFF، نرخ نمونه و مدت را گزارش می‌کند).
  *   - (اختیاری، VERIFY_STT=1) Speech-to-Text v2 chirp_2 fa-IR روی WAV واقعی همان TTS 3.8: کلمه‌ها، زمان و اطمینان.
  *   - (اختیاری، VERIFY_LYRIA=1 و LYRIA_MODEL) یک قطعهٔ کوتاه Lyria 3 Pro (global، Interactions) و ذخیرهٔ MP3.
- *   - (فقط همین، VERIFY_LYRIA_SHAPE=1) یک درخواست کوتاه Lyria و چاپ «درخت کلیدها»ی پاسخ با رشته‌های بلند/base64
+ *   - (فقط همین، VERIFY_LYRIA_SHAPE=1، اختیاری LYRIA_RESPONSE_MODALITIES=audio,text) یک درخواست کوتاه Lyria و چاپ «درخت کلیدها»ی پاسخ با رشته‌های بلند/base64
  *     به‌صورت <len N>؛ هیچ آزمون دیگری اجرا نمی‌شود و هیچ داده‌ای ذخیره نمی‌شود. مدل: LYRIA_MODEL (پیش‌فرض lyria-3-pro-preview).
  * اجرا:
  *   node --experimental-strip-types scripts/gcp-verify.mjs
@@ -37,13 +37,14 @@ if (process.env.VERIFY_LYRIA_SHAPE === "1") {
   const model = process.env.LYRIA_MODEL?.trim() || "lyria-3-pro-preview";
   const prompt = musicPrompt({ mood: "calm", seconds: 5 });
   const started = Date.now();
-  const r = await fetch(lyriaUrl(project), { method: "POST", headers: auth, body: JSON.stringify(buildLyriaRequest(model, prompt)), signal: AbortSignal.timeout(240_000) });
+  const modalities = lyriaConfig().modalities;
+  const r = await fetch(lyriaUrl(project), { method: "POST", headers: auth, body: JSON.stringify(buildLyriaRequest(model, prompt, modalities)), signal: AbortSignal.timeout(240_000) });
   const text = await r.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* not JSON */ }
   const found = json ? extractLyriaAudio(json) : null;
   console.log(JSON.stringify({
-    model, httpStatus: r.status, contentType: r.headers.get("content-type"), ms: Date.now() - started, bytes: text.length,
+    model, responseModalities: modalities ?? null, httpStatus: r.status, contentType: r.headers.get("content-type"), ms: Date.now() - started, bytes: text.length,
     keyTree: json ? keyTree(json) : `<non-JSON body, len ${text.length}>`,
     extractor: found ? { kind: found.kind, path: found.path, mimeType: found.mimeType, ...(found.kind === "inline" ? { audioBytes: found.bytes.length } : {}) } : null,
   }, null, 2));
