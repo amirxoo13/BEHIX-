@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { GESTURE_LABELS, HOLD_LABELS, MOVE_LABELS } from "@/studio/stick/edit-options";
 import { PLACES, PLACE_IDS, type PlaceId } from "@/studio/stick/places";
 import { FACES, type Expression } from "@/studio/stick/face";
-import { anchors, setEdit, type compileProject, type StoryEdit, type StoryProject } from "@/studio/stick/project";
-import { parseStory, type Shot } from "@/studio/stick/story-parse";
+import { anchors, projectStory, setEdit, type compileProject, type StoryEdit, type StoryProject } from "@/studio/stick/project";
+import type { Shot } from "@/studio/stick/story-parse";
 import { fa } from "@/studio/format";
 
 const FACE_LABELS: Record<Expression, string> = {
@@ -202,7 +202,7 @@ function UnresolvedEdits({ unresolved, beatId, who, commit }: { project: StoryPr
             <p>ویرایش قبلی به متن تازه وصل نشد{text ? `: ${text}` : "."}</p>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn btn-ghost" onClick={() => commit((p) => {
-                const a = anchors(parseStory(p.text)).find((x) => x.beat.id === beatId);
+                const a = anchors(projectStory(p)).find((x) => x.beat.id === beatId);
                 return a ? { ...p, edits: p.edits.map((e) => (e.id === edit.id ? { ...e, beatId, anchor: a.anchor, unresolved: false, actor: e.actor ? who : undefined } : e)) } : p;
               })}>اتصال به همین بخش</button>
               <button type="button" className="btn btn-ghost" onClick={() => commit((p) => ({ ...p, edits: p.edits.filter((e) => e.id !== edit.id) }))}>حذف این ویرایش</button>

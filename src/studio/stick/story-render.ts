@@ -1,4 +1,7 @@
-import { frameFor, type Format } from "./layout.ts";
+import { frameFor, stageFor, type Format } from "./layout.ts";
+import { drawSet } from "../world/draw-set.ts";
+import { layerMatrix, shotCameraAt, type CamState, type ShotCamera } from "../world/camera.ts";
+import { resolveSet } from "../world/procedural-sets.ts";
 import type { Ctx, RenderCanvas } from "./figure-base.ts";
 /**
  * کشیدن یک لحظه از فیلم داستانی: مکان، شخصیت‌ها، حباب فکر، دوربین و زیرنویس.
@@ -11,10 +14,12 @@ import { drawPaper } from "./paper.ts";
 import { NIGHT_FILL, PAPER, PLACES, nightPaper, type Env, type PlaceId } from "./places.ts";
 import { POSES } from "./poses.ts";
 import { thoughtBubble } from "./props.ts";
+import type { CharacterRef } from "../v2/character-ref.ts";
+import { drawRigCharacter } from "../v2/story-rig.ts";
 
 export const FRAME = { w: 1080, h: 1920, floor: 1340, captionY: 1560, scale: 2.4 };
 
-export type CastMember = { id: string; name: string; look: Look };
+export type CastMember = { id: string; name: string; look: Look; character?: CharacterRef };
 
 export type CameraKey = { t: number; zoom: number; cx: number; cy: number };
 
@@ -35,6 +40,10 @@ export type SceneTimeline = {
   thoughts: Thought[];
   /** چه کسی در هر بازه حرف می‌زند (برای نگاه شنونده‌ها). */
   speakers: { from: number; to: number; cast: string }[];
+  /** Optional layered set id (world/procedural-sets registry); default: the procedural set of `place`. */
+  set?: string;
+  /** Optional planned camera (world/camera.ts); default: the legacy `cameras` keys. */
+  camera?: ShotCamera;
 };
 
 export type Timeline = { scenes: SceneTimeline[]; cast: CastMember[]; duration: number };
@@ -80,7 +89,8 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
   const frame = frameFor(opts.format);
   const { w, h, floor, scale } = frame;
   if (!tl.scenes.length) { ctx.clearRect(0, 0, w, h); return; }
-  const seatTop = SEAT_TOP * h / FRAME.h;
+  const stage = stageFor(opts.format);
+  const seatTop = stage.oy + SEAT_TOP * stage.k;
   const scene = sceneAt(tl, t);
   const lt = t - scene.start;
   const place = PLACES[scene.place];
@@ -91,17 +101,31 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
   drawPaper(ctx, paper);
   if (scene.night) nightPaper(ctx, w, h);
 
-  const rawCam = cameraAt(scene.cameras, lt);
-  const cam = { ...rawCam, cx: rawCam.cx * w / FRAME.w, cy: rawCam.cy * h / FRAME.h };
   // لرزش خیلی ریز دوربین دستی برای زنده بودن
   const sway = Math.sin(lt * 0.9) * 2;
-  ctx.translate(cam.cx + sway, cam.cy);
-  ctx.scale(cam.zoom, cam.zoom);
-  ctx.translate(-cam.cx, -cam.cy);
+  let stageCam: CamState;
+  if (scene.camera) {
+    // planned camera: the parallax-1 layer matrix (stage space) mapped to frame pixels
+    stageCam = shotCameraAt(scene.camera, lt);
+    stageCam = { ...stageCam, sx: (stageCam.sx ?? 0) + sway / stage.k };
+    const m = layerMatrix(stageCam, 1);
+    ctx.translate(stage.ox, stage.oy);
+    ctx.scale(stage.k, stage.k);
+    ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+    ctx.scale(1 / stage.k, 1 / stage.k);
+    ctx.translate(-stage.ox, -stage.oy);
+  } else {
+    const rawCam = cameraAt(scene.cameras, lt);
+    const cam = { ...rawCam, cx: stage.ox + rawCam.cx * stage.k, cy: stage.oy + rawCam.cy * stage.k };
+    stageCam = { cx: rawCam.cx, cy: rawCam.cy, zoom: rawCam.zoom, dolly: 0, truck: 0, roll: 0, focus: 1, sx: sway / stage.k };
+    ctx.translate(cam.cx + sway, cam.cy);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.translate(-cam.cx, -cam.cy);
+  }
+  const set = resolveSet(scene.set, scene.place);
+  const setOpts = { stage, w, h, env, cam: stageCam };
 
-  ctx.save(); ctx.scale(w / FRAME.w, h / FRAME.h);
-  place.back(ctx, env);
-  ctx.restore();
+  drawSet(ctx, set, "back", setOpts);
 
   const speaker = scene.speakers.find((s) => lt >= s.from && lt <= s.to);
   const frames = scene.actors.map((a) => {
@@ -118,19 +142,18 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
       const sitting = f.state.pose.thigh < 0.7;
       if (sitting !== sittingPass) continue;
       const sc = scale * kindScale(member.look.kind);
-      const px = w * (opts.positions?.[a.cast] ?? f.x);
+      const px = stage.ox + FRAME.w * stage.k * (opts.positions?.[a.cast] ?? f.x);
       // نشسته: لگن روی نشیمن (پای بچه آویزان می‌ماند)؛ ایستاده: کف پا روی زمین
       const py = hipHeight(f.state.pose,sc,floor,seatTop,place.seats.length>0);
-      drawFigure(ctx, member.look, f.state, px, py, sc);
+      if (!drawRigCharacter(ctx, member, a.track, f, { t: lt, x: px, floorY: floor, scale: sc, width: w })) drawFigure(ctx, member.look, f.state, px, py, sc);
       const j = joints(f.state.pose);
       heads.set(a.cast, { x: px + j.headC.x * sc, y: py + (j.headC.y - BODY.headR) * sc });
     }
   };
   draw(true);
-  ctx.save(); ctx.scale(w / FRAME.w, h / FRAME.h);
-  place.front?.(ctx, env);
-  ctx.restore();
+  drawSet(ctx, set, "front", setOpts);
   draw(false);
+  drawSet(ctx, set, "overlay", setOpts);
 
   for (const th of scene.thoughts) {
     if (lt < th.from || lt > th.to + 0.3) continue;

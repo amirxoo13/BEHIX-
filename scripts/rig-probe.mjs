@@ -4,10 +4,11 @@
  *   ۱) Gemini Image یک شخصیت حرفه‌ای در ژست A روی پس‌زمینهٔ یکدست می‌سازد.
  *   ۲) Gemini مختصات پیکسلیِ مفاصل همان تصویر را برمی‌گرداند.
  *   ۳) اسکلت روی تصویر کشیده می‌شود تا دقت را با چشم ببینیم.
- * اگر این کار کند، موتور خودِ BEHIX می‌تواند هنرِ Gemini را عروسک‌گردانی کند (بدون Veo).
+ * اگر این کار کند، موتور خودِ BEHIX می‌تواند هنرِ Gemini را عروسک‌گردانی کند (بدون ویدیوی هوش مصنوعی).
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import { generateImage, STYLE } from "../src/lib/studio-media.server.ts";
+import { generateImage } from "../src/lib/studio-media.server.ts";
+import { refPosePrompt } from "../src/lib/puppet-build.server.ts";
 import { gcpAccessToken, gcpProject } from "../src/lib/gcp-auth.server.ts";
 
 const out = process.env.PROBE_OUT || "verify-out";
@@ -17,11 +18,7 @@ const who = process.env.RIG_WHO ||
   "an Iranian man in his early thirties: tall and lean, short dark curly hair, light stubble, olive skin, dark green overshirt over a cream t-shirt, charcoal trousers, white sneakers";
 
 console.log("[1/3] ساخت تصویر ژست A …");
-const img = await generateImage(
-  `Full-body character turnaround reference, THREE-QUARTER front view, standing in a relaxed A-pose: legs straight and slightly apart, both arms straight and held away from the body at about 45 degrees, palms facing forward, fingers relaxed and separated. Nothing overlaps the body. Character: ${who}. The entire figure is fully visible head to toe with generous empty margin. Flat uniform pure white background (#FFFFFF), no floor, no shadow on the background, no props. ${STYLE}`,
-  [],
-  "3:4",
-);
+const img = await generateImage(refPosePrompt(who), [], "3:4");
 const file = `${out}/rig-apose.png`;
 await writeFile(file, Buffer.from(img.data, "base64"));
 console.log("     →", file);

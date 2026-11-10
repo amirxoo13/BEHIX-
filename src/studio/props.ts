@@ -285,7 +285,7 @@ export const PROPS: PropDef[] = [
   { id: "cypress", label: "سرو", aliases: ["سرو", "درخت سرو"], mount: "floor", layer: "back", big: true, draw: (c) => cypress(c, 0, 0, 2.2) },
   { id: "bench", label: "نیمکت", aliases: ["نیمکت"], mount: "floor", layer: "back", big: false, draw: bench },
   { id: "streetlight", label: "تیر چراغ برق", aliases: ["تیر چراغ برق", "تیر برق", "چراغ برق"], mount: "floor", layer: "back", big: true, draw: streetlight },
-  { id: "trash", label: "سطل زباله", aliases: ["سطل زباله", "سطل آشغال", "سطل"], mount: "floor", layer: "back", big: false, draw: trash },
+  { id: "trash", label: "سطل زباله", aliases: ["سطل زباله", "سطل آشغال", "سطل اشغال", "زباله‌دان", "سطل‌زباله"], mount: "floor", layer: "back", big: false, draw: trash },
   { id: "peykan", label: "پیکان", aliases: ["پیکان"], mount: "floor", layer: "back", big: true, draw: carKind("peykan") },
   { id: "pride", label: "پراید", aliases: ["پراید"], mount: "floor", layer: "back", big: true, draw: carKind("pride") },
   { id: "samand", label: "سمند", aliases: ["سمند"], mount: "floor", layer: "back", big: true, draw: carKind("samand") },
@@ -305,32 +305,76 @@ export function propDef(id: PropId): PropDef {
 /** بلندی سطح میز (برای اشیائی که روی میز گذاشته می‌شوند). */
 const TABLE_TOP = 72;
 
+/** Spot lists per kind. The first entries are the original slots (unchanged); the tail extends them
+ * deterministically so a 5th/6th item of one kind no longer lands on top of the 1st. */
+const BIG_SPOTS = [0.08, 0.93, 0.18, 0.83, 0.28, 0.73];
+const SMALL_SPOTS = [0.5, 0.06, 0.94, 0.16, 0.86, 0.3, 0.7];
+const ON_TABLE = [0.47, 0.55, 0.41, 0.61];
+/** Table top span used when more items than ON_TABLE share the table (evenly spread, no overlap). */
+const TABLE_SPAN = [0.39, 0.63] as const;
+const TABLE_X = 0.51;
+
+const spread = (n: number, [a, b]: readonly [number, number]) =>
+  Array.from({ length: n }, (_, i) => +(a + ((b - a) * i) / Math.max(1, n - 1)).toFixed(4));
+
 /**
  * جای اشیائی که از سناریو آمده‌اند: اشیاء بزرگ کنار قاب، بقیه بین بازیگران؛
  * اشیاء رومیزی روی یک میز وسط قاب (اگر میزی نبود، اضافه می‌شود).
+ * Deterministic: the same ids always give the same layout, and no two items of a kind share a slot.
  */
 export function placeProps(ids: PropId[]): PropPlacement[] {
   const unique = [...new Set(ids)];
   const needsTable = unique.some((id) => propDef(id).mount === "table");
   if (needsTable && !unique.includes("table")) unique.unshift("table");
+  const kept = unique.slice(0, MAX_PROPS);
+  const tableItems = kept.filter((id) => id !== "table" && propDef(id).mount === "table").length;
+  const onTable = tableItems > ON_TABLE.length ? spread(tableItems, TABLE_SPAN) : ON_TABLE;
   const out: PropPlacement[] = [];
-  const bigSpots = [0.08, 0.93, 0.18, 0.83];
-  const smallSpots = [0.5, 0.06, 0.94, 0.16, 0.86];
-  const onTable = [0.47, 0.55, 0.41, 0.61];
   let big = 0;
   let small = 0;
   let top = 0;
-  for (const id of unique) {
-    if (out.length >= MAX_PROPS) break;
+  for (const id of kept) {
     const d = propDef(id);
     let x: number;
-    if (id === "table") x = 0.51;
-    else if (d.mount === "table") x = onTable[top++ % onTable.length];
-    else if (d.big) x = bigSpots[big++ % bigSpots.length];
-    else x = smallSpots[small++ % smallSpots.length];
+    if (id === "table") x = TABLE_X;
+    else if (d.mount === "table") x = onTable[top++];
+    else if (d.big) x = BIG_SPOTS[big++ % BIG_SPOTS.length];
+    else x = SMALL_SPOTS[small++ % SMALL_SPOTS.length];
     out.push({ id, x, layer: d.layer });
   }
   return out;
+}
+
+/** Minimum distance (fraction of frame width) between a newly added prop and existing ones. */
+export const PROP_GAP = 0.05;
+
+/**
+ * Placement for one prop added by hand to an existing list: the first slot of its kind that is
+ * free (≥ PROP_GAP from every existing prop), else the middle of the widest free gap. Adding a second
+ * copy of an id therefore never lands on the first copy.
+ */
+export function nextPropPlacement(existing: PropPlacement[], id: PropId): PropPlacement {
+  const d = propDef(id);
+  const xs = existing.map((p) => p.x);
+  const free = (x: number) => xs.every((o) => Math.abs(o - x) >= PROP_GAP);
+  const candidates =
+    id === "table" ? [TABLE_X, ...SMALL_SPOTS] : d.mount === "table" ? [...ON_TABLE, ...spread(5, TABLE_SPAN)] : d.big ? BIG_SPOTS : SMALL_SPOTS;
+  const hit = candidates.find(free);
+  if (hit !== undefined) return { id, x: hit, layer: d.layer };
+  const edges = [0.04, ...xs.filter((x) => x > 0.04 && x < 0.96).sort((a, b) => a - b), 0.96];
+  let best = 0.5;
+  let gap = -1;
+  for (let i = 1; i < edges.length; i++)
+    if (edges[i] - edges[i - 1] > gap) {
+      gap = edges[i] - edges[i - 1];
+      best = +((edges[i] + edges[i - 1]) / 2).toFixed(4);
+    }
+  return { id, x: best, layer: d.layer };
+}
+
+/** Changing a prop's kind also takes that kind's default layer (a cat stays in front, a tree behind). */
+export function withPropId(p: PropPlacement, id: PropId): PropPlacement {
+  return { ...p, id, layer: propDef(id).layer };
 }
 
 /**

@@ -1,0 +1,68 @@
+{
+  "project": "anime-512918",
+  "at": "2026-11-10T10:42:12.601Z",
+  "steps": [
+    {
+      "step": "char-sheet",
+      "model": "gemini-3-pro-image",
+      "location": "global",
+      "ok": true,
+      "status": 200,
+      "ms": 25238,
+      "file": "verify-out/char-sheet.png",
+      "mimeType": "image/png",
+      "usage": {
+        "promptTokenCount": 156,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 1592,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 156
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ],
+        "thoughtsTokenCount": 316
+      }
+    },
+    {
+      "step": "keyframe",
+      "model": "gemini-3-pro-image",
+      "location": "global",
+      "ok": true,
+      "status": 200,
+      "ms": 23376,
+      "file": "verify-out/keyframe.png",
+      "mimeType": "image/png",
+      "usage": {
+        "promptTokenCount": 720,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 2163,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 160
+          },
+          {
+            "modality": "IMAGE",
+            "tokenCount": 560
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ],
+        "thoughtsTokenCount": 323
+      }
+    }
+  ]
+}

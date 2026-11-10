@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { findAll, findFirst, BACKGROUNDS, EMOTION_ENTRIES, SFX_ENTRIES, normalizeFa } from "./catalog.ts";
 import { isHeader, sceneTraits } from "./script-plan.ts";
 import { parseProject } from "./persist.ts";
-import { durationFor, layoutPlan, planFromDictionary } from "./script-plan.ts";
+import { DICTIONARY_LIMITS, FILM_LIMITS, MAX_SHOTS, durationFor, layoutPlan, planFromDictionary } from "./script-plan.ts";
 
 const SCRIPT = `[داخلی. قهوه‌خانه — شب]
 پرویز وارد می‌شود، استکان در دست. پهلوان اژدر با تعجب نگاهش می‌کند.
@@ -234,5 +234,22 @@ describe("automatic director", () => {
     const { shots } = layoutPlan(planFromDictionary(SCRIPT));
     assert.equal(shots.length, 5);
     assert.ok(shots.every((s) => !s.actionLine.startsWith("واکنش")));
+  });
+});
+
+describe("film-plan mode limits", () => {
+  it("UT-AL-12 dictionary defaults are unchanged; film limits lift the shot cap and duration clamp", () => {
+    const long = { speaker: "parviz", dialogue: Array.from({ length: 60 }, () => "کلمه").join(" ") };
+    assert.equal(durationFor(long), 12);
+    assert.equal(durationFor(long, FILM_LIMITS), 26.7);
+    assert.equal(durationFor({ speaker: "parviz", dialogue: "بله" }), 2.5);
+    assert.equal(durationFor({ speaker: "parviz", dialogue: "بله" }, FILM_LIMITS), 1.9);
+    assert.equal(DICTIONARY_LIMITS.maxShots, MAX_SHOTS);
+    const many = Array.from({ length: 90 }, (_, i) => `پرویز: جملهٔ ${i}`).join("\n");
+    assert.equal(planFromDictionary(many).shots.length, MAX_SHOTS);
+    const film = planFromDictionary(many, FILM_LIMITS);
+    assert.equal(film.shots.length, 90);
+    assert.equal(layoutPlan(film, FILM_LIMITS).shots.length, 90);
+    assert.equal(layoutPlan(film).shots.length, MAX_SHOTS);
   });
 });

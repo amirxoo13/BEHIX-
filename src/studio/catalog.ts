@@ -9,7 +9,32 @@ import { ACTIONS, CAMERAS, EMOTIONS, SFXS, WORLD } from "./labels.ts";
 import { PROPS, type PropId } from "./props.ts";
 import type { Action, BgId, CameraId, Emotion, SfxId } from "./types.ts";
 
-export type Entry<T extends string> = { id: T; label: string; aliases: string[] };
+export type Entry<T extends string> = {
+  id: T;
+  label: string;
+  aliases: string[];
+  /** Negative context: a match is dropped when the (normalized) text right after the alias matches. */
+  unless?: RegExp;
+};
+
+/**
+ * «پارک» followed by a verb is "to park" (پارک کرد، پارک شده، پارک می‌کند), not the place.
+ * Tested on the normalized text after the alias (ZWNJ is a space after normalizeFa).
+ */
+export const PARK_VERB =
+  /^ (?:ن?(?:می )?(?:کرد|کرده|کردم|کردی|کردیم|کردید|کردند|کردن|کن|کنید|کنیم|کنم|کنه|کند|کنند|کنی)|شده|شد|شدن|شدند|شدیم|می شود|میشه|نشده|نشد)(?= |$)/;
+
+/**
+ * Bare vehicle words. In a heading («صحنه: ماشین») they mean the inside of a car; inside a sentence
+ * («تاکسی جلوی خانه پارک شده») they are just a prop, so sentence-level place detection ignores them
+ * and only accepts the contextual forms (داخل/توی/تو/سوار ماشین …).
+ */
+export const BARE_VEHICLE_ALIASES = ["ماشین", "خودرو", "تاکسی", "اتومبیل"];
+/** Entries for place detection inside a sentence: bare vehicle words removed. */
+export function sentencePlaceEntries<T extends string>(entries: Entry<T>[]): Entry<T>[] {
+  const bare = new Set(BARE_VEHICLE_ALIASES.map(normalizeFa));
+  return entries.map((e) => ({ ...e, aliases: e.aliases.filter((a) => !bare.has(normalizeFa(a.replace(/\*$/, "")))) }));
+}
 
 /** یکسان‌سازی متن فارسی برای مقایسه: ی/ک عربی، نیم‌فاصله، اعراب و فاصله‌های اضافه. */
 export function normalizeFa(text: string): string {
@@ -47,7 +72,7 @@ const BG_ALIASES: Record<BgId, string[]> = {
   toilet: ["دستشویی", "توالت", "سرویس بهداشتی", "مستراح"],
   parking: ["پارکینگ"],
   yard: ["حیاط", "حوض"],
-  car: ["داخل ماشین", "توی ماشین", "تو ماشین", "داخل خودرو", "داخل تاکسی", "توی تاکسی", "ماشین", "خودرو", "تاکسی"],
+  car: ["داخل ماشین", "توی ماشین", "تو ماشین", "داخل خودرو", "داخل تاکسی", "توی تاکسی", "سوار ماشین", "سوار تاکسی", "سوار خودرو", "ماشین", "خودرو", "تاکسی"],
   street: ["خیابان", "خیابون", "کوچه", "پیاده‌رو"],
   park: ["پارک", "بوستان", "باغ"],
   cafe: ["قهوه‌خانه", "قهوه خونه", "قهوه‌خونه", "قهوه‌خانهٔ سنتی", "چایخانه", "چایخونه"],
@@ -63,7 +88,10 @@ export const BACKGROUNDS: Entry<BgId>[] = (Object.keys(WORLD) as BgId[]).map((id
   id,
   label: WORLD[id].place,
   aliases: [...new Set([WORLD[id].place, ...BG_ALIASES[id]])],
+  ...(id === "park" ? { unless: PARK_VERB } : {}),
 }));
+/** Backgrounds for description sentences (no bare vehicle words; see BARE_VEHICLE_ALIASES). */
+export const SENTENCE_BACKGROUNDS: Entry<BgId>[] = sentencePlaceEntries(BACKGROUNDS);
 
 const EMOTION_ALIASES: Record<Emotion, string[]> = {
   neutral: ["خنثی", "آرام", "معمولی"],
@@ -156,7 +184,7 @@ export function findAll<T extends string>(text: string, entries: Entry<T>[]): Ma
         if (at === -1) break;
         from = at + 1;
         const rest = hay.slice(at + 1 + needle.length);
-        if (stem || rest.startsWith(" ") || SUFFIX.test(rest)) {
+        if ((stem || rest.startsWith(" ") || SUFFIX.test(rest)) && !e.unless?.test(rest)) {
           raw.push({ id: e.id, alias: needle, at });
         }
       }

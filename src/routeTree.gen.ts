@@ -20,8 +20,11 @@ import { Route as SoundRouteImport } from './routes/sound'
 import { Route as StageRouteImport } from './routes/stage'
 import { Route as StoryRouteImport } from './routes/story'
 import { Route as WorldRouteImport } from './routes/world'
+import { Route as ApiMusicRouteImport } from './routes/api/music'
 import { Route as ApiStudioRouteImport } from './routes/api/studio'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
+import { Route as ApiVoiceRouteImport } from './routes/api/voice'
+import { Route as ApiVoiceDirectionRouteImport } from './routes/api/voice-direction'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -79,6 +82,11 @@ const WorldRoute = WorldRouteImport.update({
   path: '/world',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMusicRoute = ApiMusicRouteImport.update({
+  id: '/api/music',
+  path: '/api/music',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStudioRoute = ApiStudioRouteImport.update({
   id: '/api/studio',
   path: '/api/studio',
@@ -87,6 +95,16 @@ const ApiStudioRoute = ApiStudioRouteImport.update({
 const ApiTtsRoute = ApiTtsRouteImport.update({
   id: '/api/tts',
   path: '/api/tts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVoiceRoute = ApiVoiceRouteImport.update({
+  id: '/api/voice',
+  path: '/api/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVoiceDirectionRoute = ApiVoiceDirectionRouteImport.update({
+  id: '/api/voice-direction',
+  path: '/api/voice-direction',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -107,8 +125,11 @@ export interface FileRoutesByFullPath {
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
+  '/api/voice': typeof ApiVoiceRoute
+  '/api/voice-direction': typeof ApiVoiceDirectionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -123,8 +144,11 @@ export interface FileRoutesByTo {
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
+  '/api/voice': typeof ApiVoiceRoute
+  '/api/voice-direction': typeof ApiVoiceDirectionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -140,8 +164,11 @@ export interface FileRoutesById {
   '/stage': typeof StageRoute
   '/story': typeof StoryRoute
   '/world': typeof WorldRoute
+  '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
+  '/api/voice': typeof ApiVoiceRoute
+  '/api/voice-direction': typeof ApiVoiceDirectionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -158,8 +185,11 @@ export interface FileRouteTypes {
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/music'
     | '/api/studio'
     | '/api/tts'
+    | '/api/voice'
+    | '/api/voice-direction'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -174,8 +204,11 @@ export interface FileRouteTypes {
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/music'
     | '/api/studio'
     | '/api/tts'
+    | '/api/voice'
+    | '/api/voice-direction'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -190,8 +223,11 @@ export interface FileRouteTypes {
     | '/stage'
     | '/story'
     | '/world'
+    | '/api/music'
     | '/api/studio'
     | '/api/tts'
+    | '/api/voice'
+    | '/api/voice-direction'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -207,8 +243,11 @@ export interface RootRouteChildren {
   StageRoute: typeof StageRoute
   StoryRoute: typeof StoryRoute
   WorldRoute: typeof WorldRoute
+  ApiMusicRoute: typeof ApiMusicRoute
   ApiStudioRoute: typeof ApiStudioRoute
   ApiTtsRoute: typeof ApiTtsRoute
+  ApiVoiceRoute: typeof ApiVoiceRoute
+  ApiVoiceDirectionRoute: typeof ApiVoiceDirectionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -291,6 +330,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorldRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/music': {
+      id: '/api/music'
+      path: '/api/music'
+      fullPath: '/api/music'
+      preLoaderRoute: typeof ApiMusicRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/studio': {
       id: '/api/studio'
       path: '/api/studio'
@@ -303,6 +349,20 @@ declare module '@tanstack/react-router' {
       path: '/api/tts'
       fullPath: '/api/tts'
       preLoaderRoute: typeof ApiTtsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/voice': {
+      id: '/api/voice'
+      path: '/api/voice'
+      fullPath: '/api/voice'
+      preLoaderRoute: typeof ApiVoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/voice-direction': {
+      id: '/api/voice-direction'
+      path: '/api/voice-direction'
+      fullPath: '/api/voice-direction'
+      preLoaderRoute: typeof ApiVoiceDirectionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -327,8 +387,11 @@ const rootRouteChildren: RootRouteChildren = {
   StageRoute: StageRoute,
   StoryRoute: StoryRoute,
   WorldRoute: WorldRoute,
+  ApiMusicRoute: ApiMusicRoute,
   ApiStudioRoute: ApiStudioRoute,
   ApiTtsRoute: ApiTtsRoute,
+  ApiVoiceRoute: ApiVoiceRoute,
+  ApiVoiceDirectionRoute: ApiVoiceDirectionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

@@ -29,14 +29,53 @@ export const PART_NAMES = [
 ] as const;
 export type PartName = (typeof PART_NAMES)[number];
 
-/** یک قطعه: استخوانش در تصویر مرجع و شعاع برش در دو سر. */
-export type Part = { name: PartName; a: Vec; b: Vec; ra: number; rb: number };
+/**
+ * یک قطعهٔ بریده‌شده: استخوانش در تصویر مرجع، جای تصویرش در اطلس و جای اصلی‌اش در تصویر مرجع.
+ * برش با «نزدیک‌ترین استخوان» انجام می‌شود، پس هیچ قطعه‌ای تکهٔ اندام دیگر را با خود نمی‌برد.
+ */
+export type Part = {
+  name: PartName;
+  a: Vec;
+  b: Vec;
+  /** مستطیل این قطعه در تصویر اطلس. */
+  src: { x: number; y: number; w: number; h: number };
+  /** گوشهٔ بالا-چپ همین برش در مختصات تصویر مرجع. */
+  off: Vec;
+};
+
+/** تعریف استخوان هر قطعه در تصویر مرجع؛ پایهٔ هم برش و هم حرکت. */
+export type Bone = {
+  name: PartName;
+  /** استخوان حرکت: محور چرخش قطعه. */
+  a: Vec;
+  b: Vec;
+  /**
+   * استخوان برش (اگر با استخوان حرکت فرق کند): فقط برای تصمیم «این پیکسل مال کدام قطعه است».
+   * سرشانه و دور لگن عمداً از تنه حساب می‌شوند، چون در بدن واقعی هم با چرخش بازو و پا جابه‌جا نمی‌شوند.
+   */
+  sa: Vec;
+  sb: Vec;
+};
+
+/**
+ * «فاصله از تنه»: تنه ۰، سر و بازو و ران ۱، ساعد و ساق ۲، دست و پا ۳.
+ * نوارِ اشتراکیِ دور مفصل فقط از قطعهٔ دورتر به قطعهٔ نزدیک‌تر داده می‌شود، چون قطعهٔ نزدیک‌تر کمتر
+ * می‌چرخد و زیرِ قطعهٔ دورتر کشیده می‌شود؛ پس همان پارچهٔ اضافه شکاف مفصل را می‌پوشاند و بیرون نمی‌زند.
+ */
+export const PART_DEPTH: Record<PartName, number> = {
+  torso: 0, head: 1,
+  armFarUpper: 1, armFarFore: 2, handFar: 3,
+  armNearUpper: 1, armNearFore: 2, handNear: 3,
+  legFarThigh: 1, legFarShin: 2, footFar: 3,
+  legNearThigh: 1, legNearShin: 2, footNear: 3,
+};
 
 export type PuppetRig = {
   id: string;
   name: string;
-  /** کلید تصویر شفاف در Cloud Storage. */
+  /** کلید تصویر اطلسِ قطعه‌ها در Cloud Storage. */
   image: string;
+  /** اندازهٔ تصویر مرجع (مختصات مفاصل در همین فضاست). */
   w: number;
   h: number;
   joints: Joints;
@@ -49,6 +88,8 @@ export type PuppetRig = {
   ground: number;
   /** کدام سمت بدن به دوربین نزدیک‌تر است (در تصویر مرجع). */
   near: "L" | "R";
+  /** نتیجهٔ بررسی کیفیت بُرش هنگام ساخت (فقط گزارش؛ اختیاری). */
+  qa?: { passed: boolean; checks: Record<string, number | boolean> };
 };
 
 const V = (x: number, y: number): Vec => ({ x, y });
@@ -59,96 +100,55 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 /* ---------- ساخت عروسک از مفاصل اندازه‌گیری‌شده ---------- */
 
-/** نیم‌پهنای واقعی اندام را از کانال شفافیت تصویر می‌خواند (اگر ماسک داده شود). */
-export type AlphaMask = { w: number; h: number; at: (x: number, y: number) => number };
-
-function measureRadius(mask: AlphaMask | null, a: Vec, b: Vec, fallback: number, max: number): number {
-  if (!mask) return fallback;
-  const L = len(a, b);
-  if (L < 4) return fallback;
-  const nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
-  let best = 0;
-  // در هر نقطه نیم‌پهنای سمتِ باریک‌تر گرفته می‌شود تا اسکن وارد اندام کناری (ران دیگر یا تنه) نشود.
-  for (const t of [0.3, 0.45, 0.6, 0.75]) {
-    const px = a.x + (b.x - a.x) * t, py = a.y + (b.y - a.y) * t;
-    const side = [1, -1].map((s) => {
-      let r = 2;
-      while (r < max && mask.at(Math.round(px + nx * s * r), Math.round(py + ny * s * r)) > 24) r += 1;
-      return r;
-    });
-    best = Math.max(best, Math.min(side[0], side[1]));
-  }
-  return clamp(best * 1.3 + 2, fallback * 0.5, max);
-}
-
-/**
- * عروسک را از مفاصل (پیکسل تصویر) می‌سازد: اندازه‌های بدن، خط زمین و قطعه‌ها با شعاع برش.
- * mask اختیاری است؛ با آن شعاع برش از روی خود تصویر اندازه‌گیری می‌شود (آستین گشاد یا دامن هم درست بریده می‌شود).
- */
-export function buildPuppet(id: string, name: string, image: string, w: number, h: number, joints: Joints, mask: AlphaMask | null = null): PuppetRig {
+/** استخوان‌های عروسک در تصویر مرجع، به ترتیبِ کشیده‌شدن. */
+export function bonesOf(joints: Joints): { bones: Bone[]; near: "L" | "R" } {
   const j = joints;
   const near: "L" | "R" = j.handL.x > j.handR.x ? "L" : "R";
   const far = near === "L" ? "R" : "L";
-  const sh = (s: "L" | "R") => j[`shoulder${s}` as JointName];
-  const el = (s: "L" | "R") => j[`elbow${s}` as JointName];
-  const wr = (s: "L" | "R") => j[`wrist${s}` as JointName];
-  const hd = (s: "L" | "R") => j[`hand${s}` as JointName];
-  const hp = (s: "L" | "R") => j[`hip${s}` as JointName];
-  const kn = (s: "L" | "R") => j[`knee${s}` as JointName];
-  const an = (s: "L" | "R") => j[`ankle${s}` as JointName];
-  const to = (s: "L" | "R") => j[`toe${s}` as JointName];
-
-  const ground = Math.max(an("L").y, an("R").y, to("L").y, to("R").y) + 2;
-  const legPx = (len(hp("L"), kn("L")) + len(kn("L"), an("L")) + len(hp("R"), kn("R")) + len(kn("R"), an("R"))) / 2;
-  const armPx = (len(sh("L"), el("L")) + len(el("L"), wr("L")) + len(sh("R"), el("R")) + len(el("R"), wr("R"))) / 2;
-  const torsoPx = len(j.pelvis, j.chest);
-  const headRPx = Math.max(10, (j.chin.y - j.headTop.y) / 2);
-  const ankPx = Math.max(4, ground - (an("L").y + an("R").y) / 2);
-  const neckPx = Math.max(4, len(j.neck, j.chest) * 0.6);
-  const heightPx = ground - j.headTop.y;
-
-  // تبدیل «واحد بدن» کتابخانهٔ ژست به پیکسل این تصویر.
-  const u = heightPx / heightOf(REF_BODY);
-  const body: BodySpec = {
-    label: name,
-    scale: 1,
-    headR: headRPx / u,
-    shoulder: Math.abs(sh("L").x - sh("R").x) / 2 / u,
-    waist: (Math.abs(sh("L").x - sh("R").x) * 0.38 + Math.abs(hp("L").x - hp("R").x) * 0.5) / 2 / u,
-    hip: Math.abs(hp("L").x - hp("R").x) / 2 / u,
-    torso: torsoPx / u,
-    leg: legPx / u,
-    arm: armPx / u,
-    limb: 1,
-    stoop: 0,
-    ankle: ankPx / u,
-    neck: neckPx / u,
-  };
-
-  const R = (a: Vec, b: Vec, frac: number, maxFrac: number) => measureRadius(mask, a, b, legPx * frac, legPx * maxFrac);
-  const P = (name: PartName, a: Vec, b: Vec, ra: number, rb: number): Part => ({ name, a, b, ra, rb });
-  const neckTop = mid(j.neck, j.chin);
-  const headA = V(j.headCenter.x, j.headTop.y - headRPx * 0.25);
-  const parts: Part[] = [];
+  const J = (p: string, s: "L" | "R") => j[`${p}${s}` as JointName];
+  const bones: Bone[] = [];
+  const B = (name: PartName, a: Vec, b: Vec, trim = 0): Bone => ({
+    name, a, b,
+    sa: trim ? V(a.x + (b.x - a.x) * trim, a.y + (b.y - a.y) * trim) : a,
+    sb: b,
+  });
   for (const [side, tag] of [[far, "Far"], [near, "Near"]] as const) {
-    const sU = R(sh(side), el(side), 0.062, 0.115), sF = R(el(side), wr(side), 0.05, 0.095);
-    const tU = R(hp(side), kn(side), 0.085, 0.145), tS = R(kn(side), an(side), 0.065, 0.12);
-    // شانه کمی بیرون‌تر از مفصل بریده می‌شود تا گردن و فک وارد قطعهٔ بازو نشوند؛ شکافِ شانه زیر قطعهٔ تنه می‌ماند.
-    const shA = V(sh(side).x + (el(side).x - sh(side).x) * 0.1, sh(side).y + (el(side).y - sh(side).y) * 0.1);
-    parts.push(P(`arm${tag}Upper` as PartName, shA, el(side), Math.min(sU, len(sh(side), j.neck) * 0.56), sU));
-    parts.push(P(`arm${tag}Fore` as PartName, el(side), wr(side), sU, sF));
-    parts.push(P(`hand${tag}` as PartName, wr(side), hd(side), sF * 1.1, sF * 1.45));
-    // ران کمی پایین‌تر از مفصل لگن بریده می‌شود تا دامنِ کت وارد قطعهٔ پا نشود؛ خودِ لگن زیر قطعهٔ تنه می‌ماند.
-    const hpA = V(hp(side).x + (kn(side).x - hp(side).x) * 0.26, hp(side).y + (kn(side).y - hp(side).y) * 0.26);
-    parts.push(P(`leg${tag === "Far" ? "Far" : "Near"}Thigh` as PartName, hpA, kn(side), tU * 0.82, tU));
-    parts.push(P(`leg${tag === "Far" ? "Far" : "Near"}Shin` as PartName, kn(side), an(side), tU, tS));
-    parts.push(P(`foot${tag}` as PartName, an(side), to(side), tS * 1.15, tS * 1.05));
+    const wrist = J("wrist", side), hand = J("hand", side);
+    const ankle = J("ankle", side), toe = J("toe", side);
+    bones.push(B(`arm${tag}Upper` as PartName, J("shoulder", side), J("elbow", side), 0.12));
+    bones.push(B(`arm${tag}Fore` as PartName, J("elbow", side), wrist));
+    // انگشتان کمی فراتر از مرکز کف دست‌اند؛ استخوان دست را امتداد می‌دهیم تا آن‌ها هم در همین قطعه بیفتند.
+    bones.push(B(`hand${tag}` as PartName, wrist, V(wrist.x + (hand.x - wrist.x) * 1.8, wrist.y + (hand.y - wrist.y) * 1.8)));
+    bones.push(B(`leg${tag}Thigh` as PartName, J("hip", side), J("knee", side), 0.16));
+    bones.push(B(`leg${tag}Shin` as PartName, J("knee", side), ankle));
+    bones.push(B(`foot${tag}` as PartName, ankle, V(ankle.x + (toe.x - ankle.x) * 1.15, ankle.y + (toe.y - ankle.y) * 1.15)));
   }
-  parts.push(P("torso", mid(hp("L"), hp("R")), neckTop, Math.abs(hp("L").x - hp("R").x) * 0.78, Math.abs(sh("L").x - sh("R").x) * 0.72));
-  parts.push(P("head", headA, j.chin, headRPx * 1.15, headRPx * 1.05));
+  bones.push(B("torso", mid(j.hipL, j.hipR), j.neck));
+  // استخوان سر از بالا به چین است تا با همان جهتِ استخوانِ ژست بخواند (وگرنه سر وارونه می‌شود).
+  bones.push(B("head", V(j.headCenter.x, j.headTop.y), j.chin));
   const order = new Map(PART_NAMES.map((n, i) => [n, i]));
-  parts.sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
-  return { id, name, image, w, h, joints: j, parts, body, u, ground, near };
+  bones.sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
+  return { bones, near };
+}
+
+/** اندازه‌های بدن و خط زمین از روی مفاصل؛ قطعه‌ها را برش‌دهنده می‌دهد. */
+export function measureBody(name: string, joints: Joints): { body: BodySpec; u: number; ground: number } {
+  const j = joints;
+  const L = (p: string, s: "L" | "R") => j[`${p}${s}` as JointName];
+  const ground = Math.max(L("ankle", "L").y, L("ankle", "R").y, L("toe", "L").y, L("toe", "R").y) + 2;
+  const legPx = (len(L("hip", "L"), L("knee", "L")) + len(L("knee", "L"), L("ankle", "L")) + len(L("hip", "R"), L("knee", "R")) + len(L("knee", "R"), L("ankle", "R"))) / 2;
+  const armPx = (len(L("shoulder", "L"), L("elbow", "L")) + len(L("elbow", "L"), L("wrist", "L")) + len(L("shoulder", "R"), L("elbow", "R")) + len(L("elbow", "R"), L("wrist", "R"))) / 2;
+  const headRPx = Math.max(10, (j.chin.y - j.headTop.y) / 2);
+  const ankPx = Math.max(4, ground - (L("ankle", "L").y + L("ankle", "R").y) / 2);
+  const neckPx = Math.max(4, len(j.neck, j.chest) * 0.6);
+  const u = (ground - j.headTop.y) / heightOf(REF_BODY);
+  const shW = Math.abs(j.shoulderL.x - j.shoulderR.x), hipW = Math.abs(j.hipL.x - j.hipR.x);
+  const body: BodySpec = {
+    label: name, scale: 1, headR: headRPx / u, shoulder: shW / 2 / u, waist: (shW * 0.38 + hipW * 0.5) / 2 / u,
+    hip: hipW / 2 / u, torso: len(j.pelvis, j.chest) / u, leg: legPx / u, arm: armPx / u, limb: 1, stoop: 0,
+    ankle: ankPx / u, neck: neckPx / u,
+  };
+  return { body, u, ground };
 }
 
 /* ---------- حل اسکلت عروسک ---------- */
@@ -214,14 +214,6 @@ function posedBone(sk: Skeleton, rig: PuppetRig, name: PartName): [Vec, Vec] | n
   return null;
 }
 
-function capsulePath(ctx: C, a: Vec, b: Vec, ra: number, rb: number) {
-  const ang = Math.atan2(b.y - a.y, b.x - a.x);
-  ctx.beginPath();
-  ctx.arc(a.x, a.y, ra, ang + Math.PI / 2, ang + (3 * Math.PI) / 2);
-  ctx.arc(b.x, b.y, rb, ang - Math.PI / 2, ang + Math.PI / 2);
-  ctx.closePath();
-}
-
 export type DrawOpts = {
   /** کف پا روی بوم. */
   x: number;
@@ -233,6 +225,8 @@ export type DrawOpts = {
   shadow?: boolean;
   /** تصویرهای رویی (دهان و چشم) که روی سر کشیده می‌شوند. */
   overlays?: { img: Img; sw: number; sh: number; at: Vec; w: number; h: number }[];
+  /** کشیدن آزاد روی سر (بعد از overlays)، در مختصات پیکسلی تصویر مرجع. */
+  face?: (ctx: C) => void;
 };
 
 /**
@@ -267,12 +261,10 @@ export function drawPuppet(ctx: C, rig: PuppetRig, img: Img, pose: Pose, turn: n
     ctx.rotate(rot);
     ctx.scale(k, k);
     ctx.translate(-part.a.x, -part.a.y);
-    capsulePath(ctx, part.a, part.b, part.ra, part.rb);
-    ctx.clip();
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(img, part.src.x, part.src.y, part.src.w, part.src.h, part.off.x, part.off.y, part.src.w, part.src.h);
     ctx.restore();
   }
-  if (o.overlays?.length) {
+  if (o.overlays?.length || o.face) {
     const headBone = posedBone(sk, rig, "head");
     if (headBone) {
       const [A1, B1] = headBone;
@@ -282,7 +274,8 @@ export function drawPuppet(ctx: C, rig: PuppetRig, img: Img, pose: Pose, turn: n
       ctx.translate(A1.x, A1.y);
       ctx.rotate(rot);
       ctx.translate(-rig.joints.headCenter.x, -(rig.joints.headTop.y - 1));
-      for (const ov of o.overlays) ctx.drawImage(ov.img, 0, 0, ov.sw, ov.sh, ov.at.x - ov.w / 2, ov.at.y - ov.h / 2, ov.w, ov.h);
+      for (const ov of o.overlays ?? []) ctx.drawImage(ov.img, 0, 0, ov.sw, ov.sh, ov.at.x - ov.w / 2, ov.at.y - ov.h / 2, ov.w, ov.h);
+      o.face?.(ctx);
       ctx.restore();
     }
   }

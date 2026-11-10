@@ -463,7 +463,7 @@ export function directStory(plan: StoryPlan): Directed {
       const track: ActorTrack = { keys: st.keys, talk: st.talk, seed: seedOf(st.id) };
       actors.push({ cast: st.id, track });
     }
-    scenes.push({ start: clock, end: clock + end, place: scene.place, night: scene.night, actors, captions, cameras, thoughts, speakers });
+    scenes.push({ start: clock, end: clock + end, place: scene.place, night: scene.night, actors, captions, cameras, thoughts, speakers, ...(scene.set ? { set: scene.set } : {}), ...(scene.camera ? { camera: scene.camera } : {}) });
     clock += end;
   });
 

@@ -1,0 +1,896 @@
+{
+ "description": "A 3-5 minute multi-scene film plan produced by Gemini on Vertex AI from a Persian story and executed deterministically by the BEHIX engine. Times are seconds. All prose fields are Persian unless noted.",
+ "type": "OBJECT",
+ "properties": {
+  "meta": {
+   "type": "OBJECT",
+   "description": "Film-level settings.",
+   "properties": {
+    "title": {
+     "type": "STRING",
+     "description": "Persian title."
+    },
+    "language": {
+     "type": "STRING",
+     "description": "Spoken/caption language.",
+     "enum": [
+      "fa"
+     ]
+    },
+    "targetDurationSec": {
+     "type": "NUMBER",
+     "description": "Target runtime; 180-300 for the 3-5 minute goal.",
+     "minimum": 180,
+     "maximum": 300
+    },
+    "style": {
+     "type": "STRING",
+     "description": "Visual style preset (proposed; today one ink stick-figure style).",
+     "enum": [
+      "ink",
+      "flatCutout",
+      "puppetRig"
+     ]
+    },
+    "format": {
+     "type": "STRING",
+     "description": "Frame (layout.ts FORMATS).",
+     "enum": [
+      "portrait",
+      "square",
+      "landscape"
+     ]
+    },
+    "fps": {
+     "type": "STRING",
+     "enum": [
+      "30",
+      "60"
+     ],
+     "description": "Export fps (project.ts settings.fps). Vertex enums are strings only; the Vertex variant sends \"30\"/\"60\"."
+    },
+    "logline": {
+     "type": "STRING",
+     "description": "One-sentence Persian logline."
+    }
+   },
+   "required": [
+    "title",
+    "language",
+    "targetDurationSec",
+    "style",
+    "format"
+   ],
+   "propertyOrdering": [
+    "title",
+    "language",
+    "targetDurationSec",
+    "style",
+    "format",
+    "fps",
+    "logline"
+   ]
+  },
+  "characters": {
+   "type": "ARRAY",
+   "description": "Cast. Engine renders up to 5 on stage per scene (story-direct MAX_ON_STAGE) and stores up to 8 (project.ts).",
+   "items": {
+    "type": "OBJECT",
+    "description": "A cast member. id is referenced everywhere else.",
+    "properties": {
+     "id": {
+      "type": "STRING",
+      "description": "Stable ASCII id, e.g. 'ali'. Unique within the plan."
+     },
+     "name": {
+      "type": "STRING",
+      "description": "Display name in Persian, e.g. «علی»."
+     },
+     "kind": {
+      "type": "STRING",
+      "description": "Body type; maps to figure.ts Kind.",
+      "enum": [
+       "man",
+       "woman",
+       "boy",
+       "girl",
+       "oldMan",
+       "oldWoman",
+       "baby"
+      ]
+     },
+     "traits": {
+      "type": "ARRAY",
+      "description": "Short Persian/English acting traits (e.g. «کم‌حرف», 'restless hands'). Drive default idle and gesture choice.",
+      "items": {
+       "type": "STRING",
+       "description": "trait"
+      },
+      "minItems": 0,
+      "maxItems": 6
+     },
+     "look": {
+      "type": "OBJECT",
+      "description": "Optional appearance hints; maps to figure.ts Look.",
+      "properties": {
+       "hair": {
+        "type": "STRING",
+        "description": "figure.ts Hair",
+        "enum": [
+         "tufts",
+         "short",
+         "bald",
+         "curly",
+         "long",
+         "bob",
+         "ponytail",
+         "scarf"
+        ]
+       },
+       "clothing": {
+        "type": "STRING",
+        "description": "figure.ts CLOTHES",
+        "enum": [
+         "classic",
+         "tshirt",
+         "shirt",
+         "coat",
+         "dress",
+         "chador"
+        ]
+       },
+       "glasses": {
+        "type": "BOOLEAN"
+       },
+       "beard": {
+        "type": "BOOLEAN"
+       },
+       "mustache": {
+        "type": "BOOLEAN"
+       },
+       "cap": {
+        "type": "BOOLEAN"
+       }
+      },
+      "required": [],
+      "propertyOrdering": [
+       "hair",
+       "clothing",
+       "glasses",
+       "beard",
+       "mustache",
+       "cap"
+      ]
+     },
+     "voice": {
+      "type": "OBJECT",
+      "description": "TTS casting.",
+      "properties": {
+       "voiceId": {
+        "type": "STRING",
+        "description": "Gemini TTS voice name from voice.ts VOICES (e.g. 'Kore', 'Charon')."
+       },
+       "style": {
+        "type": "STRING",
+        "description": "Short delivery note for the TTS style prompt, Persian."
+       }
+      },
+      "required": [
+       "voiceId"
+      ],
+      "propertyOrdering": [
+       "voiceId",
+       "style"
+      ]
+     },
+     "rigRef": {
+      "type": "STRING",
+      "description": "Optional id of an AI-built puppet rig (puppet-build.server.ts). Empty/absent = built-in stick figure.",
+      "nullable": true
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "kind",
+     "voice"
+    ],
+    "propertyOrdering": [
+     "id",
+     "name",
+     "kind",
+     "traits",
+     "look",
+     "voice",
+     "rigRef"
+    ]
+   },
+   "minItems": 1,
+   "maxItems": 8
+  },
+  "locations": {
+   "type": "ARRAY",
+   "description": "Sets used by scenes.",
+   "items": {
+    "type": "OBJECT",
+    "description": "A set. place must be an engine renderer id.",
+    "properties": {
+     "id": {
+      "type": "STRING",
+      "description": "Stable id, unique in plan."
+     },
+     "place": {
+      "type": "STRING",
+      "description": "Renderer in places.ts / places-extra.ts.",
+      "enum": [
+       "hospital",
+       "shop",
+       "elevator",
+       "metro",
+       "bus",
+       "roof",
+       "yard",
+       "wedding",
+       "living",
+       "kitchen",
+       "bedroom",
+       "street",
+       "park",
+       "stadium",
+       "car",
+       "office",
+       "cafe",
+       "classroom",
+       "blank"
+      ]
+     },
+     "label": {
+      "type": "STRING",
+      "description": "Persian label shown in UI, e.g. «حیاط خانهٔ مادربزرگ»."
+     },
+     "backgroundRef": {
+      "type": "STRING",
+      "description": "Optional key of a still background generated with Imagen/Gemini image (Cloud Storage key).",
+      "nullable": true
+     }
+    },
+    "required": [
+     "id",
+     "place",
+     "label"
+    ],
+    "propertyOrdering": [
+     "id",
+     "place",
+     "label",
+     "backgroundRef"
+    ]
+   },
+   "minItems": 1,
+   "maxItems": 20
+  },
+  "acts": {
+   "type": "ARRAY",
+   "description": "Acts in order.",
+   "items": {
+    "type": "OBJECT",
+    "description": "Dramatic act (setup / confrontation / resolution).",
+    "properties": {
+     "id": {
+      "type": "STRING",
+      "description": "Unique id."
+     },
+     "title": {
+      "type": "STRING",
+      "description": "Persian act title."
+     },
+     "purpose": {
+      "type": "STRING",
+      "description": "Story function.",
+      "enum": [
+       "setup",
+       "confrontation",
+       "climax",
+       "resolution",
+       "epilogue"
+      ]
+     },
+     "scenes": {
+      "type": "ARRAY",
+      "description": "Scenes in order.",
+      "items": {
+       "type": "OBJECT",
+       "description": "A continuous action in one location and time.",
+       "properties": {
+        "id": {
+         "type": "STRING",
+         "description": "Unique id."
+        },
+        "locationId": {
+         "type": "STRING",
+         "description": "locations[].id"
+        },
+        "timeOfDay": {
+         "type": "STRING",
+         "description": "Maps to SceneTimeline.night (night/dusk → night=true today).",
+         "enum": [
+          "dawn",
+          "morning",
+          "noon",
+          "afternoon",
+          "dusk",
+          "night"
+         ]
+        },
+        "mood": {
+         "type": "STRING",
+         "description": "Scene tone; proposed driver for lighting palette, pacing and music.",
+         "enum": [
+          "calm",
+          "tense",
+          "comic",
+          "sad",
+          "romantic",
+          "mysterious",
+          "joyful",
+          "angry"
+         ]
+        },
+        "summary": {
+         "type": "STRING",
+         "description": "One or two Persian sentences: what happens and why it matters."
+        },
+        "sourceLines": {
+         "type": "ARRAY",
+         "description": "1-based line numbers of the user's story this scene covers; the shot pass only sees these lines.",
+         "items": {
+          "type": "INTEGER",
+          "description": "line",
+          "minimum": 1
+         },
+         "maxItems": 200
+        },
+        "shots": {
+         "type": "ARRAY",
+         "description": "Shots in order.",
+         "items": {
+          "type": "OBJECT",
+          "description": "One camera setup. The engine renders shots back to back inside the scene.",
+          "properties": {
+           "id": {
+            "type": "STRING",
+            "description": "Unique id, e.g. 'a1s2sh3'."
+           },
+           "shotType": {
+            "type": "STRING",
+            "description": "Framing. wide/medium/close exist today (story-direct SHOT_ZOOM); others proposed.",
+            "enum": [
+             "establishing",
+             "wide",
+             "full",
+             "medium",
+             "mediumClose",
+             "close",
+             "extremeClose",
+             "overShoulder",
+             "twoShot",
+             "insert",
+             "reaction"
+            ]
+           },
+           "cameraMove": {
+            "type": "STRING",
+            "description": "Camera motion over the shot. Engine today only interpolates zoom/cx/cy (story-render cameraAt).",
+            "enum": [
+             "static",
+             "pushIn",
+             "pullOut",
+             "panLeft",
+             "panRight",
+             "truck",
+             "follow",
+             "shake",
+             "rackFocus"
+            ]
+           },
+           "subjectId": {
+            "type": "STRING",
+            "description": "Character the camera frames/follows (null = scene center).",
+            "nullable": true
+           },
+           "lens": {
+            "type": "STRING",
+            "description": "Proposed perspective hint; maps to zoom range.",
+            "enum": [
+             "wide",
+             "normal",
+             "tele"
+            ]
+           },
+           "durationSec": {
+            "type": "NUMBER",
+            "description": "Shot length, seconds.",
+            "minimum": 0.8,
+            "maximum": 40
+           },
+           "characters": {
+            "type": "ARRAY",
+            "description": "Blocking of everyone visible in this shot.",
+            "items": {
+             "type": "OBJECT",
+             "description": "Where a character is in this shot.",
+             "properties": {
+              "characterId": {
+               "type": "STRING",
+               "description": "characters[].id"
+              },
+              "startX": {
+               "type": "NUMBER",
+               "description": "Horizontal position 0..1 of frame width at shot start (engine clamps edits to 0.08..0.92; off-screen uses <0 or >1 via move enter/exit).",
+               "minimum": -0.2,
+               "maximum": 1.2
+              },
+              "sit": {
+               "type": "BOOLEAN",
+               "description": "Seated at shot start (needs a seat in the place)."
+              },
+              "facing": {
+               "type": "STRING",
+               "description": "Body facing.",
+               "enum": [
+                "left",
+                "right",
+                "camera"
+               ]
+              },
+              "hold": {
+               "type": "STRING",
+               "description": "Prop in hand at shot start (figure.ts Hold).",
+               "enum": [
+                "none",
+                "phone",
+                "cup",
+                "cookie",
+                "book",
+                "bag",
+                "ball",
+                "flowers",
+                "remote",
+                "plate",
+                "shopping",
+                "umbrella",
+                "laptop"
+               ]
+              }
+             },
+             "required": [
+              "characterId",
+              "startX"
+             ],
+             "propertyOrdering": [
+              "characterId",
+              "startX",
+              "sit",
+              "facing",
+              "hold"
+             ]
+            },
+            "minItems": 0,
+            "maxItems": 5
+           },
+           "acting": {
+            "type": "ARRAY",
+            "description": "Timed acting beats.",
+            "items": {
+             "type": "OBJECT",
+             "description": "One timed piece of acting for one character, relative to shot start.",
+             "properties": {
+              "characterId": {
+               "type": "STRING",
+               "description": "characters[].id"
+              },
+              "atSec": {
+               "type": "NUMBER",
+               "description": "Start time inside the shot, seconds.",
+               "minimum": 0,
+               "maximum": 60
+              },
+              "durationSec": {
+               "type": "NUMBER",
+               "description": "How long the beat lasts; momentary gestures return to rest after it.",
+               "minimum": 0.2,
+               "maximum": 30
+              },
+              "gesture": {
+               "type": "STRING",
+               "description": "story-parse.ts Gesture.",
+               "enum": [
+                "cross",
+                "hips",
+                "point",
+                "wave",
+                "explain",
+                "facepalm",
+                "handsFace",
+                "phoneEar",
+                "handChest",
+                "think",
+                "shrug",
+                "cheer",
+                "jump",
+                "kick",
+                "bow",
+                "drive",
+                "eat",
+                "write",
+                "reach"
+               ]
+              },
+              "expression": {
+               "type": "STRING",
+               "description": "face.ts Expression.",
+               "enum": [
+                "neutral",
+                "smile",
+                "laugh",
+                "grin",
+                "smirk",
+                "angry",
+                "furious",
+                "pout",
+                "sad",
+                "cry",
+                "surprised",
+                "shocked",
+                "worried",
+                "scared",
+                "content",
+                "kiss",
+                "sideEye",
+                "annoyed",
+                "embarrassed",
+                "thinking",
+                "sleepy"
+               ]
+              },
+              "intensity": {
+               "type": "NUMBER",
+               "description": "0..1 acting intensity (proposed: scales blend speed/overshoot).",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "move": {
+               "type": "STRING",
+               "description": "story-parse.ts Move.",
+               "enum": [
+                "enter",
+                "exit",
+                "approach",
+                "toLeft",
+                "toRight",
+                "toCenter"
+               ]
+              },
+              "targetId": {
+               "type": "STRING",
+               "description": "Character id to approach/point at/look at.",
+               "nullable": true
+              },
+              "toX": {
+               "type": "NUMBER",
+               "description": "Explicit walk target 0..1 (overrides move preset).",
+               "minimum": -0.2,
+               "maximum": 1.2
+              },
+              "sit": {
+               "type": "BOOLEAN",
+               "description": "true = sit down, false = stand up at atSec."
+              },
+              "hold": {
+               "type": "STRING",
+               "description": "Pick up / put down (none) a prop.",
+               "enum": [
+                "none",
+                "phone",
+                "cup",
+                "cookie",
+                "book",
+                "bag",
+                "ball",
+                "flowers",
+                "remote",
+                "plate",
+                "shopping",
+                "umbrella",
+                "laptop"
+               ]
+              },
+              "lookAt": {
+               "type": "STRING",
+               "description": "Character id to look at (proposed; today listeners auto-look at the speaker).",
+               "nullable": true
+              },
+              "thought": {
+               "type": "BOOLEAN",
+               "description": "Show thought bubble (story-render Thought)."
+              }
+             },
+             "required": [
+              "characterId",
+              "atSec",
+              "durationSec"
+             ],
+             "propertyOrdering": [
+              "characterId",
+              "atSec",
+              "durationSec",
+              "gesture",
+              "expression",
+              "intensity",
+              "move",
+              "targetId",
+              "toX",
+              "sit",
+              "hold",
+              "lookAt",
+              "thought"
+             ]
+            },
+            "minItems": 0,
+            "maxItems": 40
+           },
+           "dialogue": {
+            "type": "ARRAY",
+            "description": "Spoken lines in this shot, in order.",
+            "items": {
+             "type": "OBJECT",
+             "description": "A spoken line. Times are relative to the shot start; engine re-fits to recorded TTS length.",
+             "properties": {
+              "speakerId": {
+               "type": "STRING",
+               "description": "characters[].id"
+              },
+              "text": {
+               "type": "STRING",
+               "description": "Exact Persian line as it will be spoken and captioned. Must come from (or faithfully refine) the user's script."
+              },
+              "startSec": {
+               "type": "NUMBER",
+               "description": "Start inside shot.",
+               "minimum": 0,
+               "maximum": 120
+              },
+              "endSec": {
+               "type": "NUMBER",
+               "description": "End inside shot; > startSec. Engine estimate: 0.45 + words/2.4 s + pause costs (story-direct.ts lineDuration).",
+               "minimum": 0.3,
+               "maximum": 120
+              },
+              "emotion": {
+               "type": "STRING",
+               "description": "Delivery emotion; also the speaker's face while talking.",
+               "enum": [
+                "neutral",
+                "smile",
+                "laugh",
+                "grin",
+                "smirk",
+                "angry",
+                "furious",
+                "pout",
+                "sad",
+                "cry",
+                "surprised",
+                "shocked",
+                "worried",
+                "scared",
+                "content",
+                "kiss",
+                "sideEye",
+                "annoyed",
+                "embarrassed",
+                "thinking",
+                "sleepy"
+               ]
+              },
+              "delivery": {
+               "type": "STRING",
+               "description": "Short TTS style note in Persian (e.g. «آرام و خسته»).",
+               "nullable": true
+              },
+              "overlapsPrevious": {
+               "type": "BOOLEAN",
+               "description": "Proposed: allow interruption/overlap with previous line."
+              }
+             },
+             "required": [
+              "speakerId",
+              "text",
+              "startSec",
+              "endSec",
+              "emotion"
+             ],
+             "propertyOrdering": [
+              "speakerId",
+              "text",
+              "startSec",
+              "endSec",
+              "emotion",
+              "delivery",
+              "overlapsPrevious"
+             ]
+            },
+            "minItems": 0,
+            "maxItems": 12
+           },
+           "caption": {
+            "type": "STRING",
+            "description": "Optional on-screen narration (راوی).",
+            "nullable": true
+           },
+           "audio": {
+            "type": "ARRAY",
+            "description": "SFX/music cues.",
+            "items": {
+             "type": "OBJECT",
+             "description": "Sound effect or music cue (proposed engine feature; story engine has no SFX/music today).",
+             "properties": {
+              "kind": {
+               "type": "STRING",
+               "description": "Cue type.",
+               "enum": [
+                "sfx",
+                "music",
+                "ambience"
+               ]
+              },
+              "id": {
+               "type": "STRING",
+               "description": "Catalog id (e.g. labels.ts SFXS ids: clink, door, horn, shock, slap, beep, crickets, rimshot) or music cue name."
+              },
+              "atSec": {
+               "type": "NUMBER",
+               "description": "Start inside shot.",
+               "minimum": 0,
+               "maximum": 120
+              },
+              "durationSec": {
+               "type": "NUMBER",
+               "description": "Length; music may span shots via the 'continue' flag.",
+               "minimum": 0,
+               "maximum": 300
+              },
+              "volume": {
+               "type": "NUMBER",
+               "description": "0..1",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "continue": {
+               "type": "BOOLEAN",
+               "description": "Music keeps playing into the next shot."
+              }
+             },
+             "required": [
+              "kind",
+              "id",
+              "atSec"
+             ],
+             "propertyOrdering": [
+              "kind",
+              "id",
+              "atSec",
+              "durationSec",
+              "volume",
+              "continue"
+             ]
+            },
+            "minItems": 0,
+            "maxItems": 8
+           },
+           "transitionOut": {
+            "type": "STRING",
+            "description": "How this shot ends into the next.",
+            "enum": [
+             "cut",
+             "fade",
+             "dipToBlack",
+             "crossDissolve",
+             "wipe",
+             "matchCut"
+            ]
+           },
+           "sourceLines": {
+            "type": "ARRAY",
+            "description": "1-based line numbers of the user's script this shot covers (traceability, like story-parse SourceSpan).",
+            "items": {
+             "type": "INTEGER",
+             "description": "line",
+             "minimum": 1
+            },
+            "minItems": 0,
+            "maxItems": 40
+           }
+          },
+          "required": [
+           "id",
+           "shotType",
+           "cameraMove",
+           "durationSec",
+           "characters",
+           "acting",
+           "dialogue",
+           "transitionOut"
+          ],
+          "propertyOrdering": [
+           "id",
+           "shotType",
+           "cameraMove",
+           "subjectId",
+           "lens",
+           "durationSec",
+           "characters",
+           "acting",
+           "dialogue",
+           "caption",
+           "audio",
+           "transitionOut",
+           "sourceLines"
+          ]
+         },
+         "minItems": 1,
+         "maxItems": 40
+        }
+       },
+       "required": [
+        "id",
+        "locationId",
+        "timeOfDay",
+        "mood",
+        "summary",
+        "shots"
+       ],
+       "propertyOrdering": [
+        "id",
+        "locationId",
+        "timeOfDay",
+        "mood",
+        "summary",
+        "sourceLines",
+        "shots"
+       ]
+      },
+      "minItems": 1,
+      "maxItems": 12
+     }
+    },
+    "required": [
+     "id",
+     "title",
+     "purpose",
+     "scenes"
+    ],
+    "propertyOrdering": [
+     "id",
+     "title",
+     "purpose",
+     "scenes"
+    ]
+   },
+   "minItems": 1,
+   "maxItems": 5
+  }
+ },
+ "required": [
+  "meta",
+  "characters",
+  "locations",
+  "acts"
+ ],
+ "propertyOrdering": [
+  "meta",
+  "characters",
+  "locations",
+  "acts"
+ ]
+}

@@ -11,6 +11,7 @@ import { CAST, findChar } from "./characters.ts";
 import {
   ACTION_ENTRIES,
   BACKGROUNDS,
+  SENTENCE_BACKGROUNDS,
   CHARACTERS,
   EMOTION_ENTRIES,
   PROP_ENTRIES,
@@ -57,6 +58,11 @@ export type Plan = {
 export const MAX_SHOTS = 60;
 export const MAX_SCRIPT_CHARS = 12000;
 
+/** سقف‌های چینش. حالت دیکشنری همان مقدارهای قدیمی را دارد؛ حالت برنامهٔ فیلم (۳ تا ۵ دقیقه) بازتر است. */
+export type PlanLimits = { maxShots: number; minShotSec: number; maxShotSec: number };
+export const DICTIONARY_LIMITS: PlanLimits = { maxShots: MAX_SHOTS, minShotSec: 2.5, maxShotSec: 12 };
+export const FILM_LIMITS: PlanLimits = { maxShots: 400, minShotSec: 0.8, maxShotSec: 40 };
+
 const HEADER = /^\s*\[(.+)\]\s*$/;
 const HEADER_WORDS = ["صحنه", "سکانس", "داخلی", "خارجی"];
 export const DIALOGUE = /^([^:：]{1,40})[:：]\s*(.*)$/;
@@ -87,8 +93,9 @@ export function isHeader(line: string): string | null {
 /** اولویت وقتی چند مکان در یک خط آمده: مکان‌های تهران و کافه‌ها از «خیابان/خانه» دقیق‌ترند. */
 const GROUP_RANK: Record<string, number> = { tehran: 0, venue: 1, home: 2, out: 3 };
 
-export function backgroundOf(text: string): BgId | undefined {
-  const found = findAll(text, BACKGROUNDS);
+/** `sentence`: text is a description line, not a heading (bare «ماشین/تاکسی» is then a prop, not a place). */
+export function backgroundOf(text: string, sentence = false): BgId | undefined {
+  const found = findAll(text, sentence ? SENTENCE_BACKGROUNDS : BACKGROUNDS);
   if (found.length === 0) return undefined;
   return [...found].sort(
     (a, b) => (GROUP_RANK[WORLD[a.id].group] ?? 9) - (GROUP_RANK[WORLD[b.id].group] ?? 9) || a.at - b.at,
@@ -170,7 +177,7 @@ export function propsByScene(script: string): PropId[][] {
 }
 
 /** روش ۱: فهم سناریو با دیکشنری کاتالوگ. همیشه در دسترس، بدون اینترنت. */
-export function planFromDictionary(script: string): Plan {
+export function planFromDictionary(script: string, limits: PlanLimits = DICTIONARY_LIMITS): Plan {
   const warnings: string[] = [];
   const scenes: SceneDraft[] = [];
   let scene: SceneDraft | null = null;
@@ -262,7 +269,7 @@ export function planFromDictionary(script: string): Plan {
     for (const id of propsIn(line)) if (!current.props.includes(id)) current.props.push(id);
     for (const c of findAll(line, CHARACTERS)) addCast(c.id);
     if (!current.background && !current.backgroundFromText) {
-      current.backgroundFromText = backgroundOf(line);
+      current.backgroundFromText = backgroundOf(line, true);
     }
     const sfx = findFirst(line, SFX_ENTRIES);
     if (sfx) pendingSfx = sfx;
@@ -295,9 +302,9 @@ export function planFromDictionary(script: string): Plan {
     }
   });
 
-  if (shots.length > MAX_SHOTS) {
-    warnings.push(`فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
-    shots.length = MAX_SHOTS;
+  if (shots.length > limits.maxShots) {
+    warnings.push(`فقط ${limits.maxShots} نمای اول ساخته شد.`);
+    shots.length = limits.maxShots;
   }
   return { shots, warnings, uncertain };
 }
@@ -311,13 +318,13 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 /** مدت نما از طول دیالوگ (حدود ۲.۴ کلمه در ثانیه)؛ بعد از ضبط صدا قابل تغییر است. */
-export function durationFor(shot: Pick<PlanShot, "speaker" | "dialogue">): number {
-  if (!shot.speaker || !shot.dialogue) return 3.5;
-  return Math.round(clamp(1.5 + words(shot.dialogue) * 0.42, 2.5, 12) * 10) / 10;
+export function durationFor(shot: Pick<PlanShot, "speaker" | "dialogue">, limits: PlanLimits = DICTIONARY_LIMITS): number {
+  if (!shot.speaker || !shot.dialogue) return clamp(3.5, limits.minShotSec, limits.maxShotSec);
+  return Math.round(clamp(1.5 + words(shot.dialogue) * 0.42, limits.minShotSec, limits.maxShotSec) * 10) / 10;
 }
 
 /** موتور چینش: از برنامهٔ فهمیده‌شده، نماهای واقعی سایت را می‌سازد. */
-export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
+export function layoutPlan(plan: Plan, limits: PlanLimits = DICTIONARY_LIMITS): { shots: Shot[]; warnings: string[] } {
   const warnings = [...plan.warnings];
   const everyone: string[] = [];
   for (const s of plan.shots) for (const c of [...s.cast, s.speaker ?? ""]) {
@@ -398,7 +405,7 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
       id: newId(),
       heading: p.heading,
       actionLine: p.actionLine,
-      duration: durationFor(p),
+      duration: durationFor(p, limits),
       background: p.background,
       variant: p.variant,
       night: p.night,
@@ -428,9 +435,9 @@ export function layoutPlan(plan: Plan): { shots: Shot[]; warnings: string[] } {
     }
     if (p.speaker) lastSpeaker = p.speaker;
   }
-  if (out.length > MAX_SHOTS) {
-    out.length = MAX_SHOTS;
-    warnings.push(`با نماهای واکنش، فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
+  if (out.length > limits.maxShots) {
+    out.length = limits.maxShots;
+    warnings.push(`با نماهای واکنش، فقط ${limits.maxShots} نمای اول ساخته شد.`);
   }
   return { shots: out, warnings };
 }

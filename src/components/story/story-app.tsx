@@ -3,14 +3,16 @@ import { BookOpen, Captions, Clapperboard, Download, MessageSquare, Pause, PenLi
 import { BeatInspector } from "@/components/story/beat-inspector";
 import { CastPanel } from "@/components/story/cast-panel";
 import { ExportDialog } from "@/components/story/export-dialog";
+import { FilmPlanPanel } from "@/components/story/film-plan-panel";
 import { SceneBoard } from "@/components/story/scene-board";
 import { TimelineStrip } from "@/components/story/timeline-strip";
 import { useVoices, VoicePanel } from "@/components/story/voice-panel";
+import { MusicPanel } from "@/components/story/music-panel";
 import { audioContext } from "@/studio/stick/voice-client";
 import type { PlacedClip } from "@/studio/stick/voice";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
 import { compileProject, setEdit, type StoryProject } from "@/studio/stick/project";
-import { frameFor, FORMATS, type Format } from "@/studio/stick/layout";
+import { frameFor, stageFor, FORMATS, type Format } from "@/studio/stick/layout";
 import { actorAt } from "@/studio/stick/animate";
 import { loadRenderFonts } from "@/studio/stick/fonts";
 import { makePaper } from "@/studio/stick/paper";
@@ -18,6 +20,7 @@ import { PLACES, PLACE_IDS } from "@/studio/stick/places";
 import type { Directed } from "@/studio/stick/story-direct";
 import { FRAME, renderStory, cameraAt, sceneAt, type Timeline } from "@/studio/stick/story-render";
 import { fa } from "@/studio/format";
+import { MAX_STORY_CHARS } from "@/studio/stick/story-parse";
 
 type Tab = "script" | "cast" | "scenes" | "guide" | "edit";
 type PlayerHandle = { seek: (t: number) => void; toggle: () => void; time: () => number };
@@ -179,15 +182,16 @@ export function StoryApp({ brand, workspace, projectsLink }: {
               className="script-text"
               dir="rtl"
               value={text}
-              maxLength={20000}
+              maxLength={MAX_STORY_CHARS}
               disabled={!project}
               spellCheck={false}
               placeholder={"صحنه ۱: پذیرایی خانه، شب\nمریم (زن، سمت چپ) روی مبل نشسته است.\nمریم (لبخند): سلام!"}
               onChange={(e) => workspace.setText(e.target.value)}
             />
             <p className="script-meta">
-              {fa(sceneCount)} صحنه · {fa(directed?.timeline.cast.length ?? 0)} شخصیت · {clock(directed?.timeline.duration ?? 0)} · {fa(text.length)}/{fa(20000)} نویسه
+              {fa(sceneCount)} صحنه · {fa(directed?.timeline.cast.length ?? 0)} شخصیت · {clock(directed?.timeline.duration ?? 0)} · {fa(text.length)}/{fa(MAX_STORY_CHARS)} نویسه
             </p>
+            {project && <FilmPlanPanel project={project} commit={commit} />}
             {error && <p role="alert" className="story-warn">{error}</p>}
             {directed && text.trim() && directed.warnings.length > 0 && (
               <ul className="story-warn" aria-label="هشدارها">
@@ -196,7 +200,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
             )}
           </div>
           <div className="pane pane-cast">
-            {project && directed && <><VoicePanel v={voicing} /><CastPanel project={project} cast={directed.timeline.cast} commit={commit} voices={voicing.voices} onVoice={voicing.setVoice} /></>}
+            {project && directed && <><VoicePanel v={voicing} /><MusicPanel project={project} duration={directed.timeline.duration} at={() => player.current?.time() ?? 0} commit={commit} /><CastPanel project={project} cast={directed.timeline.cast} commit={commit} voices={voicing.voices} onVoice={voicing.setVoice} /></>}
           </div>
           <div className="pane pane-scenes">
             {project && directed && <SceneBoard directed={directed} format={project.settings.format} selected={selectedId} onPick={(id) => pick(id)} commit={commit} />}
@@ -463,8 +467,9 @@ function Player({ ref, directed, timeline, audio, project, selected, commit, onT
     const rect = event.currentTarget.getBoundingClientRect();
     const screen = ((event.clientX - rect.left) / rect.width) * frame.w;
     const scene = sceneAt(timeline, tRef.current), cam = cameraAt(scene.cameras, tRef.current - scene.start);
-    const cx = (cam.cx * frame.w) / FRAME.w;
-    return Math.max(0.08, Math.min(0.92, ((screen - cx) / cam.zoom + cx) / frame.w));
+    const stage = stageFor(format);
+    const cx = stage.ox + cam.cx * stage.k;
+    return Math.max(0.08, Math.min(0.92, ((screen - cx) / cam.zoom + cx - stage.ox) / (FRAME.w * stage.k)));
   };
 
   return (

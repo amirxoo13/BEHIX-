@@ -88,3 +88,26 @@ test("edge inputs stay finite, bounded and deterministic", () => {
     if (text.length > MAX_STORY_CHARS) assert.ok(p.warnings.some((w) => w.includes("نویسه")));
   }
 });
+test("«می» inside a name is not a verb: «سمیرا» stays a subject of the shared clause", () => {
+  const p = parseStory("سمیرا (زن) و علی وارد می‌شوند.");
+  const a = p.scenes[0].beats.flatMap((b) => (b.kind === "action" ? b.acts : []));
+  assert.deepEqual(a.map((x) => [x.who, x.move]), [["سمیرا", "enter"], ["علی", "enter"]]);
+  assert.ok(!p.warnings.some((w) => w.includes("کاری فهمیده نشد")));
+  // «کمی» is an adverb, not a verb, so the clause is not split before «بعد»
+  assert.equal(acts("کمی بعد علی وارد می‌شود.").length, 1);
+  // compound verbs with ZWNJ still split clauses
+  assert.deepEqual(
+    acts("علی کتاب را برمی‌دارد و سارا می‌خندد.").map((x) => [x.who, x.hold ?? x.face]),
+    [["علی", "book"], ["سارا", "laugh"]],
+  );
+});
+test("negation is scoped to its own clause: «ولی/اما» separate positive and negative actions", () => {
+  assert.deepEqual(acts("علی می‌خندد ولی سارا نمی‌خندد.").map((x) => [x.who, x.face]), [["علی", "laugh"]]);
+  assert.deepEqual(acts("سارا نمی‌خندد اما علی دست تکان می‌دهد.").map((x) => [x.who, x.gesture]), [["علی", "wave"]]);
+  assert.deepEqual(acts("علی نرفت و سارا وارد شد.").map((x) => [x.who, x.move]), [["سارا", "enter"]]);
+  const p = parseStory("علی می‌خندد ولی سارا نمی‌خندد.");
+  assert.ok(!p.warnings.some((w) => w.includes("کاری فهمیده نشد")));
+});
+test("a subject introduced after a leading delay is still found", () => {
+  assert.deepEqual(acts("بعد از ۳ ثانیه علی می‌خندد.").map((x) => [x.who, x.face]), [["علی", "laugh"]]);
+});

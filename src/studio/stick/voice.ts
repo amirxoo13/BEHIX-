@@ -1,5 +1,5 @@
 /**
- * صداگذاری دیالوگ‌ها با Gemini TTS (بخش خالص و قابل آزمون).
+ * صداگذاری دیالوگ‌ها با Gemini 3.8 TTS روی Agent Platform (بخش خالص و قابل آزمون).
  * - صدای هر شخصیت از ۳۰ صدای Gemini، پیش‌فرض بر اساس جنسیت و سن
  * - حالت چهرهٔ دیالوگ به دستور لحن تبدیل می‌شود
  * - دهان شخصیت از روی پوش (envelope) صدای واقعی باز و بسته می‌شود
@@ -10,7 +10,15 @@ import type { MouthPulse } from "./speech.ts";
 import type { Directed } from "./story-direct.ts";
 import type { Timeline } from "./story-render.ts";
 
-export const TTS_MODEL = "gemini-2.5-pro-tts";
+/** مدل اصلی صدا (سرور می‌تواند با TTS_MODEL عوضش کند؛ این مقدار فقط کلید کش روی دستگاه است). */
+export const TTS_MODEL = "gemini-3.8-flash-tts";
+/** مدل پیش‌نمایش و جایگزین وقتی Flash خطا داد (سرور: TTS_PREVIEW_MODEL). */
+export const TTS_PREVIEW_MODEL = "gemini-3.8-flash-lite-tts";
+/**
+ * مدل کلیپ‌های قدیمی MP3. فقط برای پیدا کردن کلیپ‌های از قبل ذخیره‌شده با کلید قدیمی (IndexedDB و GCS)؛
+ * هرگز به هیچ API فرستاده نمی‌شود.
+ */
+export const LEGACY_CACHE_MODEL = "gemini-2.5-pro-tts";
 /** صداهای Gemini TTS (مستندات Google Cloud) با جنسیت برای انتخاب پیش‌فرض. */
 export const VOICES = {
   Kore: "f", Aoede: "f", Leda: "f", Zephyr: "f", Callirrhoe: "f", Autonoe: "f", Despina: "f", Erinome: "f",
@@ -56,15 +64,26 @@ const MOODS: Partial<Record<Expression, string>> = {
   content: "calmly", kiss: "affectionately", sideEye: "suspiciously", annoyed: "irritated",
   embarrassed: "shyly, embarrassed", thinking: "thoughtfully, slowly", sleepy: "sleepily",
 };
-/** دستور لحن برای Gemini TTS؛ فارسی محاوره‌ای طبیعی. */
-export function stylePrompt(mood?: Expression, kind?: Look["kind"]): string {
+/**
+ * لحن کوتاه برای Gemini 3.8 TTS (speechMetadata.style): کمتر از ۱۵ کلمه، فقط حس و گویش.
+ * سن و جنسیت با خود صدا می‌آید نه با لحن، و پیش‌درآمدهایی مثل «Read this line…» روی 3.8 گاهی خوانده می‌شوند
+ * (skills/audio-voice-direction؛ مستند: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/text-to-speech/prompting-guide).
+ * این لحن پیش‌فرض قطعی است؛ لحن پیشنهادی Gemini (مهارت tts.line در /api/voice-direction) جای آن می‌نشیند.
+ */
+export function stylePrompt(mood?: Expression, _kind?: Look["kind"]): string {
+  const m = mood ? MOODS[mood] : undefined;
+  return m ? `${m}; natural, colloquial Tehrani Persian` : "natural, colloquial Tehrani Persian";
+}
+
+/** دستور لحن قدیمی (Gemini 2.5)؛ فقط برای ساختن کلید کلیپ‌های MP3 ذخیره‌شده، هرگز فرستاده نمی‌شود. */
+export function legacyStylePrompt(mood?: Expression, kind?: Look["kind"]): string {
   const who = kind === "boy" || kind === "girl" ? "a child" : kind === "oldMan" || kind === "oldWoman" ? "an elderly person" : "an adult";
   return `Read this line as ${who} in natural, colloquial Tehrani Persian${mood && MOODS[mood] ? `, ${MOODS[mood]}` : ""}. Do not add words.`;
 }
 
-/** کلید پایدار هر کلیپ؛ با تغییر متن، صدا یا لحن عوض می‌شود. */
-export async function clipKey(text: string, voice: Voice, prompt: string): Promise<string> {
-  const data = new TextEncoder().encode(`${TTS_MODEL}|${voice}|${prompt}|${text}`);
+/** کلید پایدار هر کلیپ؛ با تغییر مدل، متن، صدا یا لحن عوض می‌شود. */
+export async function clipKey(text: string, voice: Voice, prompt: string, model: string = TTS_MODEL): Promise<string> {
+  const data = new TextEncoder().encode(`${model}|${voice}|${prompt}|${text}`);
   const hash = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -148,5 +167,101 @@ export function mixClips(placed: PlacedClip[], duration: number, sampleRate = MI
     for (let i = 0; i < len && at + i < out.length; i++) out[at + i] += c.samples[Math.floor(i * ratio)];
   }
   for (let i = 0; i < out.length; i++) out[i] = Math.max(-1, Math.min(1, out[i]));
+  return out;
+}
+
+const SENTENCE = /[.!?؟…]+["»)\]]*\s+|\n+/g;
+const CLAUSE = /[،,؛;:]\s*|\s[-–—]\s/g;
+
+/**
+ * دیالوگ بلندتر از max به تکه‌های ≤ max، اول سر مرز جمله، بعد سر ویرگول/نقطه‌ویرگول، در آخر سر فاصله.
+ * هیچ حرفی جا نمی‌افتد (به‌جز فاصله‌های سر مرز). سرور هم همین سقف را دارد.
+ */
+export function splitLine(text: string, max = MAX_LINE): string[] {
+  const t = text.trim();
+  if (t.length <= max) return t ? [t] : [];
+  const pieces = (s: string, re: RegExp) => {
+    const out: string[] = [];
+    let last = 0;
+    for (const m of s.matchAll(re)) {
+      const end = (m.index ?? 0) + m[0].length;
+      out.push(s.slice(last, end));
+      last = end;
+    }
+    out.push(s.slice(last));
+    return out.filter((x) => x.trim());
+  };
+  const hard = (s: string) => {
+    const out: string[] = [];
+    let rest = s.trim();
+    while (rest.length > max) {
+      let cut = rest.lastIndexOf(" ", max);
+      if (cut < max / 2) cut = max;
+      out.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    if (rest) out.push(rest);
+    return out;
+  };
+  const units = pieces(t, SENTENCE).flatMap((s) => (s.trim().length <= max ? [s] : pieces(s, CLAUSE).flatMap((c) => (c.trim().length <= max ? [c] : hard(c)))));
+  const chunks: string[] = [];
+  let cur = "";
+  for (const u of units) {
+    if ((cur + u).trim().length <= max) cur += u;
+    else {
+      if (cur.trim()) chunks.push(cur.trim());
+      cur = u;
+    }
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks;
+}
+
+/** چند کلیپ پشت‌سرهم با مکث کوتاه بین‌شان (همه به نرخ کلیپ اول). */
+export function concatClips(clips: VoiceClip[], gap = 0.12): VoiceClip {
+  if (clips.length === 1) return clips[0];
+  const sampleRate = clips[0]?.sampleRate ?? MIX_RATE;
+  const pad = Math.round(gap * sampleRate);
+  const parts = clips.map((c) => (c.sampleRate === sampleRate ? c.samples : resample(c.samples, c.sampleRate, sampleRate)));
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0) + pad * Math.max(0, parts.length - 1));
+  let at = 0;
+  parts.forEach((p, i) => {
+    out.set(p, at);
+    at += p.length + (i < parts.length - 1 ? pad : 0);
+  });
+  return { samples: out, sampleRate };
+}
+
+function resample(x: Float32Array, from: number, to: number): Float32Array {
+  const out = new Float32Array(Math.floor((x.length * to) / from));
+  for (let i = 0; i < out.length; i++) {
+    const p = (i * from) / to, k = Math.floor(p), f = p - k;
+    out[i] = (x[k] ?? 0) * (1 - f) + (x[k + 1] ?? x[k] ?? 0) * f;
+  }
+  return out;
+}
+
+/** WAV شانزده‌بیتی تک‌کاناله از نمونه‌ها (برای ذخیرهٔ کلیپ چندتکه روی دستگاه). */
+export function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array {
+  const out = new Uint8Array(44 + samples.length * 2);
+  const v = new DataView(out.buffer);
+  const ascii = (at: number, s: string) => { for (let i = 0; i < s.length; i++) out[at + i] = s.charCodeAt(i); };
+  ascii(0, "RIFF");
+  v.setUint32(4, 36 + samples.length * 2, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  ascii(36, "data");
+  v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const x = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+  }
   return out;
 }

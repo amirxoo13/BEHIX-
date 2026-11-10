@@ -60,16 +60,23 @@ export const hasNegativeVerb = (s: string) =>
   /(?:^|\s)(?:نمی[‌ ]?\S+|نکرد\S*|نشد\S*|نرفت\S*|نیامد\S*|ننشست\S*|ننشت\S*|ننوش\S*|نخورد\S*|نخند\S*|نپرید\S*)/.test(
     s,
   );
+/**
+ * Verb cue at the start of a word. «می» counts only as a word-initial prefix («می‌خندد»، «می خندد»)
+ * or after a ZWNJ inside a compound («برمی‌دارد») — never as a substring of a name («سمیرا»، «کمی»).
+ */
 const hasVerb = (s: string) =>
-  /(?:می[‌ ]?\S+|نشسته|ایستاده|وارد|خندید|رفت|آمد|نشست|کرد|شد|داد|گذاشت|دارد|داشت|پرید|زد|هورا)/.test(
+  /(?:^|\s)(?:می[‌ ]?\S+|نشسته|ایستاده|وارد|خندید|رفت|آمد|نشست|کرد|شد|داد|گذاشت|دارد|داشت|پرید|زد|هورا)|\Sمی‌\S/.test(
     s,
   );
+/** Clause separators. «ولی/اما/ولیکن/لیکن» keep a negation inside its own clause. */
+const CLAUSE_SEPARATOR = /\s+(?:و سپس|و بعد|سپس|بعدش|بعد|ولیکن|لیکن|ولی|اما|و)\s+|[،؛]\s*/g;
 export function actionClauses(text: string): { text: string; start: number }[] {
   const out: { text: string; start: number }[] = [];
   let start = 0;
-  for (const m of text.matchAll(/\s+(?:و سپس|و بعد|سپس|بعدش|بعد|و)\s+|[،؛]\s*/g)) {
+  for (const m of text.matchAll(CLAUSE_SEPARATOR)) {
     const before = text.slice(start, m.index);
-    if (!hasVerb(before)) continue;
+    // A negated verb also ends a clause («علی نرفت و سارا آمد»).
+    if (!hasVerb(before) && !hasNegativeVerb(before)) continue;
     out.push({ text: before.trim(), start: start + before.length - before.trimStart().length });
     start = m.index + m[0].length;
   }

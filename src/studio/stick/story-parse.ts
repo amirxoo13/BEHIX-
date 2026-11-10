@@ -6,10 +6,11 @@ import { actionClauses, conjugations, hasNegativeVerb, readDelay, textId } from 
  * - دیالوگ: «اسم: جمله» یا «اسم (حالت): جمله»؛ «راوی: ...» فقط زیرنویس است.
  * - بقیهٔ جمله‌ها توصیف‌اند: نشستن/ایستادن، ورود/خروج، حرکت دست، شیء در دست، حالت چهره، فکر کردن.
  */
-import { findAll, normalizeFa, type Entry, type Match } from "../catalog.ts";
+import { PARK_VERB, findAll, normalizeFa, sentencePlaceEntries, type Entry, type Match } from "../catalog.ts";
 import type { Expression } from "./face.ts";
 import type { Hair, Hold, Kind, Look } from "./figure.ts";
 import { PLACES, PLACE_IDS, type PlaceId } from "./places.ts";
+import type { ShotCamera } from "../world/camera.ts";
 
 export type Side = "left" | "right" | "center";
 
@@ -62,7 +63,15 @@ export type Beat = BeatMeta & (
 
 export type StoryCastMember = { id: string; name: string; look: Look; side?: Side; guessed: boolean };
 
-export type StoryScene = { heading: string; place: PlaceId; night: boolean; beats: Beat[] };
+export type StoryScene = {
+  heading: string;
+  place: PlaceId;
+  night: boolean;
+  beats: Beat[];
+  /** optional world overrides (project edits); the parser itself never sets them */
+  set?: string;
+  camera?: ShotCamera;
+};
 
 export type StoryPlan = { cast: StoryCastMember[]; scenes: StoryScene[]; warnings: string[] };
 
@@ -78,9 +87,13 @@ function stems<T extends string>(list: Entry<T>[]): Entry<T>[] {
   return list.map((x) => ({ ...x, aliases: x.aliases.map((a) => (normalizeFa(a).length > 3 ? `${a}*` : a)) }));
 }
 
-const PLACE_ENTRIES: Entry<PlaceId>[] = PLACE_IDS.filter((id) => id !== "blank").map((id) =>
-  e(id, [PLACES[id].label, ...PLACES[id].aliases]),
-);
+const PLACE_ENTRIES: Entry<PlaceId>[] = PLACE_IDS.filter((id) => id !== "blank").map((id) => ({
+  ...e(id, [PLACES[id].label, ...PLACES[id].aliases]),
+  // «پارک کرد/پارک شده» is the verb, not the place
+  ...(id === "park" ? { unless: PARK_VERB } : {}),
+}));
+/** Sentence-level detection: bare «ماشین/تاکسی/خودرو» is a prop there, not the inside of a car. */
+const SENTENCE_PLACE_ENTRIES = sentencePlaceEntries(PLACE_ENTRIES);
 
 const NIGHT = ["شب", "شبانه", "نیمه شب", "نیمه‌شب", "تاریکی", "آخر شب", "دیروقت"];
 const DAY = ["روز", "صبح", "ظهر", "عصر", "بعدازظهر", "بعد از ظهر", "غروب", "روز روشن"];
@@ -273,9 +286,9 @@ const NARRATOR = new Set(["راوی", "گوینده", "صدای راوی", "مت
 const HEAD_PREFIX = /^(صحنه|سکانس|پلان|مکان|لوکیشن)(?:\s|$)/;
 const VERBISH = new Set(["می", "است", "هست", "هستند", "شد", "بود", "رفت", "آمد", "نشسته", "ایستاده", "میره", "میاد", "میشه"]);
 
-function placeIn(text: string): PlaceId | undefined {
+function placeIn(text: string, sentence = false): PlaceId | undefined {
   // اسم بلندتر دقیق‌تر است («اتاق کار» به‌جای «اتاق»)
-  return [...findAll(text, PLACE_ENTRIES)].sort((a, b) => b.alias.length - a.alias.length)[0]?.id;
+  return [...findAll(text, sentence ? SENTENCE_PLACE_ENTRIES : PLACE_ENTRIES)].sort((a, b) => b.alias.length - a.alias.length)[0]?.id;
 }
 
 function nightIn(text: string): boolean | undefined {
@@ -365,8 +378,10 @@ export function parseStory(story: string): StoryPlan {
   // دور ۲: اسم‌های آشنا و نقش‌ها که اول جمله (فاعل) آمده‌اند
   for (const line of lines) {
     if (HEAD_PREFIX.test(normalizeFa(line)) || DIALOGUE.test(line)) continue;
-    for (const s of sentences(line)) {
-      const ws = normalizeFa(s.replace(/[(（][^)）]*[)）]/g, " ")).split(" ");
+    // Each clause can introduce its own subject («… ولی سارا نمی‌خندد»), and a leading
+    // «بعد از N ثانیه» is not part of the subject.
+    for (const clause of sentences(line).flatMap((s) => actionClauses(s.replace(/[(（][^)）]*[)）]/g, " ")))) {
+      const ws = normalizeFa(readDelay(clause.text)?.text ?? clause.text).split(" ");
       let i = 0;
       while (i < ws.length && (LEAD_WORDS.has(ws[i]) || ["همان", "لحظه", "موقع", "کمی", "آرام", "شب", "صبح", "روز"].includes(ws[i]))) i++;
       for (;;) {
@@ -530,7 +545,7 @@ export function parseStory(story: string): StoryPlan {
       sentenceCursor = sentenceStart + s.length;
       // جملهٔ توصیفی در صحنه‌ای که مکان/زمانش هنوز معلوم نیست، آن را معلوم می‌کند
       if (!placeSet) {
-        const p = placeIn(s);
+        const p = placeIn(s, true);
         if (p) {
           sc.place = p;
           placeSet = true;
