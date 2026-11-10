@@ -7,6 +7,7 @@
 import { gcpAccessToken, gcpProject } from "./gcp-auth.server.ts";
 import { KEY_RE, assetKey } from "./studio-keys.ts";
 import { CHAR_TASKS, systemPart, type AiOpts } from "./studio-ai-tasks.ts";
+import { skillSystem } from "../ai/skills.ts";
 
 export { KEY_RE };
 
@@ -111,7 +112,7 @@ async function saveImage(folder: "cast" | "frames", owner: string, img: Img): Pr
 export async function createCharacter(description: string, owner: string, ai: AiOpts = {}): Promise<{ key: string }> {
   const img = await generateImage(
     `Character design sheet on a plain light-grey background. Character: ${description}. Show the SAME character three times, full body, standing: front view, three-quarter view, side profile. Identical face, hair and clothes in all three. ${STYLE}`,
-    [], undefined, ai.system?.(CHAR_TASKS.generate),
+    [], undefined, (ai.system ?? skillSystem)(CHAR_TASKS.generate),
   );
   return { key: await saveImage("cast", owner, img) };
 }
@@ -121,7 +122,7 @@ export async function createKeyframe(castKeys: string[], direction: string, owne
   const refs = await Promise.all(castKeys.slice(0, 3).map(readImage));
   const img = await generateImage(
     `Using exactly the character(s) from the reference sheet(s) (same faces, hair, clothes), create ONE cinematic 16:9 film frame. ${direction} Each character appears only once. Layered background with depth. ${STYLE}`,
-    refs, undefined, ai.system?.(CHAR_TASKS.keyframe),
+    refs, undefined, (ai.system ?? skillSystem)(CHAR_TASKS.keyframe),
   );
   return { key: await saveImage("frames", owner, img) };
 }
