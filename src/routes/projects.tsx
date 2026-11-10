@@ -1,5 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { HomePage } from "@/components/home-page";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-/** نشانی قدیمی فهرست پروژه‌ها؛ همان صفحهٔ خانه را نشان می‌دهد تا پیوندهای قبلی نشکنند. */
-export const Route = createFileRoute("/projects")({ component: HomePage });
+/** نشانی قدیمی فهرست پروژه‌ها؛ به استودیوی دوبعدی می‌رود تا پیوندهای قبلی نشکنند. */
+export const Route = createFileRoute("/projects")({
+  beforeLoad: () => {
+    throw redirect({ to: "/photo", replace: true });
+  },
+});

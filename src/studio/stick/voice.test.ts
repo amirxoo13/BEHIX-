@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { compileProject, newProject } from "./project.ts";
 import { concatClips, defaultVoices, encodeWav, envelopePulses, lineDurationFor, MAX_LINE, mixClips, placeVoices, splitLine, timelinePulses, stylePrompt, legacyStylePrompt, VOICES } from "./voice.ts";
 
 const tone = (sec: number, rate = 24000, gaps: [number, number][] = []) => {
@@ -36,39 +35,6 @@ describe("Gemini voice casting and lip sync", () => {
     assert.ok(p.every((x) => x.from >= 10 && x.to <= 11.05 && x.strength > 0 && x.strength <= 1));
     assert.ok(!p.some((x) => x.from >= 10.42 && x.to <= 10.58), "no pulse inside the silence");
     assert.equal(envelopePulses(new Float32Array(2400), 24000, 0).length, 0);
-  });
-  it("UT-VO-04 clips sit on the speaker's talk span and replace mouth pulses", () => {
-    const d = compileProject(newProject("صحنه: پارک، روز\nعلی (مرد): سلام\nسارا (زن): خوبی؟"));
-    const line = d.beats.find((b) => b.kind === "line")!;
-    const { timeline, placed } = placeVoices(d, new Map([[line.id, { samples: tone(0.8), sampleRate: 24000 }]]));
-    assert.equal(placed.length, 1);
-    assert.ok(placed[0].start >= line.from && placed[0].start < line.to);
-    const talk = timeline.scenes[0].actors.find((a) => a.cast === line.speaker)!.track.talk[0];
-    assert.ok(talk.pulses!.length > 0 && talk.pulses![0].from >= talk.from - 1e-6);
-    assert.notEqual(timeline, d.timeline, "input timeline is not mutated");
-  });
-  it("UT-VO-04b lip timeline from the final audio drives the mouth (closes on م/ب/پ), stale or text-only falls back", () => {
-    const tl = (timing: "stt-words" | "text", duration: number) => ({
-      version: 1 as const, text: "سلام بابا", lang: "fa-IR" as const, duration, timing, lead: 0.04, words: [],
-      visemes: [
-        { id: "sz" as const, start: 0.0, end: 0.12 }, { id: "ah" as const, start: 0.12, end: 0.3 }, { id: "l" as const, start: 0.3, end: 0.38 },
-        { id: "mbp" as const, start: 0.38, end: 0.46 }, { id: "ah" as const, start: 0.46, end: 0.7 }, { id: "rest" as const, start: 0.7, end: 0.8 },
-      ],
-    });
-    const p = timelinePulses(tl("stt-words", 0.8), 0.8, 5)!;
-    assert.equal(p.length, 4, "rest and mbp make no pulse = mouth closed");
-    assert.ok(p.every((x) => x.from >= 5 && x.to <= 5.8));
-    assert.ok(!p.some((x) => x.from < 5.42 && x.to > 5.38), "mouth is closed during م/ب/پ");
-    assert.equal(timelinePulses(tl("text", 0.8), 0.8, 0), null, "text-only timing is not trusted");
-    assert.equal(timelinePulses(tl("stt-words", 2.0), 0.8, 0), null, "stale timeline (different clip length) is ignored");
-
-    const d = compileProject(newProject("صحنه: پارک، روز\nعلی (مرد): سلام بابا\nسارا (زن): خوبی؟"));
-    const line = d.beats.find((b) => b.kind === "line")!;
-    const clips = new Map([[line.id, { samples: tone(0.8), sampleRate: 24000 }]]);
-    const { timeline } = placeVoices(d, clips, new Map([[line.id, tl("stt-words", 0.8)]]));
-    const talk = timeline.scenes[0].actors.find((a) => a.cast === line.speaker)!.track.talk[0];
-    assert.equal(talk.pulses!.length, 4, "placeVoices uses the lip timeline when present");
-    assert.deepEqual(talk.pulses!.map((x) => x.strength), [0.35, 0.95, 0.55, 0.95]);
   });
   it("UT-VO-05 mix places clips at their start and clamps", () => {
     const m = mixClips([{ beatId: "x", start: 0.5, samples: new Float32Array(2400).fill(0.9), sampleRate: 24000 }, { beatId: "y", start: 0.5, samples: new Float32Array(2400).fill(0.9), sampleRate: 24000 }], 1);

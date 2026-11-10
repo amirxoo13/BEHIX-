@@ -1,4 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { HomePage } from "@/components/home-page";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/")({ component: HomePage });
+/** خانهٔ BEHIX = استودیوی انیمیشن دوبعدی (مرحلهٔ «پروژه»). */
+export const Route = createFileRoute("/")({
+  beforeLoad: () => {
+    throw redirect({ to: "/photo", replace: true });
+  },
+});

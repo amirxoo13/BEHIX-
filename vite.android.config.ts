@@ -32,7 +32,7 @@ export default defineConfig({
   resolve: {
     // کد سرور (تابع‌های createServerFn) نباید وارد باندل اپ آفلاین شود؛ جایگزین کلاینتی‌اش را می‌گذاریم.
     alias: [
-      { find: /^@\/lib\/film-plan-ai$/, replacement: resolve(__dirname, "src/android/film-plan-ai.ts") },
+      { find: /^@\/lib\/script-ai$/, replacement: resolve(__dirname, "src/android/script-ai.ts") },
       { find: "@", replacement: resolve(__dirname, "src") },
     ],
   },

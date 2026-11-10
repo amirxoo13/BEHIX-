@@ -40,7 +40,7 @@ async function main() {
     "src/lib/tts-quota.test.ts",
     "src/lib/gemini-tts.test.ts",
     "src/ai/*.test.ts",
-    "src/lib/film-plan.server.test.ts",
+    "src/lib/user-auth.test.ts",
     "src/lib/gcp-stt.test.ts",
     "src/lib/voice-limits.test.ts",
     "src/lib/voice-line.test.ts",

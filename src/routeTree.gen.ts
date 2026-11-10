@@ -18,7 +18,6 @@ import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ScenarioRouteImport } from './routes/scenario'
 import { Route as SoundRouteImport } from './routes/sound'
 import { Route as StageRouteImport } from './routes/stage'
-import { Route as StoryRouteImport } from './routes/story'
 import { Route as WorldRouteImport } from './routes/world'
 import { Route as ApiMusicRouteImport } from './routes/api/music'
 import { Route as ApiStudioRouteImport } from './routes/api/studio'
@@ -72,11 +71,6 @@ const StageRoute = StageRouteImport.update({
   path: '/stage',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StoryRoute = StoryRouteImport.update({
-  id: '/story',
-  path: '/story',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const WorldRoute = WorldRouteImport.update({
   id: '/world',
   path: '/world',
@@ -123,7 +117,6 @@ export interface FileRoutesByFullPath {
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
-  '/story': typeof StoryRoute
   '/world': typeof WorldRoute
   '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
@@ -142,7 +135,6 @@ export interface FileRoutesByTo {
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
-  '/story': typeof StoryRoute
   '/world': typeof WorldRoute
   '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
@@ -162,7 +154,6 @@ export interface FileRoutesById {
   '/scenario': typeof ScenarioRoute
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
-  '/story': typeof StoryRoute
   '/world': typeof WorldRoute
   '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
@@ -183,7 +174,6 @@ export interface FileRouteTypes {
     | '/scenario'
     | '/sound'
     | '/stage'
-    | '/story'
     | '/world'
     | '/api/music'
     | '/api/studio'
@@ -202,7 +192,6 @@ export interface FileRouteTypes {
     | '/scenario'
     | '/sound'
     | '/stage'
-    | '/story'
     | '/world'
     | '/api/music'
     | '/api/studio'
@@ -221,7 +210,6 @@ export interface FileRouteTypes {
     | '/scenario'
     | '/sound'
     | '/stage'
-    | '/story'
     | '/world'
     | '/api/music'
     | '/api/studio'
@@ -241,7 +229,6 @@ export interface RootRouteChildren {
   ScenarioRoute: typeof ScenarioRoute
   SoundRoute: typeof SoundRoute
   StageRoute: typeof StageRoute
-  StoryRoute: typeof StoryRoute
   WorldRoute: typeof WorldRoute
   ApiMusicRoute: typeof ApiMusicRoute
   ApiStudioRoute: typeof ApiStudioRoute
@@ -316,13 +303,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/story': {
-      id: '/story'
-      path: '/story'
-      fullPath: '/story'
-      preLoaderRoute: typeof StoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/world': {
       id: '/world'
       path: '/world'
@@ -385,7 +365,6 @@ const rootRouteChildren: RootRouteChildren = {
   ScenarioRoute: ScenarioRoute,
   SoundRoute: SoundRoute,
   StageRoute: StageRoute,
-  StoryRoute: StoryRoute,
   WorldRoute: WorldRoute,
   ApiMusicRoute: ApiMusicRoute,
   ApiStudioRoute: ApiStudioRoute,

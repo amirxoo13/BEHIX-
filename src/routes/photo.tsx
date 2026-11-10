@@ -23,20 +23,11 @@ function DeskPage() {
 
   return (
     <Shell>
-      <Link to="/projects" className="btn btn-primary">همهٔ پروژه‌ها</Link>
       <h1 className="sr-only">BEHIX — {title}</h1>
       <img className="lockup" src="/brand/lockup.png" alt="BEHIX. Animate Your Imagination." />
       <p className="mx-auto mt-4 max-w-xl text-center text-sm leading-6 text-muted">
-        فیلم آدمکی را در یک صفحه بسازید: صحنه، شخصیت، بوم و زمان. خط تولید عکس‌سر جدا مانده است.
+        از سناریو تا فیلم: شخصیت با چهرهٔ واقعی، فضا، دکوپاژ، انیمیت، صدا و خروجی.
       </p>
-
-      <Link to="/story" className="panel mx-auto mt-6 flex max-w-xl items-center justify-between gap-3 no-underline">
-        <span>
-          <span className="block text-lg font-bold">داستان به فیلم ✦ آدمکی</span>
-          <span className="mt-1 block text-sm leading-6 text-muted">داستان فارسی بنویسید، حرکت‌ها و زمان را ویرایش کنید و فیلم بی‌صدا و زیرنویس بگیرید. دستورهای ناشناخته با هشدار مشخص می‌شوند.</span>
-        </span>
-        <span className="btn btn-primary shrink-0">شروع</span>
-      </Link>
 
       <div className="mx-auto mt-6 grid max-w-xl gap-3">
         <label className="lbl" htmlFor="title">

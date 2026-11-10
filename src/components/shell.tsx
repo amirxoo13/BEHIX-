@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { AccountButton } from "@/components/account-dialog";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FLOW, PHASES } from "@/studio/flow";
 import { finishPlayback, useStudio } from "@/studio/store";
@@ -44,7 +45,10 @@ export function Shell({ children }: { children: ReactNode }) {
             <span className="mt-1 block truncate text-sm text-muted">{title}</span>
           </span>
         </Link>
-        <Link to="/projects" className="btn btn-ghost">پروژه‌ها</Link>
+        <div className="flex items-center gap-2">
+          <AccountButton />
+          <Link to="/photo" className="btn btn-ghost">پروژه‌ها</Link>
+        </div>
       </header>
       <StorageBar notice={storageNotice} locked={storageLocked} />
       <div className="layout">
