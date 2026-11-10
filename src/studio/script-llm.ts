@@ -29,27 +29,80 @@ export function scriptLines(script: string): string[] {
   return script.split(/\r?\n/).map((l) => l.trim());
 }
 
-function numbered(script: string): string {
-  return scriptLines(script)
-    .map((l, i) => (l ? `${i + 1}|${l}` : ""))
+/** بازهٔ خط‌ها (۱-پایه، شامل دو سر) که در یک درخواست به مدل فرستاده می‌شود. */
+export type LineRange = { from: number; to: number };
+
+/** حداکثر خط غیرخالی در هر تکه؛ با ۴۰ توکن برای هر خط، جواب هر تکه زیر سقف خروجی می‌ماند. */
+export const CHUNK_LINES = 60;
+/** سقف توکن خروجی هر درخواست (هر تکه). */
+export const MAX_CHUNK_TOKENS = 4096;
+
+function inRange(i: number, range?: LineRange) {
+  return !range || (i + 1 >= range.from && i + 1 <= range.to);
+}
+
+/** آخرین سرصحنهٔ قبل از بازه، تا مدل بداند تکه در کدام صحنه شروع می‌شود. */
+function headingBefore(lines: string[], range?: LineRange): number {
+  if (!range) return -1;
+  for (let i = range.from - 2; i >= 0; i--) if (lines[i] && isHeader(lines[i]) !== null) return i;
+  return -1;
+}
+
+function numbered(script: string, range?: LineRange): string {
+  const lines = scriptLines(script);
+  const context = headingBefore(lines, range);
+  return lines
+    .map((l, i) => (l && (inRange(i, range) || i === context) ? `${i + 1}|${l}` : ""))
     .filter(Boolean)
     .join("\n");
 }
 
 /** تعداد خط‌های غیرخالی؛ برای تعیین سقف طول جواب مدل. */
-export function lineCount(script: string): number {
-  return scriptLines(script).filter(Boolean).length;
+export function lineCount(script: string, range?: LineRange): number {
+  return scriptLines(script).filter((l, i) => l && inRange(i, range)).length;
 }
 
-/** سقف توکن خروجی: حدود ۴۰ توکن برای هر خط کافی است؛ جلوی جواب‌های طولانی و پرهزینه را می‌گیرد. */
-export function maxOutputTokens(script: string): number {
-  return Math.min(3000, 60 + 40 * lineCount(script));
+/** سقف توکن خروجی: حدود ۴۰ توکن برای هر خط؛ سناریوی بلند با `chunkScript` تکه‌تکه فرستاده می‌شود. */
+export function maxOutputTokens(script: string, range?: LineRange): number {
+  return Math.min(MAX_CHUNK_TOKENS, 60 + 40 * lineCount(script, range));
+}
+
+/**
+ * سناریوی بلند را به تکه‌هایی با حداکثر `maxLines` خط غیرخالی تقسیم می‌کند تا جواب مدل
+ * هیچ‌وقت به سقف توکن نخورد. اگر بشود، مرز تکه روی یک سرصحنه می‌افتد.
+ */
+export function chunkScript(script: string, maxLines = CHUNK_LINES): LineRange[] {
+  const lines = scriptLines(script);
+  const ranges: LineRange[] = [];
+  let from = -1;
+  let count = 0;
+  let lastHeader = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    if (from === -1) {
+      from = i + 1;
+      count = 0;
+      lastHeader = -1;
+    }
+    if (count >= maxLines) {
+      // برش روی سرصحنه، اگر در نیمهٔ دوم تکه بوده؛ وگرنه همین‌جا
+      const cut = lastHeader > from + maxLines / 2 ? lastHeader : i + 1;
+      ranges.push({ from, to: cut - 1 });
+      from = cut;
+      count = lines.slice(cut - 1, i).filter(Boolean).length;
+      lastHeader = -1;
+    }
+    if (isHeader(lines[i]) !== null && i + 1 > from) lastHeader = i + 1;
+    count++;
+  }
+  if (from !== -1) ranges.push({ from, to: lines.length });
+  return ranges;
 }
 
 /** شخصیت سفارشی که مرورگر همراه سناریو می‌فرستد (سرور شخصیت‌های سفارشی را نمی‌شناسد). */
 export type ExtraCharacter = { id: string; name: string };
 
-export function buildMessages(script: string, extra: ExtraCharacter[] = []): ChatMessage[] {
+export function buildMessages(script: string, extra: ExtraCharacter[] = [], range?: LineRange): ChatMessage[] {
   const chars = [...CHARACTERS.map((c) => `${c.id}=${c.label}`), ...extra.map((c) => `${c.id}=${c.name}`)].join(", ");
   const places = BACKGROUNDS.map((b) => `${b.id}=${b.label}`).join(", ");
   const system = `Annotate a numbered Persian screenplay ("N|text"). Reply ONLY compact JSON, no spaces:
@@ -63,7 +116,7 @@ action: idle,walk,point,tea(holding tea glass),hips(hands on hips),head(hand on 
 sfx: clink,door,horn,shock,slap,beep(censor),crickets(awkward silence),rimshot`;
   return [
     { role: "system", content: system },
-    { role: "user", content: numbered(script) },
+    { role: "user", content: numbered(script, range) },
   ];
 }
 
@@ -75,6 +128,56 @@ export function extractJson(text: string): unknown {
   return JSON.parse(text.slice(start, end + 1));
 }
 
+/**
+ * ردیف‌های کامل یک جواب ناقص (بریده‌شده با سقف توکن): هر ردیف آرایهٔ ساده‌ای از عدد و رشته است،
+ * پس می‌شود ردیف‌های تمام‌شده را جدا خواند و ردیف نیمه‌کاره را کنار گذاشت.
+ */
+export function salvageItems(text: string): unknown[] {
+  const out: unknown[] = [];
+  for (const m of text.matchAll(/\[\s*\d+\s*(?:,\s*"(?:[^"\\]|\\.)*"\s*)*\]/g)) {
+    try {
+      out.push(JSON.parse(m[0]));
+    } catch {
+      // ردیف خراب کنار گذاشته می‌شود
+    }
+  }
+  return out;
+}
+
+/** یک جواب مدل برای یک تکه از سناریو. `truncated` یعنی سرویس گفته جواب به سقف توکن خورده. */
+export type ModelReply = { content: string; truncated?: boolean; range?: LineRange };
+
+const rangeLabel = (r?: LineRange) => (r ? `خط‌های ${r.from} تا ${r.to}` : "سناریو");
+
+/** ردیف‌های جواب‌ها را جمع می‌کند؛ جواب ناقص یا خراب هشدار دیدنی می‌گیرد، نه شکست بی‌صدا. */
+export function collectItems(replies: ModelReply[]): { items: unknown[]; warnings: string[]; error: string | null } {
+  const items: unknown[] = [];
+  const warnings: string[] = [];
+  let lastError: string | null = null;
+  for (const r of replies) {
+    let rows: unknown[] | null = null;
+    try {
+      const data = extractJson(r.content) as { s?: unknown };
+      if (Array.isArray(data?.s)) rows = data.s;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "پاسخ مدل خوانا نبود.";
+    }
+    if (r.truncated || rows === null) {
+      const saved = salvageItems(r.content);
+      if (r.truncated || saved.length > 0) {
+        warnings.push(
+          `پاسخ مدل برای ${rangeLabel(r.range)} ناقص بود${r.truncated ? " (به سقف توکن خورد)" : ""}؛ ${saved.length} ردیف بازیابی شد و خط‌های بی‌جواب نما ندارند.`,
+        );
+      } else if (replies.length > 1) {
+        warnings.push(`پاسخ مدل برای ${rangeLabel(r.range)} خوانا نبود؛ این خط‌ها نما ندارند.`);
+      }
+      rows = rows ?? saved;
+    }
+    items.push(...rows);
+  }
+  return { items, warnings, error: items.length === 0 ? (lastError ?? "مدل هیچ نمایی برنگرداند.") : null };
+}
+
 function pick<T extends string>(v: unknown, allowed: readonly string[]): T | undefined {
   return typeof v === "string" && allowed.includes(v) ? (v as T) : undefined;
 }
@@ -84,19 +187,25 @@ export function planFromModelReply(
   reply: string,
   script: string,
   extra: ExtraCharacter[] = [],
+  limits: { maxShots: number } = { maxShots: MAX_SHOTS },
+): { ok: true; plan: Plan } | { ok: false; error: string } {
+  return planFromModelReplies([{ content: reply }], script, extra, limits);
+}
+
+/** چند جواب (هر تکهٔ سناریو یکی) → یک `Plan`. جواب ناقص هشدار می‌دهد و ردیف‌های سالمش حفظ می‌شود. */
+export function planFromModelReplies(
+  replies: ModelReply[],
+  script: string,
+  extra: ExtraCharacter[] = [],
+  limits: { maxShots: number } = { maxShots: MAX_SHOTS },
 ): { ok: true; plan: Plan } | { ok: false; error: string } {
   const charIds = [...IDS.characters, ...extra.map((c) => c.id)];
-  let data: unknown;
-  try {
-    data = extractJson(reply);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "پاسخ مدل خوانا نبود." };
-  }
-  const items = (data as { s?: unknown })?.s;
-  if (!Array.isArray(items) || items.length === 0) return { ok: false, error: "مدل هیچ نمایی برنگرداند." };
+  const collected = collectItems(replies);
+  if (collected.error !== null) return { ok: false, error: collected.error };
+  const items = collected.items;
 
   const lines = scriptLines(script);
-  const warnings: string[] = [];
+  const warnings: string[] = [...collected.warnings];
   const dropped = new Set<string>();
 
   // هر خط مدل: [N, bg, speaker, chars, sfx]؛ فقط خط‌های موجود و غیرسرصحنه، به ترتیب و بدون تکرار.
@@ -108,8 +217,8 @@ export function planFromModelReply(
     if (isHeader(lines[n - 1]) !== null || rows.has(n)) continue;
     rows.set(n, it);
   }
-  const order = [...rows.keys()].sort((a, b) => a - b).slice(0, MAX_SHOTS);
-  if (rows.size > MAX_SHOTS) warnings.push(`فقط ${MAX_SHOTS} نمای اول ساخته شد.`);
+  const order = [...rows.keys()].sort((a, b) => a - b).slice(0, limits.maxShots);
+  if (rows.size > limits.maxShots) warnings.push(`فقط ${limits.maxShots} نمای اول ساخته شد.`);
 
   // توضیحی که مستقیم قبل از یک دیالوگ آمده، جزء همان نماست نه نمای جدا (حتی اگر مدل جدا داده باشد).
   // فقط خطی «دیالوگ» است که گوینده‌اش یک شخصیت معتبر باشد (مدل گاهی دو اسم یا متن نامعتبر می‌نویسد).

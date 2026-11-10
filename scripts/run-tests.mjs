@@ -39,6 +39,8 @@ async function main() {
     "src/lib/alpha-qa.test.ts",
     "src/lib/tts-quota.test.ts",
     "src/lib/gemini-tts.test.ts",
+    "src/ai/*.test.ts",
+    "src/lib/film-plan.server.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",
     "src/studio/v2/*.test.ts",

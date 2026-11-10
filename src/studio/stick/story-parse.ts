@@ -365,8 +365,10 @@ export function parseStory(story: string): StoryPlan {
   // دور ۲: اسم‌های آشنا و نقش‌ها که اول جمله (فاعل) آمده‌اند
   for (const line of lines) {
     if (HEAD_PREFIX.test(normalizeFa(line)) || DIALOGUE.test(line)) continue;
-    for (const s of sentences(line)) {
-      const ws = normalizeFa(s.replace(/[(（][^)）]*[)）]/g, " ")).split(" ");
+    // Each clause can introduce its own subject («… ولی سارا نمی‌خندد»), and a leading
+    // «بعد از N ثانیه» is not part of the subject.
+    for (const clause of sentences(line).flatMap((s) => actionClauses(s.replace(/[(（][^)）]*[)）]/g, " ")))) {
+      const ws = normalizeFa(readDelay(clause.text)?.text ?? clause.text).split(" ");
       let i = 0;
       while (i < ws.length && (LEAD_WORDS.has(ws[i]) || ["همان", "لحظه", "موقع", "کمی", "آرام", "شب", "صبح", "روز"].includes(ws[i]))) i++;
       for (;;) {

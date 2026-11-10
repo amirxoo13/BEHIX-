@@ -92,45 +92,69 @@ export const understandScript = createServerFn({ method: "POST" })
     const { getRequest, getRequestIP } = await import("@tanstack/react-start/server");
     const verdict = lim.check(clientIp(getRequest().headers, getRequestIP()));
     if (!verdict.ok) return verdict;
-    const { buildMessages, maxOutputTokens, planFromModelReply } = await import("@/studio/script-llm");
+    const { buildMessages, chunkScript, maxOutputTokens, planFromModelReplies } = await import("@/studio/script-llm");
 
-    let res: Response;
-    try {
-      res = await fetch(`${c.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${c.apiKey}` },
-        body: JSON.stringify({
-          ...c.extra,
-          model: c.model,
-          messages: buildMessages(data.script, data.cast),
-          temperature: 0,
-          max_tokens: maxOutputTokens(data.script),
-        }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (err) {
-      const timedOut = err instanceof Error && err.name === "TimeoutError";
-      return { ok: false, error: timedOut ? "مدل در زمان مجاز جواب نداد." : "اتصال به مدل برقرار نشد." };
-    }
-    if (!res.ok) return { ok: false, error: `سرویس مدل خطای ${res.status} برگرداند.` };
-
-    let content: unknown;
-    let usage: TokenUsage | null = null;
-    try {
-      const body = (await res.json()) as {
-        choices?: { message?: { content?: unknown } }[];
-        usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
-      };
-      content = body.choices?.[0]?.message?.content;
-      const u = body.usage;
-      if (u && typeof u.prompt_tokens === "number" && typeof u.completion_tokens === "number") {
-        usage = { input: u.prompt_tokens, output: u.completion_tokens };
+    // سناریوی بلند تکه‌تکه فرستاده می‌شود تا جواب هیچ تکه‌ای به سقف توکن نخورد؛ اگر باز هم خورد،
+    // ردیف‌های سالم حفظ و هشدار دیدنی داده می‌شود (نه برگشت بی‌صدا به دیکشنری).
+    const replies: { content: string; truncated: boolean; range: { from: number; to: number } }[] = [];
+    const total: TokenUsage = { input: 0, output: 0 };
+    let counted = false;
+    let failure: string | null = null;
+    for (const range of chunkScript(data.script)) {
+      let res: Response;
+      try {
+        res = await fetch(`${c.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${c.apiKey}` },
+          body: JSON.stringify({
+            ...c.extra,
+            model: c.model,
+            messages: buildMessages(data.script, data.cast, range),
+            temperature: 0,
+            max_tokens: maxOutputTokens(data.script, range),
+          }),
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+      } catch (err) {
+        const timedOut = err instanceof Error && err.name === "TimeoutError";
+        failure = timedOut ? "مدل در زمان مجاز جواب نداد." : "اتصال به مدل برقرار نشد.";
+        break;
       }
-    } catch {
-      return { ok: false, error: "پاسخ سرویس مدل خوانا نبود." };
+      if (!res.ok) {
+        failure = `سرویس مدل خطای ${res.status} برگرداند.`;
+        break;
+      }
+      let content: unknown;
+      let finish: unknown;
+      let spent = maxOutputTokens(data.script, range);
+      try {
+        const body = (await res.json()) as {
+          choices?: { message?: { content?: unknown }; finish_reason?: unknown }[];
+          usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
+        };
+        content = body.choices?.[0]?.message?.content;
+        finish = body.choices?.[0]?.finish_reason;
+        const u = body.usage;
+        if (u && typeof u.prompt_tokens === "number" && typeof u.completion_tokens === "number") {
+          total.input += u.prompt_tokens;
+          total.output += u.completion_tokens;
+          counted = true;
+          spent = u.prompt_tokens + u.completion_tokens;
+        }
+      } catch {
+        failure = "پاسخ سرویس مدل خوانا نبود.";
+        break;
+      } finally {
+        lim.record(spent);
+      }
+      if (typeof content !== "string") {
+        failure = "پاسخ مدل متن نداشت.";
+        break;
+      }
+      replies.push({ content, truncated: finish === "length", range });
     }
-    lim.record(usage ? usage.input + usage.output : maxOutputTokens(data.script));
-    if (typeof content !== "string") return { ok: false, error: "پاسخ مدل متن نداشت." };
-    const parsed = planFromModelReply(content, data.script, data.cast);
-    return parsed.ok ? { ok: true, plan: parsed.plan, model: c.model, usage } : parsed;
+    if (replies.length === 0) return { ok: false, error: failure ?? "مدل جوابی نداد." };
+    const parsed = planFromModelReplies(replies, data.script, data.cast);
+    if (parsed.ok && failure) parsed.plan.warnings.unshift(`بخشی از سناریو به مدل نرسید (${failure})؛ خط‌های بعدی نما ندارند.`);
+    return parsed.ok ? { ok: true, plan: parsed.plan, model: c.model, usage: counted ? total : null } : parsed;
   });

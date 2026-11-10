@@ -3,6 +3,7 @@ import { BookOpen, Captions, Clapperboard, Download, MessageSquare, Pause, PenLi
 import { BeatInspector } from "@/components/story/beat-inspector";
 import { CastPanel } from "@/components/story/cast-panel";
 import { ExportDialog } from "@/components/story/export-dialog";
+import { FilmPlanPanel } from "@/components/story/film-plan-panel";
 import { SceneBoard } from "@/components/story/scene-board";
 import { TimelineStrip } from "@/components/story/timeline-strip";
 import { useVoices, VoicePanel } from "@/components/story/voice-panel";
@@ -18,6 +19,7 @@ import { PLACES, PLACE_IDS } from "@/studio/stick/places";
 import type { Directed } from "@/studio/stick/story-direct";
 import { FRAME, renderStory, cameraAt, sceneAt, type Timeline } from "@/studio/stick/story-render";
 import { fa } from "@/studio/format";
+import { MAX_STORY_CHARS } from "@/studio/stick/story-parse";
 
 type Tab = "script" | "cast" | "scenes" | "guide" | "edit";
 type PlayerHandle = { seek: (t: number) => void; toggle: () => void; time: () => number };
@@ -179,15 +181,16 @@ export function StoryApp({ brand, workspace, projectsLink }: {
               className="script-text"
               dir="rtl"
               value={text}
-              maxLength={20000}
+              maxLength={MAX_STORY_CHARS}
               disabled={!project}
               spellCheck={false}
               placeholder={"صحنه ۱: پذیرایی خانه، شب\nمریم (زن، سمت چپ) روی مبل نشسته است.\nمریم (لبخند): سلام!"}
               onChange={(e) => workspace.setText(e.target.value)}
             />
             <p className="script-meta">
-              {fa(sceneCount)} صحنه · {fa(directed?.timeline.cast.length ?? 0)} شخصیت · {clock(directed?.timeline.duration ?? 0)} · {fa(text.length)}/{fa(20000)} نویسه
+              {fa(sceneCount)} صحنه · {fa(directed?.timeline.cast.length ?? 0)} شخصیت · {clock(directed?.timeline.duration ?? 0)} · {fa(text.length)}/{fa(MAX_STORY_CHARS)} نویسه
             </p>
+            {project && <FilmPlanPanel project={project} commit={commit} />}
             {error && <p role="alert" className="story-warn">{error}</p>}
             {directed && text.trim() && directed.warnings.length > 0 && (
               <ul className="story-warn" aria-label="هشدارها">
