@@ -84,8 +84,33 @@ location / {
 | `SCRIPT_AI_BASE_URL`، `SCRIPT_AI_API_KEY`، `SCRIPT_AI_MODEL` | چیدن خودکار سناریو با مدل زبانی سازگار با OpenAI |
 | `SCRIPT_AI_PER_HOUR`، `SCRIPT_AI_DAILY_TOKENS` | سقف مصرف مدل (پیش‌فرض ۱۰ درخواست در ساعت برای هر IP، ۳۰٬۰۰۰ توکن در روز) |
 | `GOOGLE_CLOUD_PROJECT`، `TTS_BUCKET` | صدای Gemini؛ فقط روی Google Cloud کار می‌کند (از metadata server توکن می‌گیرد). بدون آن‌ها `/api/tts` پیام «فعال نیست» برمی‌گرداند و بقیهٔ برنامه کار می‌کند. |
+| `TTS_MODEL`، `TTS_PREVIEW_MODEL`، `TTS_LOCATION`، `TTS_FALLBACK` | مدل صدا روی Agent Platform. پیش‌فرض‌ها: `gemini-3.8-flash-tts`، `gemini-3.8-flash-lite-tts`، `global` (یا `us` / `eu`). `TTS_FALLBACK=off` جایگزینی Flash به Flash-Lite را خاموش می‌کند. بخش «مهاجرت صدا به Gemini 3.8» را ببینید. |
+| `TTS_PER_IP`، `TTS_PER_DAY` | سقف ساخت صدا: ۱۲۰ درخواست در ۱۰ دقیقه برای هر IP و ۳۰۰۰ در روز (پیش‌فرض). |
 | `DATABASE_URL` | فقط اگر ورود کاربران را فعال کنید (Postgres). برای ساخت و ذخیرهٔ داستان لازم نیست؛ داستان‌ها در مرورگر کاربر ذخیره می‌شوند. |
 | `NITRO_PRESET` | برای ساخت روی میزبان دیگر (مثلاً `vercel`)؛ پیش‌فرض `node-server` است. |
+
+## مهاجرت صدا به Gemini 3.8 (Agent Platform)
+
+`/api/tts` دیگر از Cloud Text-to-Speech و `gemini-2.5-pro-tts` استفاده نمی‌کند؛ هر کلیپ تازه با
+`generateContent` روی Agent Platform (`aiplatform.googleapis.com`) ساخته می‌شود.
+مرجع: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/text-to-speech/overview
+
+- **مدل‌ها:** `TTS_MODEL` (پیش‌فرض `gemini-3.8-flash-tts`) برای دیالوگ‌ها؛ `TTS_PREVIEW_MODEL`
+  (پیش‌فرض `gemini-3.8-flash-lite-tts`) برای پیش‌نمایش (`preview: true` در بدنهٔ درخواست) و جایگزین.
+- **زنجیرهٔ جایگزین:** Flash ← Flash-Lite (همان API) ← پاسخ 502 با پیام فارسی برای همان دیالوگ. هیچ جایگزینی
+  با Gemini 2.5 وجود ندارد. سهمیهٔ روزانه یک بار رزرو و در شکست کامل پس داده می‌شود.
+- **منطقه:** `TTS_LOCATION` = `global` (پیش‌فرض) یا `us` / `eu` (نقطه‌های `aiplatform.us.rep.googleapis.com` و
+  `aiplatform.eu.rep.googleapis.com`).
+- **دسترسی:** حساب سرویس Cloud Run باید `roles/aiplatform.user` داشته باشد و API `aiplatform.googleapis.com`
+  روی پروژه فعال باشد. هیچ کلیدی در مرورگر یا `.env` نیست (فقط ADC).
+- **قالب صدا:** WAV شانزده‌بیتی، ۲۴ کیلوهرتز، تک‌کاناله (`audio/wav`). اگر API صدای خام PCM بدهد، سرور سرآیند
+  WAV می‌گذارد. مرورگر WAV و MP3 هر دو را رمزگشایی می‌کند.
+- **کش:** کلید شامل مدل است: `tts/sha256("<model>|<voice>|<prompt>|<text>").wav` در `TTS_BUCKET`، و همان
+  هش روی دستگاه (`voice:<hash>` در IndexedDB). کلیپ‌های قدیمی (`….mp3` با هش `gemini-2.5-pro-tts|…`)
+  پاک نمی‌شوند و اگر همان جمله/صدا/لحن پیدا شود هنوز از GCS و IndexedDB خوانده و پخش می‌شوند؛ فقط کلیپ تازه با
+  2.5 ساخته نمی‌شود. ترتیب جستجو: کلید Flash، کلید Flash-Lite، کلید قدیمی MP3. پاسخ هدر `x-tts-model` دارد.
+- **بررسی زنده:** `node --experimental-strip-types scripts/gcp-verify.mjs` هر دو مدل 3.8 را در `global`، `us` و
+  `eu` می‌آزماید و WAVها را در `verify-out/` می‌نویسد.
 
 ## بررسی سلامت
 

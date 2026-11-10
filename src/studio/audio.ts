@@ -220,25 +220,37 @@ export function playSfx(id: SfxId) {
   creak.stop(now + 0.32);
 }
 
-export async function playUrl(url: string, pitch: number) {
+/**
+ * پخش صدای ضبط‌شدهٔ یک نما. هرگز throw نمی‌کند: خطای fetch/رمزگشایی (مثلاً blob URL باطل‌شده یا فایل خراب)
+ * در کنسول ثبت و با false برگردانده می‌شود تا فراخوان بتواند به کاربر بگوید.
+ */
+export async function playUrl(url: string, pitch: number): Promise<boolean> {
   const my = voiceToken;
-  const c = context();
-  if (!analyser) return;
-  const res = await fetch(url);
-  if (my !== voiceToken) return;
-  const arr = await res.arrayBuffer();
-  const buf = await c.decodeAudioData(arr.slice(0));
-  if (my !== voiceToken) return;
-  const src = c.createBufferSource();
-  src.buffer = buf;
-  src.playbackRate.value = pitch;
-  src.connect(analyser);
-  voiceOn = true;
-  src.onended = () => {
+  try {
+    const c = context();
+    if (!analyser) return false;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`audio fetch ${res.status}`);
+    if (my !== voiceToken) return true;
+    const arr = await res.arrayBuffer();
+    const buf = await c.decodeAudioData(arr.slice(0));
+    if (my !== voiceToken) return true;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = pitch;
+    src.connect(analyser);
+    voiceOn = true;
+    src.onended = () => {
+      if (my === voiceToken) voiceOn = false;
+    };
+    active.push(src);
+    src.start();
+    return true;
+  } catch (e) {
     if (my === voiceToken) voiceOn = false;
-  };
-  active.push(src);
-  src.start();
+    console.warn("[audio] playUrl failed", e);
+    return false;
+  }
 }
 
 export async function resumeAudio() {
