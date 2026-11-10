@@ -488,8 +488,8 @@ export type FilmDirected = Directed & { mode: "plan" | "text" };
 /** برنامه اگر معتبر و قابل‌اجرا باشد اجرا می‌شود؛ وگرنه همان مسیر قدیمی parseStory → directStory. */
 export function storyPlanFor(text: string, plan?: unknown): { story: StoryPlan; mode: "plan" | "text"; warnings: string[] } {
   if (plan !== undefined && plan !== null) {
-    const checked = filmPlanSchema.safeParse(plan);
-    const fixed = checked.success ? { plan: checked.data, warnings: [] as string[] } : repairFilmPlan(plan, text);
+    // همیشه با متن فعلی ترمیم می‌شود تا دیالوگی که کاربر از داستان پاک کرده اجرا نشود.
+    const fixed = repairFilmPlan(plan, text);
     if (fixed.plan) {
       const story = compileFilmPlan(fixed.plan, text);
       if (story.scenes.some((s) => s.beats.length)) return { story: { ...story, warnings: fixed.warnings }, mode: "plan", warnings: fixed.warnings };

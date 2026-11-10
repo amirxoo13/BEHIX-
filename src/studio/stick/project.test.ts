@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   newProject,
@@ -119,4 +119,33 @@ test("a duration the user picks clears the voice-fit marker; other edits keep it
   p = setEdit(p, id, { duration: 12 });
   assert.equal(p.edits[0].duration, 12);
   assert.equal(p.edits[0].fit, undefined);
+});
+
+describe("film plan in a project", () => {
+  it("UT-PJ-FP-01 old projects without a plan still import and compile through parseStory", async () => {
+    const { compileProject, importProject, newProject, projectJson } = await import("./project.ts");
+    const { directStory } = await import("./story-direct.ts");
+    const { parseStory } = await import("./story-parse.ts");
+    const p = newProject("علی وارد می‌شود.\nعلی: سلام!");
+    const again = importProject(projectJson(p));
+    assert.equal(again.plan, undefined);
+    const compiled = compileProject(again);
+    assert.deepEqual(compiled.cues, directStory(parseStory(again.text)).cues);
+  });
+  it("UT-PJ-FP-02 a stored plan round-trips, drives compileProject and keeps edits by beat id", async () => {
+    const { compileProject, importProject, newProject, projectJson, setEdit, setPlan, changeText } = await import("./project.ts");
+    const { FIXTURE_PLAN, FIXTURE_STORY } = await import("../film-plan.fixture.ts");
+    const p = setPlan(newProject(FIXTURE_STORY), structuredClone(FIXTURE_PLAN) as never);
+    const back = importProject(projectJson(p));
+    assert.deepEqual(back.plan, p.plan);
+    const film = compileProject(back);
+    assert.equal(film.cues.length, 28);
+    const edited = setEdit(back, "s1-l1-0", { actor: "sara", face: "cry" });
+    assert.equal(edited.edits.length, 1);
+    assert.equal(compileProject(edited).unresolved.length, 0);
+    const retyped = changeText(edited, FIXTURE_STORY + "\n");
+    assert.equal(retyped.edits[0].unresolved, false);
+    assert.equal(setPlan(edited, undefined).plan, undefined);
+    assert.throws(() => importProject(JSON.stringify({ ...JSON.parse(projectJson(p)), plan: { meta: {} } })));
+  });
 });

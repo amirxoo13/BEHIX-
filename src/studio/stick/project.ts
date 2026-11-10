@@ -4,7 +4,8 @@ import { normalizeFa } from "../catalog.ts";
 import { z } from "zod";
 import { FACES, type Expression } from "./face.ts";
 import { CLOTHES, type Look } from "./figure.ts";
-import { parseStory, type Beat, type StoryPlan } from "./story-parse.ts";
+import { MAX_STORY_CHARS, type Beat, type StoryPlan } from "./story-parse.ts";
+import { filmPlanSchema, storyPlanFor, type FilmPlan } from "../film-plan.ts";
 import { directStory } from "./story-direct.ts";
 import { VOICE_IDS } from "./voice.ts";
 import type { Format } from "./layout.ts";
@@ -76,7 +77,9 @@ export const projectSchema = z
     schemaVersion: z.literal(1),
     id: z.string().min(1).max(100),
     title: z.string().min(1).max(120),
-    text: z.string().max(20000),
+    text: z.string().max(MAX_STORY_CHARS),
+    /** برنامهٔ فیلم Gemini (اختیاری). بدون آن، داستان مثل قبل با فهم دیکشنری ساخته می‌شود. */
+    plan: filmPlanSchema.optional(),
     edits: z.array(editSchema).max(500),
     cast: z.array(castSchema).max(8),
     settings: z
@@ -151,16 +154,25 @@ export function reconcileEdits(edits: StoryEdit[], plan: StoryPlan): StoryEdit[]
       : { ...edit, unresolved: true };
   });
 }
+/** داستانی که موتور اجرا می‌کند: برنامهٔ فیلم اگر باشد (دوباره با متن فعلی ترمیم می‌شود)، وگرنه parseStory. */
+export const projectStory = (p: Pick<StoryProject, "text" | "plan">): StoryPlan => storyPlanFor(p.text, p.plan).story;
 export function changeText(p: StoryProject, text: string): StoryProject {
-  const limited = text.slice(0, 20000);
-  return { ...p, text: limited, edits: reconcileEdits(p.edits, parseStory(limited)) };
+  const limited = text.slice(0, MAX_STORY_CHARS);
+  return { ...p, text: limited, edits: reconcileEdits(p.edits, projectStory({ text: limited, plan: p.plan })) };
+}
+/** برنامهٔ فیلم را می‌گذارد یا (با undefined) برمی‌دارد؛ ویرایش‌ها دوباره به بخش‌های تازه وصل می‌شوند. */
+export function setPlan(p: StoryProject, plan: FilmPlan | undefined): StoryProject {
+  const next: StoryProject = { ...p };
+  if (plan) next.plan = filmPlanSchema.parse(plan);
+  else delete next.plan;
+  return { ...next, edits: reconcileEdits(p.edits, projectStory(next)) };
 }
 export function setEdit(
   p: StoryProject,
   beatId: string,
   patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night" | "shot" | "fit">,
 ): StoryProject {
-  const plan = parseStory(p.text);
+  const plan = projectStory(p);
   const match = anchors(plan).find((a) => a.beat.id === beatId);
   const sceneBeatIds = new Set(plan.scenes.find(s => s.beats.some(b => b.id === beatId))?.beats.map(b => b.id));
   if (!match) return p;
@@ -188,7 +200,7 @@ export function setEdit(
   return projectSchema.parse({ ...p, edits });
 }
 export function compileProject(p: StoryProject) {
-  const plan = parseStory(p.text);
+  const plan = projectStory(p);
   for (const member of plan.cast) {
     const saved = p.cast.find((c) => c.id === member.id);
     if (saved) member.look = { ...saved.look };
