@@ -578,3 +578,22 @@ describe("custom characters (photo heads)", () => {
     assert.equal("characters" in r.data, false);
   });
 });
+
+describe("persist id lists are derived from the catalogs", async () => {
+  const { BG_IDS, SFX_IDS, normalize } = await import("./persist.ts");
+  const { WORLD, SFXS } = await import("./labels.ts");
+  it("every WORLD background survives normalize (no hand-written list to forget)", () => {
+    assert.deepEqual([...BG_IDS].sort(), Object.keys(WORLD).sort());
+    for (const id of Object.keys(WORLD)) assert.equal(normalize({ ...goodShot, background: id } as never).background, id);
+  });
+  it("unknown and legacy backgrounds still repair", () => {
+    assert.equal(normalize({ ...goodShot, background: "moon" } as never).background, "living");
+    const legacy = normalize({ ...goodShot, background: "streetNight" } as never);
+    assert.equal(legacy.background, "street");
+    assert.equal(legacy.night, true);
+  });
+  it("every SFX in the picker survives normalize, and the set is unchanged", () => {
+    assert.deepEqual([...SFX_IDS].sort(), ["beep", "clink", "crickets", "door", "horn", "none", "rimshot", "shock", "slap"]);
+    for (const { id } of SFXS) assert.equal(normalize({ ...goodShot, sfx: id } as never).sfx, id);
+  });
+});

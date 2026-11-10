@@ -4,6 +4,7 @@ import { validPlacement } from "./placement.ts";
 import { CAST, MAX_CUSTOM, isCustomId } from "./characters.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
 import { MAX_PROPS, PROP_IDS, type PropPlacement } from "./props.ts";
+import { SFXS, WORLD } from "./labels.ts";
 import { MAX_EXTRAS, VARIANTS, type ActorSlot, type Aspect, type CharacterDef, type Shot } from "./types.ts";
 
 export type Persist = {
@@ -28,10 +29,8 @@ export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 /* ---------- normalize (T04-v3) ---------- */
 
 const DEFAULT_CHAR = { a: CAST[0].id, b: CAST[1]?.id ?? CAST[0].id };
-const BG_IDS = [
-  "living", "kitchen", "bedroom", "bathroom", "toilet", "parking", "yard", "car",
-  "street", "park", "cafe", "coffee", "bazaar", "milad", "azadi", "saadatabad", "fereshteh",
-];
+/** Derived from the catalogs (WORLD is a Record<BgId, …>, so a new place cannot be forgotten here). */
+export const BG_IDS: string[] = Object.keys(WORLD);
 /** شناسه‌های پروژه‌های قدیمی که دیگر وجود ندارند. */
 const LEGACY_BG: Record<string, { background: string; night: boolean }> = {
   streetDay: { background: "street", night: false },
@@ -39,7 +38,7 @@ const LEGACY_BG: Record<string, { background: string; night: boolean }> = {
 };
 const CAMERA_IDS = ["wide", "medium", "closeLeft", "closeRight", "push", "comic"];
 const SPEAKERS = ["a", "b", "none"];
-const SFX_IDS = ["none", "beep", "slap", "shock", "crickets", "rimshot", "horn", "clink", "door"];
+export const SFX_IDS: string[] = SFXS.map((s) => s.id);
 const ASPECTS = ["wide", "square", "story"];
 
 export function isShotLike(v: unknown): v is Shot {
