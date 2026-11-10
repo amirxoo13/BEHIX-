@@ -73,34 +73,125 @@ export class LyriaError extends Error {
   }
 }
 
-const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+/** Standard or URL-safe base64 (padding optional) → bytes. */
+export function b64ToBytes(b64: string): Uint8Array {
+  const std = b64.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(std + "=".repeat((4 - (std.length % 4)) % 4)), (c) => c.charCodeAt(0));
+}
 
-/** First audio part of the interaction (MP3 bytes) plus any text the model returned. */
-export function parseLyriaResponse(json: unknown): { mp3: Uint8Array; mimeType: string; text?: string } {
-  const j = (json ?? {}) as { status?: string; steps?: { type?: string; content?: { type?: string; text?: string; data?: string; mime_type?: string; mimeType?: string }[] }[] };
-  if (j.status && j.status !== "completed") throw new LyriaError(`interaction ${j.status}`);
-  let text: string | undefined;
-  for (const step of j.steps ?? []) {
-    for (const c of step.content ?? []) {
-      if (c.type === "text" && c.text) text = (text ? `${text}\n` : "") + c.text;
-      if (c.type === "audio" && c.data) return { mp3: b64ToBytes(c.data), mimeType: c.mime_type ?? c.mimeType ?? "audio/mpeg", text };
-    }
+/**
+ * Redacted key tree of a JSON value for error messages: long strings (base64 audio, lyrics) become `<len N>`,
+ * arrays are cut to their first 6 items. Safe to log.
+ */
+export function keyTree(v: unknown, depth = 0): unknown {
+  if (depth > 8) return "<deep>";
+  if (typeof v === "string") return v.length > 48 ? `<len ${v.length}>` : v;
+  if (Array.isArray(v)) {
+    const head = v.slice(0, 6).map((x) => keyTree(x, depth + 1));
+    return v.length > 6 ? [...head, `<+${v.length - 6} more>`] : head;
   }
-  throw new LyriaError("no audio in Lyria response");
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, keyTree(x, depth + 1)]));
+  return v;
+}
+export const keyTreeText = (v: unknown, max = 1500) => JSON.stringify(keyTree(v)).slice(0, max);
+
+export type LyriaAudio =
+  | { kind: "inline"; bytes: Uint8Array; mimeType: string; path: string; text?: string }
+  | { kind: "uri"; uri: string; mimeType: string; path: string; text?: string };
+
+const AUDIO_MIME = /^audio\//i;
+const DATA_KEYS = ["data", "audioContent", "audio_content", "bytesBase64Encoded", "bytes_base64_encoded", "b64_json", "audioData", "audio_data"];
+const URI_KEYS = ["uri", "fileUri", "file_uri", "gcsUri", "gcs_uri", "url"];
+const MIME_KEYS = ["mime_type", "mimeType", "mime"];
+
+/**
+ * Find the generated audio anywhere in an Interactions (or older predict / generateContent) response.
+ * Handles, in document order: `steps[].content[]` {type:"audio", data|uri, mime_type} (documented, 2026-11),
+ * `outputs[]` with the same blocks, `content` as a single object, `inlineData`/`inline_data` {mimeType, data},
+ * `fileData`/`file_data` {fileUri}, `predictions[].audioContent` (lyria-002), and camelCase variants.
+ * Returns null when no audio is present (caller reports the redacted key tree).
+ */
+export function extractLyriaAudio(json: unknown): LyriaAudio | null {
+  const texts: string[] = [];
+  let found: LyriaAudio | null = null;
+  const visit = (v: unknown, path: string, parentAudio: boolean) => {
+    if (found || !v || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      v.forEach((x, i) => visit(x, `${path}[${i}]`, parentAudio));
+      return;
+    }
+    const o = v as Record<string, unknown>;
+    if (o.type === "text" && typeof o.text === "string") texts.push(o.text);
+    const mime = MIME_KEYS.map((k) => o[k]).find((x): x is string => typeof x === "string");
+    const audioish = o.type === "audio" || (mime !== undefined && AUDIO_MIME.test(mime)) || parentAudio;
+    if (audioish) {
+      const dataKey = DATA_KEYS.find((k) => typeof o[k] === "string" && (o[k] as string).length > 0);
+      if (dataKey) {
+        found = { kind: "inline", bytes: b64ToBytes(o[dataKey] as string), mimeType: mime ?? "audio/mpeg", path: `${path}.${dataKey}` };
+        return;
+      }
+      const uriKey = URI_KEYS.find((k) => typeof o[k] === "string" && /^(gs|https?):\/\//.test(o[k] as string));
+      if (uriKey) {
+        found = { kind: "uri", uri: o[uriKey] as string, mimeType: mime ?? "audio/mpeg", path: `${path}.${uriKey}` };
+        return;
+      }
+    }
+    // inlineData / fileData / {audio: {...}} wrappers carry the audio one level down
+    for (const [k, x] of Object.entries(o)) visit(x, `${path}.${k}`, /^(inline_?data|file_?data|audio)$/i.test(k));
+  };
+  visit(json, "$", false);
+  const f = found as LyriaAudio | null;
+  if (f && texts.length) f.text = texts.join("\n");
+  return f;
+}
+
+const DONE = new Set(["completed"]);
+const FAILED = new Set(["failed", "cancelled", "incomplete", "requires_action"]);
+
+/** First audio part of a completed interaction (bytes only; URIs are fetched by generateMusic). */
+export function parseLyriaResponse(json: unknown): { mp3: Uint8Array; mimeType: string; text?: string } {
+  const j = (json ?? {}) as { status?: string; error?: { message?: string } };
+  if (j.status && FAILED.has(j.status)) throw new LyriaError(`interaction ${j.status}${j.error?.message ? `: ${j.error.message.slice(0, 200)}` : ""}`);
+  const a = extractLyriaAudio(json);
+  if (!a) throw new LyriaError(`no audio in Lyria response; key tree: ${keyTreeText(json)}`);
+  if (a.kind !== "inline") throw new LyriaError(`Lyria returned a URI (${a.path}); fetch it with generateMusic`);
+  return { mp3: a.bytes, mimeType: a.mimeType, text: a.text };
 }
 
 export const musicKey = async (model: string, prompt: string) => `music/${await sha256Hex(`${model}|${prompt}`)}.mp3`;
 
-export async function generateMusic(opts: { project: string; model: string; prompt: string; headers: Record<string, string>; fetchImpl?: typeof fetch; timeoutMs?: number }) {
-  const r = await (opts.fetchImpl ?? fetch)(lyriaUrl(opts.project), {
-    method: "POST",
-    headers: { ...opts.headers, "x-goog-user-project": opts.project, "content-type": "application/json" },
-    body: JSON.stringify(buildLyriaRequest(opts.model, opts.prompt)),
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 180_000),
-  });
+/** gs://bucket/obj → Storage JSON API media URL; https stays as is. */
+export function mediaUrl(uri: string): string {
+  const m = /^gs:\/\/([^/]+)\/(.+)$/.exec(uri);
+  return m ? `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(m[1])}/o/${encodeURIComponent(m[2])}?alt=media` : uri;
+}
+
+export async function generateMusic(opts: { project: string; model: string; prompt: string; headers: Record<string, string>; fetchImpl?: typeof fetch; timeoutMs?: number; pollMs?: number }) {
+  const f = opts.fetchImpl ?? fetch;
+  const deadline = Date.now() + (opts.timeoutMs ?? 180_000);
+  const headers = { ...opts.headers, "x-goog-user-project": opts.project, "content-type": "application/json" };
+  const left = () => Math.max(1000, deadline - Date.now());
+  const r = await f(lyriaUrl(opts.project), { method: "POST", headers, body: JSON.stringify(buildLyriaRequest(opts.model, opts.prompt)), signal: AbortSignal.timeout(left()) });
   if (!r.ok) {
     const msg = ((await r.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? r.statusText;
     throw new LyriaError(`Lyria ${r.status}: ${String(msg).slice(0, 300)}`, r.status);
   }
-  return parseLyriaResponse(await r.json());
+  let json = (await r.json()) as { id?: string; status?: string };
+  // background / long-running: poll GET interactions/{id} until it leaves in_progress
+  while (json.status && !DONE.has(json.status) && !FAILED.has(json.status) && json.id) {
+    if (Date.now() + (opts.pollMs ?? 3000) > deadline) throw new LyriaError(`Lyria still ${json.status} at timeout; key tree: ${keyTreeText(json)}`);
+    await new Promise((res) => setTimeout(res, opts.pollMs ?? 3000));
+    const g = await f(`${lyriaUrl(opts.project)}/${encodeURIComponent(json.id)}`, { headers, signal: AbortSignal.timeout(left()) });
+    if (!g.ok) throw new LyriaError(`Lyria poll ${g.status}`, g.status);
+    json = (await g.json()) as { id?: string; status?: string };
+  }
+  const st = (json as { status?: string; error?: { message?: string } });
+  if (st.status && FAILED.has(st.status)) throw new LyriaError(`interaction ${st.status}${st.error?.message ? `: ${st.error.message.slice(0, 200)}` : ""}`);
+  const a = extractLyriaAudio(json);
+  if (!a) throw new LyriaError(`no audio in Lyria response; key tree: ${keyTreeText(json)}`);
+  if (a.kind === "inline") return { mp3: a.bytes, mimeType: a.mimeType, text: a.text };
+  const isGoogle = /^gs:|^https:\/\/[^/]*googleapis\.com\//.test(a.uri);
+  const m = await f(mediaUrl(a.uri), { headers: isGoogle ? { authorization: opts.headers.authorization ?? "", "x-goog-user-project": opts.project } : {}, signal: AbortSignal.timeout(left()) });
+  if (!m.ok) throw new LyriaError(`Lyria audio URI ${a.path} → ${m.status}`, m.status);
+  return { mp3: new Uint8Array(await m.arrayBuffer()), mimeType: m.headers.get("content-type")?.split(";")[0] || a.mimeType, text: a.text };
 }

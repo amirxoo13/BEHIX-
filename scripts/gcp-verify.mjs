@@ -6,6 +6,8 @@
  *     واقعی می‌سازد و WAV را ذخیره می‌کند (سرآیند RIFF، نرخ نمونه و مدت را گزارش می‌کند).
  *   - (اختیاری، VERIFY_STT=1) Speech-to-Text v2 chirp_2 fa-IR روی WAV واقعی همان TTS 3.8: کلمه‌ها، زمان و اطمینان.
  *   - (اختیاری، VERIFY_LYRIA=1 و LYRIA_MODEL) یک قطعهٔ کوتاه Lyria 3 Pro (global، Interactions) و ذخیرهٔ MP3.
+ *   - (فقط همین، VERIFY_LYRIA_SHAPE=1) یک درخواست کوتاه Lyria و چاپ «درخت کلیدها»ی پاسخ با رشته‌های بلند/base64
+ *     به‌صورت <len N>؛ هیچ آزمون دیگری اجرا نمی‌شود و هیچ داده‌ای ذخیره نمی‌شود. مدل: LYRIA_MODEL (پیش‌فرض lyria-3-pro-preview).
  * اجرا:
  *   node --experimental-strip-types scripts/gcp-verify.mjs
  * متغیرهای اختیاری: GOOGLE_CLOUD_PROJECT، VERIFY_MODELS، VERIFY_LOCATIONS، VERIFY_TTS_MODELS، VERIFY_TTS_LOCATIONS، VERIFY_OUT، VERIFY_STT، STT_LOCATION، STT_MODEL، VERIFY_LYRIA، LYRIA_MODEL
@@ -14,7 +16,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { gcpAccessToken, gcpProject } from "../src/lib/gcp-auth.server.ts";
 import { isWav, synthesizeGemini, wavPcm } from "../src/lib/gemini-tts.server.ts";
 import { recognizeWords, sttConfig } from "../src/lib/gcp-stt.server.ts";
-import { generateMusic, lyriaConfig, musicPrompt } from "../src/lib/lyria.server.ts";
+import { buildLyriaRequest, extractLyriaAudio, generateMusic, keyTree, lyriaConfig, lyriaUrl, musicPrompt } from "../src/lib/lyria.server.ts";
 
 const list = (v, d) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : d);
 const models = list(process.env.VERIFY_MODELS, ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.5-flash"]);
@@ -30,6 +32,23 @@ if (!project) {
 }
 const token = await gcpAccessToken();
 const auth = { authorization: `Bearer ${token}`, "x-goog-user-project": project, "content-type": "application/json" };
+
+if (process.env.VERIFY_LYRIA_SHAPE === "1") {
+  const model = process.env.LYRIA_MODEL?.trim() || "lyria-3-pro-preview";
+  const prompt = musicPrompt({ mood: "calm", seconds: 5 });
+  const started = Date.now();
+  const r = await fetch(lyriaUrl(project), { method: "POST", headers: auth, body: JSON.stringify(buildLyriaRequest(model, prompt)), signal: AbortSignal.timeout(240_000) });
+  const text = await r.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch { /* not JSON */ }
+  const found = json ? extractLyriaAudio(json) : null;
+  console.log(JSON.stringify({
+    model, httpStatus: r.status, contentType: r.headers.get("content-type"), ms: Date.now() - started, bytes: text.length,
+    keyTree: json ? keyTree(json) : `<non-JSON body, len ${text.length}>`,
+    extractor: found ? { kind: found.kind, path: found.path, mimeType: found.mimeType, ...(found.kind === "inline" ? { audioBytes: found.bytes.length } : {}) } : null,
+  }, null, 2));
+  process.exit(r.ok && found ? 0 : 2);
+}
 await mkdir(outDir, { recursive: true });
 const report = { project, checkedAt: new Date().toISOString(), gemini: [], tts: [], stt: [], lyria: [] };
 const ttsWavs = [];
