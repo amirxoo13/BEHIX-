@@ -6,6 +6,7 @@ import { PNG } from "pngjs";
 import { gcpAccessToken, gcpProject } from "./gcp-auth.server.ts";
 import { STYLE, generateImage, putObject } from "./studio-media.server.ts";
 import { puppetKeys } from "./studio-keys.ts";
+import { CHAR_TASKS, systemPart, type AiOpts } from "./studio-ai-tasks.ts";
 import { JOINT_NAMES, PART_DEPTH, bonesOf, jointsToPixels, measureBody, validateJoints, type Bone, type Joints, type Part, type PuppetRig } from "../studio/v2/puppet.ts";
 
 export const TEXT_MODEL = process.env.STUDIO_TEXT_MODEL || "gemini-3.8-flash";
@@ -159,7 +160,7 @@ export function assemblePuppet(id: string, name: string, image: string, png: PNG
 }
 
 /** از Gemini می‌خواهد مختصات مفاصل تصویر را بدهد (مقیاس ۰..۱۰۰۰ در هر دو محور). */
-export async function measureJoints(img: { mimeType: string; data: string }) {
+export async function measureJoints(img: { mimeType: string; data: string }, ai: AiOpts = {}) {
   const project = await gcpProject();
   if (!project) throw new Error("GOOGLE_CLOUD_PROJECT is not set");
   const host = TEXT_LOCATION === "global" ? "aiplatform.googleapis.com" : `${TEXT_LOCATION}-aiplatform.googleapis.com`;
@@ -168,6 +169,7 @@ export async function measureJoints(img: { mimeType: string; data: string }) {
     method: "POST",
     headers: { authorization: `Bearer ${await gcpAccessToken()}`, "x-goog-user-project": project, "content-type": "application/json" },
     body: JSON.stringify({
+      ...systemPart(ai.system?.(CHAR_TASKS.joints)),
       contents: [{ role: "user", parts: [{ inlineData: img }, { text: "This is a character turnaround on a plain background. Report the position of each anatomical landmark using a coordinate system where (0,0) is the TOP-LEFT of the image, x grows right, y grows down, and BOTH axes are normalized to the range 0..1000. \"L\" means the character's own left, which appears on the RIGHT side of the image when the character faces the viewer. Estimate landmarks that are partly hidden. headTop is the top of the hair, chin the bottom of the jaw, neck the base of the neck, chest the centre of the ribcage, pelvis the centre of the hips, hand the centre of the palm, toe the tip of the shoe." }] }],
       generationConfig: {
         temperature: 0,
@@ -202,10 +204,10 @@ export const aPosePrompt = refPosePrompt;
  * هر ساخت یک نسخهٔ تازه زیر پوشهٔ صاحبش است (cast/<owner>/<id>/<version>.png|json) و با
  * ifGenerationMatch=0 نوشته می‌شود؛ هیچ عروسک موجودی (از جمله مال کاربر دیگر) بازنویسی نمی‌شود.
  */
-export async function createPuppet(id: string, name: string, who: string, owner: string): Promise<PuppetRig> {
+export async function createPuppet(id: string, name: string, who: string, owner: string, ai: AiOpts = {}): Promise<PuppetRig> {
   const keys = puppetKeys(owner, id);
-  const img = await generateImage(refPosePrompt(who), [], "3:4");
-  const joints1000 = await measureJoints(img);
+  const img = await generateImage(refPosePrompt(who), [], "3:4", ai.system?.(CHAR_TASKS.refpose));
+  const joints1000 = await measureJoints(img, ai);
   const png = keyOutBackground(PNG.sync.read(Buffer.from(img.data, "base64")));
   const { rig, atlas } = assemblePuppet(id, name, keys.png, png, jointsToPixels(joints1000, png.width, png.height));
   await putObject(keys.png, PNG.sync.write(atlas), "image/png");

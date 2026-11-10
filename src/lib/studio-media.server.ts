@@ -6,6 +6,7 @@
  */
 import { gcpAccessToken, gcpProject } from "./gcp-auth.server.ts";
 import { KEY_RE, assetKey } from "./studio-keys.ts";
+import { CHAR_TASKS, systemPart, type AiOpts } from "./studio-ai-tasks.ts";
 
 export { KEY_RE };
 
@@ -80,12 +81,14 @@ async function readImage(key: string): Promise<Img> {
 
 /* ---------- Gemini Image ---------- */
 
-export async function generateImage(prompt: string, refs: Img[] = [], aspectRatio = "16:9"): Promise<Img> {
+/** systemInstruction اختیاری است؛ بدون آن بدنهٔ درخواست دقیقاً مثل قبل است. */
+export async function generateImage(prompt: string, refs: Img[] = [], aspectRatio = "16:9", systemInstruction?: string): Promise<Img> {
   const { project, headers } = await ctx();
   const r = await fetch(`${model(project, IMAGE_LOCATION, IMAGE_MODEL)}:generateContent`, {
     method: "POST",
     headers,
     body: JSON.stringify({
+      ...systemPart(systemInstruction),
       contents: [{ role: "user", parts: [...refs.map((inlineData) => ({ inlineData })), { text: prompt }] }],
       generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { aspectRatio } },
     }),
@@ -105,19 +108,20 @@ async function saveImage(folder: "cast" | "frames", owner: string, img: Img): Pr
 }
 
 /** شناسنامهٔ بازیگر: یک برگهٔ سه‌زاویه (روبه‌رو، سه‌رخ، نیم‌رخ) که مرجع همهٔ نماهای بعدی است. */
-export async function createCharacter(description: string, owner: string): Promise<{ key: string }> {
+export async function createCharacter(description: string, owner: string, ai: AiOpts = {}): Promise<{ key: string }> {
   const img = await generateImage(
     `Character design sheet on a plain light-grey background. Character: ${description}. Show the SAME character three times, full body, standing: front view, three-quarter view, side profile. Identical face, hair and clothes in all three. ${STYLE}`,
+    [], undefined, ai.system?.(CHAR_TASKS.generate),
   );
   return { key: await saveImage("cast", owner, img) };
 }
 
 /** فریم کلیدی یک نما با همان شخصیت‌ها (حداکثر ۳ برگهٔ مرجع؛ دسترسی به مرجع‌ها را studio-api بررسی می‌کند). */
-export async function createKeyframe(castKeys: string[], direction: string, owner: string): Promise<{ key: string }> {
+export async function createKeyframe(castKeys: string[], direction: string, owner: string, ai: AiOpts = {}): Promise<{ key: string }> {
   const refs = await Promise.all(castKeys.slice(0, 3).map(readImage));
   const img = await generateImage(
     `Using exactly the character(s) from the reference sheet(s) (same faces, hair, clothes), create ONE cinematic 16:9 film frame. ${direction} Each character appears only once. Layered background with depth. ${STYLE}`,
-    refs,
+    refs, undefined, ai.system?.(CHAR_TASKS.keyframe),
   );
   return { key: await saveImage("frames", owner, img) };
 }
