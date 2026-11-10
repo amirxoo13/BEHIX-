@@ -285,7 +285,7 @@ export const PROPS: PropDef[] = [
   { id: "cypress", label: "سرو", aliases: ["سرو", "درخت سرو"], mount: "floor", layer: "back", big: true, draw: (c) => cypress(c, 0, 0, 2.2) },
   { id: "bench", label: "نیمکت", aliases: ["نیمکت"], mount: "floor", layer: "back", big: false, draw: bench },
   { id: "streetlight", label: "تیر چراغ برق", aliases: ["تیر چراغ برق", "تیر برق", "چراغ برق"], mount: "floor", layer: "back", big: true, draw: streetlight },
-  { id: "trash", label: "سطل زباله", aliases: ["سطل زباله", "سطل آشغال", "سطل"], mount: "floor", layer: "back", big: false, draw: trash },
+  { id: "trash", label: "سطل زباله", aliases: ["سطل زباله", "سطل آشغال", "سطل اشغال", "زباله‌دان", "سطل‌زباله"], mount: "floor", layer: "back", big: false, draw: trash },
   { id: "peykan", label: "پیکان", aliases: ["پیکان"], mount: "floor", layer: "back", big: true, draw: carKind("peykan") },
   { id: "pride", label: "پراید", aliases: ["پراید"], mount: "floor", layer: "back", big: true, draw: carKind("pride") },
   { id: "samand", label: "سمند", aliases: ["سمند"], mount: "floor", layer: "back", big: true, draw: carKind("samand") },

@@ -6,7 +6,7 @@ import { actionClauses, conjugations, hasNegativeVerb, readDelay, textId } from 
  * - دیالوگ: «اسم: جمله» یا «اسم (حالت): جمله»؛ «راوی: ...» فقط زیرنویس است.
  * - بقیهٔ جمله‌ها توصیف‌اند: نشستن/ایستادن، ورود/خروج، حرکت دست، شیء در دست، حالت چهره، فکر کردن.
  */
-import { findAll, normalizeFa, type Entry, type Match } from "../catalog.ts";
+import { PARK_VERB, findAll, normalizeFa, sentencePlaceEntries, type Entry, type Match } from "../catalog.ts";
 import type { Expression } from "./face.ts";
 import type { Hair, Hold, Kind, Look } from "./figure.ts";
 import { PLACES, PLACE_IDS, type PlaceId } from "./places.ts";
@@ -78,9 +78,13 @@ function stems<T extends string>(list: Entry<T>[]): Entry<T>[] {
   return list.map((x) => ({ ...x, aliases: x.aliases.map((a) => (normalizeFa(a).length > 3 ? `${a}*` : a)) }));
 }
 
-const PLACE_ENTRIES: Entry<PlaceId>[] = PLACE_IDS.filter((id) => id !== "blank").map((id) =>
-  e(id, [PLACES[id].label, ...PLACES[id].aliases]),
-);
+const PLACE_ENTRIES: Entry<PlaceId>[] = PLACE_IDS.filter((id) => id !== "blank").map((id) => ({
+  ...e(id, [PLACES[id].label, ...PLACES[id].aliases]),
+  // «پارک کرد/پارک شده» is the verb, not the place
+  ...(id === "park" ? { unless: PARK_VERB } : {}),
+}));
+/** Sentence-level detection: bare «ماشین/تاکسی/خودرو» is a prop there, not the inside of a car. */
+const SENTENCE_PLACE_ENTRIES = sentencePlaceEntries(PLACE_ENTRIES);
 
 const NIGHT = ["شب", "شبانه", "نیمه شب", "نیمه‌شب", "تاریکی", "آخر شب", "دیروقت"];
 const DAY = ["روز", "صبح", "ظهر", "عصر", "بعدازظهر", "بعد از ظهر", "غروب", "روز روشن"];
@@ -273,9 +277,9 @@ const NARRATOR = new Set(["راوی", "گوینده", "صدای راوی", "مت
 const HEAD_PREFIX = /^(صحنه|سکانس|پلان|مکان|لوکیشن)(?:\s|$)/;
 const VERBISH = new Set(["می", "است", "هست", "هستند", "شد", "بود", "رفت", "آمد", "نشسته", "ایستاده", "میره", "میاد", "میشه"]);
 
-function placeIn(text: string): PlaceId | undefined {
+function placeIn(text: string, sentence = false): PlaceId | undefined {
   // اسم بلندتر دقیق‌تر است («اتاق کار» به‌جای «اتاق»)
-  return [...findAll(text, PLACE_ENTRIES)].sort((a, b) => b.alias.length - a.alias.length)[0]?.id;
+  return [...findAll(text, sentence ? SENTENCE_PLACE_ENTRIES : PLACE_ENTRIES)].sort((a, b) => b.alias.length - a.alias.length)[0]?.id;
 }
 
 function nightIn(text: string): boolean | undefined {
@@ -530,7 +534,7 @@ export function parseStory(story: string): StoryPlan {
       sentenceCursor = sentenceStart + s.length;
       // جملهٔ توصیفی در صحنه‌ای که مکان/زمانش هنوز معلوم نیست، آن را معلوم می‌کند
       if (!placeSet) {
-        const p = placeIn(s);
+        const p = placeIn(s, true);
         if (p) {
           sc.place = p;
           placeSet = true;
