@@ -4,8 +4,8 @@ name: Soundtrack mix, loudness and Lyria music cues for BEHIX shorts
 version: 1
 owner: audio
 tasks: [music.cue]
-source: https://github.com/GoogleCloudPlatform/genmedia-creative-studio/tree/19eecec3578751bfbb1ab20109fb93e08ddb8666/experiments/mcp-genmedia/skills/genmedia-audio-engineer
-license: Apache-2.0 AND MIT
+source: [https://github.com/GoogleCloudPlatform/genmedia-creative-studio/tree/19eecec3578751bfbb1ab20109fb93e08ddb8666/experiments/mcp-genmedia/skills/genmedia-audio-engineer, https://github.com/calesthio/generative-media-skills/tree/8c85352/skills/production/audio-craft/audio-mixing-mastering, https://github.com/calesthio/generative-media-skills/tree/8c85352/skills/providers/music-generation/google-lyria]
+license: [Apache-2.0, MIT]
 ---
 
 # Soundtrack mix and music for BEHIX
