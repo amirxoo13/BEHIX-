@@ -38,10 +38,10 @@ export type Skill = {
   version: number;
   owner: SkillOwner;
   tasks: string[];
-  /** URL of the upstream skill this one is adapted from (https). */
-  source?: string;
-  /** SPDX id of the upstream license; required whenever `source` is set. */
-  license?: SkillLicense;
+  /** Upstream skill URL(s) this one is adapted from (https). `source: url` or `source: [url, url]`. */
+  source?: string[];
+  /** SPDX id(s) of the upstream license(s); required whenever `source` is set. */
+  license?: SkillLicense[];
   body: string;
   path: string;
   words: number;
@@ -92,10 +92,16 @@ export function parseSkill(raw: string, path: string): Skill {
   if (!SKILL_OWNERS.includes(owner)) fail(`unknown owner "${owner}"`);
   const tasks = data.tasks;
   if (!Array.isArray(tasks) || !tasks.length) fail("tasks must be a non-empty [list]");
-  const source = str("source", false);
-  if (source && !/^https:\/\/\S+$/.test(source)) fail("source must be an https URL");
-  const license = str("license", false) as SkillLicense | undefined;
-  if (license && !SKILL_LICENSES.includes(license)) fail(`license "${license}" is not one of ${SKILL_LICENSES.join(", ")}`);
+  const list = (k: string): string[] | undefined => {
+    const v = data[k];
+    if (v === undefined || v === "") return undefined;
+    const out = Array.isArray(v) ? v : [v];
+    return out.length ? out : undefined;
+  };
+  const source = list("source");
+  for (const url of source ?? []) if (!/^https:\/\/\S+$/.test(url)) fail(`source must be an https URL ("${url}")`);
+  const license = list("license") as SkillLicense[] | undefined;
+  for (const l of license ?? []) if (!SKILL_LICENSES.includes(l)) fail(`license "${l}" is not one of ${SKILL_LICENSES.join(", ")}`);
   if (source && !license) fail("source needs a license");
   if (!body) fail("empty body");
   const words = wordCount(body);
