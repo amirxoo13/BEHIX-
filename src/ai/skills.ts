@@ -22,6 +22,8 @@ export const SKILL_TASKS = {
   "rig.joints": "characters",
   /** Gemini TTS style prompt (src/lib/gemini-tts.server.ts + stylePrompt in src/studio/stick/voice.ts); wired by the audio bot. */
   "tts.line": "audio",
+  /** Final-delivery QA review of a rendered film (skills/export-quality-qa); call site owned by the export bot. */
+  "export.qa": "export",
 } as const satisfies Record<string, SkillOwner>;
 export type SkillTask = keyof typeof SKILL_TASKS;
 
