@@ -12,9 +12,9 @@ import { PNG } from "pngjs";
 import { gcpAccessToken } from "./gcp-auth.server.ts";
 import { gcsPut } from "./gcs.server.ts";
 import { BODY_TEMPLATE_PNG, HEAD_TEMPLATE_PNG } from "./kit-templates.ts";
-import { buildKit, type FaceBoxes } from "../studio/kit/build.ts";
+import { bodyParts, buildKit, checkBodyParts, headFromSheet, type FaceBoxes, type PartBoxes } from "../studio/kit/build.ts";
 import type { CharacterKit } from "../studio/kit/kit.ts";
-import { blobs, cut, keyGreen, type Rgba } from "../studio/kit/process.ts";
+import type { Rgba } from "../studio/kit/process.ts";
 
 export const KIT_IMAGE_MODEL = process.env.KIT_IMAGE_MODEL?.trim() || "gemini-3-pro-image";
 export const KIT_TEXT_MODEL = process.env.KIT_TEXT_MODEL?.trim() || "gemini-3.8-flash";
@@ -32,7 +32,7 @@ Character: ${description}
 Strict rules:
 - ${STYLE}.
 - Front view, standing pose parts. Draw only the character's RIGHT-side limbs (one upper arm, one forearm, one hand, one thigh, one shin, one foot); they will be mirrored for the left side.
-- TORSO box: neck stub at the top (no head), shoulders, chest with the clothing, waist and hips/pelvis at the bottom. No arms on the torso.
+- TORSO box: neck stub at the top (no head), shoulders, chest with the clothing, waist and hips/pelvis at the bottom. The torso has NO arms and NO sleeves: the clothing is cut off cleanly at the shoulders (the arms are separate parts).
 - UPPER ARM: sleeve (or bare arm) from shoulder to elbow, vertical. FOREARM: from elbow to wrist, vertical. HAND: open relaxed hand, palm toward the viewer, fingers pointing down.
 - THIGH: from hip to knee, vertical. SHIN: from knee to ankle, vertical. FOOT: shoe seen from the front-side, toe pointing to the viewer's left.
 - Every part that connects to another part must have a ROUNDED end (round joint cap) at the red dot and the blue dot, so parts overlap without visible seams when rotated.
@@ -103,6 +103,34 @@ export async function geminiImage(project: string, prompt: string, refs: Img[], 
   throw new Error(`Gemini تصویر نساخت: ${last}`);
 }
 
+const BOX = { type: "ARRAY", items: { type: "INTEGER" } };
+const PARTS_SCHEMA = {
+  type: "OBJECT",
+  properties: { torso: BOX, upperArm: BOX, forearm: BOX, hand: BOX, thigh: BOX, shin: BOX, foot: BOX, torsoHasArms: { type: "BOOLEAN" }, allSeparate: { type: "BOOLEAN" } },
+  required: ["torso", "upperArm", "forearm", "hand", "thigh", "shin", "foot", "torsoHasArms", "allSeparate"],
+};
+
+/** Gemini برگهٔ بدن را بررسی می‌کند: جای هر تکه (box_2d) و اینکه تنه دست دارد یا تکه‌ها به هم چسبیده‌اند. */
+export async function detectParts(project: string, sheet: Img): Promise<PartBoxes & { torsoHasArms: boolean; allSeparate: boolean }> {
+  const text = await geminiJson(project, sheet, "This is a sheet of separate cut-out body parts of one cartoon character on a green background. Return box_2d [ymin, xmin, ymax, xmax] normalized 0-1000 for each part: torso (neck to hips, the largest piece), upperArm (shoulder to elbow sleeve), forearm (elbow to wrist, with the cuff), hand, thigh (hip to knee), shin (knee to ankle), foot (shoe). torsoHasArms = true if the torso piece has sleeves or arms attached to it. allSeparate = true only if every part is its own separate piece not touching the others.", PARTS_SCHEMA);
+  return text as PartBoxes & { torsoHasArms: boolean; allSeparate: boolean };
+}
+
+async function geminiJson(project: string, image: Img, prompt: string, schema: unknown): Promise<Record<string, unknown>> {
+  const r = await fetch(modelUrl(project, KIT_TEXT_MODEL), {
+    method: "POST",
+    headers: await headers(project),
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ inlineData: image }, { text: prompt }] }],
+      generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  const j = (await r.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  if (!r.ok) throw new Error(`Gemini ${r.status}`);
+  return JSON.parse(j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "{}") as Record<string, unknown>;
+}
+
 const FACE_SCHEMA = {
   type: "OBJECT",
   properties: { mouth: { type: "ARRAY", items: { type: "INTEGER" } }, leftEye: { type: "ARRAY", items: { type: "INTEGER" } }, rightEye: { type: "ARRAY", items: { type: "INTEGER" } } },
@@ -138,6 +166,31 @@ const encodePng = (i: Rgba): Buffer => {
   return PNG.sync.write(p);
 };
 
+/**
+ * برگهٔ بدنِ قابل‌استفاده: Gemini می‌کشد، Gemini بررسی می‌کند (جای تکه‌ها، تنهٔ بی‌دست، تکه‌های جدا)،
+ * و شکل تکه‌ها بدون مدل سنجیده می‌شود؛ اگر نشد تا سه بار از نو کشیده می‌شود.
+ */
+async function goodBody(project: string, description: string, ref: Img): Promise<{ body: Img; parts: PartBoxes }> {
+  let why = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const body = await geminiImage(project, bodyPrompt(description) + (why ? `\n\nThe previous attempt was rejected: ${why}. Follow the rules exactly.` : ""), [ref]);
+    const det = await detectParts(project, body).catch(() => null);
+    if (!det) { why = "parts could not be located"; continue; }
+    if (det.torsoHasArms) { why = "the torso had arms or sleeves attached"; continue; }
+    if (!det.allSeparate) { why = "some parts touched each other"; continue; }
+    try {
+      const p = bodyParts(decode(body), det);
+      const bad = checkBodyParts(p);
+      if (!bad) return { body, parts: det };
+      why = bad;
+    } catch (e) {
+      why = (e as Error).message;
+    }
+    console.warn("[kit] body sheet rejected:", why);
+  }
+  throw new Error(`Gemini تکه‌های بدن را درست نکشید (${why}). دوباره امتحان کنید یا توضیح لباس را ساده‌تر کنید.`);
+}
+
 /** ورودی عکس: PNG یا JPEG، حداکثر ۶ مگابایت. */
 export function photoInput(dataUrl: string): Img {
   const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
@@ -154,22 +207,19 @@ export async function makeCharacterKit(opts: { project: string; name: string; de
   const bodyRef: Img = { mimeType: "image/png", data: BODY_TEMPLATE_PNG };
   const headRef: Img = { mimeType: "image/png", data: HEAD_TEMPLATE_PNG };
   opts.onStep?.("body+head");
-  const [body, head] = await Promise.all([
-    geminiImage(project, bodyPrompt(opts.description), [bodyRef]),
-    geminiImage(project, headPrompt(opts.description), [opts.photo, headRef]),
-  ]);
+  const [{ body, parts }, head] = await Promise.all([goodBody(project, opts.description, bodyRef), geminiImage(project, headPrompt(opts.description), [opts.photo, headRef])]);
   // دهان‌ها و جای دهان از روی سرِ بریده‌شده ساخته می‌شوند (نه کل برگه)
   const headSheet = decode(head);
   opts.onStep?.("mouths+face");
   const headOnly = (() => {
-    const k = buildHeadOnly(headSheet);
+    const k = headFromSheet(headSheet).head;
     return { mimeType: "image/png", data: encodePng(k).toString("base64") };
   })();
   const [mouths, face] = await Promise.all([geminiImage(project, MOUTH_PROMPT, [headOnly]), detectFace(project, headOnly)]);
   opts.onStep?.("build");
   const id = randomBytes(9).toString("base64url");
   const files: { name: string; bytes: Buffer }[] = [];
-  const kit = buildKit(opts.name, { body: decode(body), head: headSheet, mouths: decode(mouths), face }, (img) => {
+  const kit = buildKit(opts.name, { body: decode(body), head: headSheet, mouths: decode(mouths), face, parts }, (img) => {
     const name = `${id}/${files.length}.png`;
     files.push({ name, bytes: encodePng(img) });
     return store.url(name);
@@ -177,15 +227,6 @@ export async function makeCharacterKit(opts: { project: string; name: string; de
   await Promise.all(files.map((f) => store.put(f.name, f.bytes)));
   await store.put(`${id}/kit.json`, new TextEncoder().encode(JSON.stringify(kit)));
   return kit;
-}
-
-/** همان سری که buildKit می‌بُرد (بزرگ‌ترین ناحیهٔ سمت چپ برگه)، برای فرستادن به Gemini. */
-function buildHeadOnly(sheet: Rgba): Rgba {
-  const keyed = keyGreen(sheet);
-  const b = blobs(keyed, Math.round(sheet.width * sheet.height * 0.003));
-  const head = [...b.blobs].sort((x, y) => y.area - x.area).find((x) => x.box[2] < sheet.width * 0.6 && x.box[3] < sheet.height * 0.95) ?? b.blobs[0];
-  if (!head) throw new Error("سر در برگهٔ Gemini پیدا نشد.");
-  return cut(keyed, b.labels, head).img;
 }
 
 /** ذخیره در Cloud Storage: kits/<id>/<n>.png؛ خواندن از /api/kit?f=… (هم‌دامنه، پس canvas آلوده نمی‌شود). */

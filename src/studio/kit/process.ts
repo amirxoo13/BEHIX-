@@ -186,3 +186,61 @@ export function inset(img: Rgba, frac = 0.06): Rgba {
   for (let y = 0; y < h; y++) d.set(img.data.subarray(((y + dy) * img.width + dx) * 4, ((y + dy) * img.width + dx + w) * 4), y * w * 4);
   return { width: w, height: h, data: d };
 }
+
+/**
+ * خط‌های نازک (مثل قاب نقطه‌چینی که مدل گاهی پاک نمی‌کند) حذف می‌شوند: «باز کردن» ریخت‌شناسی روی آلفا
+ * (فرسایش r پیکسل و بعد گسترش r پیکسل)؛ تکه‌های پهن دست‌نخورده می‌مانند.
+ */
+export function removeThin(img: Rgba, r = 3): Rgba {
+  const { width: w, height: h, data } = img;
+  const solid = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) solid[p] = data[p * 4 + 3] > 128 ? 1 : 0;
+  const pass = (src: Uint8Array, keepIfAll: boolean) => {
+    // جداشدنی: افقی سپس عمودی (پنجرهٔ مربعی 2r+1)
+    const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      let run = 0;
+      for (let x = -r; x < w; x++) {
+        if (x + r < w) run += src[y * w + x + r];
+        if (x - r - 1 >= 0) run -= src[y * w + x - r - 1];
+        if (x >= 0) { const n = Math.min(w - 1, x + r) - Math.max(0, x - r) + 1; tmp[y * w + x] = keepIfAll ? (run === n ? 1 : 0) : run > 0 ? 1 : 0; }
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let run = 0;
+      for (let y = -r; y < h; y++) {
+        if (y + r < h) run += tmp[(y + r) * w + x];
+        if (y - r - 1 >= 0) run -= tmp[(y - r - 1) * w + x];
+        if (y >= 0) { const n = Math.min(h - 1, y + r) - Math.max(0, y - r) + 1; out[y * w + x] = keepIfAll ? (run === n ? 1 : 0) : run > 0 ? 1 : 0; }
+      }
+    }
+    return out;
+  };
+  const opened = pass(pass(solid, true), false);
+  const d = new Uint8Array(data);
+  for (let p = 0; p < w * h; p++) {
+    if (opened[p]) continue;
+    // لبهٔ نرمِ کنار تکه‌ها (نیمه‌شفاف) می‌ماند؛ پیکسل کدرِ بیرون از شکل بازشده (خط نازک) حذف می‌شود
+    if (data[p * 4 + 3] > 128) d[p * 4 + 3] = 0;
+  }
+  return { width: w, height: h, data: d };
+}
+
+/** ناحیه‌ای که بیشترین سطحش داخل قاب داده‌شده است (قاب‌ها از تشخیص Gemini، به پیکسل). */
+export function blobInBox(found: Blob[], labels: Int32Array, width: number, box: Box, used: Set<number>): Blob | null {
+  const [bx, by, bw, bh] = box;
+  let best: Blob | null = null, bestN = 0;
+  const count = new Map<number, number>();
+  for (let y = Math.max(0, Math.floor(by)); y < Math.min(labels.length / width, by + bh); y++) {
+    for (let x = Math.max(0, Math.floor(bx)); x < Math.min(width, bx + bw); x++) {
+      const id = labels[y * width + x];
+      if (id >= 0 && !used.has(id)) count.set(id, (count.get(id) ?? 0) + 1);
+    }
+  }
+  for (const b of found) {
+    const n = count.get(b.id) ?? 0;
+    // بیشتر خود ناحیه باید داخل قاب باشد (نه فقط گوشه‌ای از یک ناحیهٔ بزرگ‌تر)
+    if (n > bestN && n >= b.area * 0.5) { best = b; bestN = n; }
+  }
+  return best;
+}

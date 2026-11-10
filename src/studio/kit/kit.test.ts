@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { blobs, keyGreen, limbJoints, peelSkin, trim, type Rgba } from "./process.ts";
+import { blobs, keyGreen, limbJoints, peelSkin, removeThin, trim, type Rgba } from "./process.ts";
+import { checkBodyParts } from "./build.ts";
 import { ik } from "./draw.ts";
 import { kitMouthFor } from "./kit.ts";
 import { repairCharacter } from "../persist.ts";
@@ -58,5 +59,18 @@ describe("character kit (Gemini parts → engine skeleton)", () => {
     assert.ok(repairCharacter({ id: "u-abc123", name: "پرویز", kit })?.kit);
     const evil = { ...kit, hand: { ...p(3), src: "https://evil.example/x.png" } };
     assert.equal(repairCharacter({ id: "u-abc123", name: "پرویز", kit: evil })?.kit, undefined);
+  });
+  it("UT-KIT-07 thin leftover box lines are removed, solid parts stay; a torso drawn with arms is rejected", () => {
+    const img = canvas(200, 100, [0, 255, 0]);
+    paint(img, (x, y) => x > 20 && x < 80 && y > 20 && y < 80, [30, 40, 120]);
+    paint(img, (x, y) => (y === 5 || y === 6) && x > 2 && x < 195, [20, 20, 20]);
+    const out = removeThin(keyGreen(img), 3);
+    assert.equal(out.data[(5 * 200 + 150) * 4 + 3], 0, "line gone");
+    assert.equal(out.data[(50 * 200 + 50) * 4 + 3], 255, "part kept");
+    const box = (w: number, h: number) => ({ width: w, height: h, data: new Uint8Array(w * h * 4) });
+    const ok = { torso: box(350, 600), upperArm: box(120, 330), forearm: box(130, 420), hand: box(180, 250), thigh: box(150, 580), shin: box(120, 360), foot: box(210, 190) };
+    assert.equal(checkBodyParts(ok), null);
+    assert.ok(checkBodyParts({ ...ok, torso: box(800, 600) }));
+    assert.ok(checkBodyParts({ ...ok, forearm: box(280, 300) }));
   });
 });
