@@ -13,7 +13,7 @@ import { cacheKey, modelChain, synthesizeGemini, TtsError, ttsConfig } from "@/l
  * احراز هویت با اعتبار پیش‌فرض Google Cloud (حساب سرویس Cloud Run یا gcloud محلی)؛ هیچ کلیدی در کد یا مرورگر نیست.
  * کلیپ‌ها در Cloud Storage کش می‌شوند تا یک جمله دو بار هزینه نداشته باشد.
  */
-const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.enum(VOICE_IDS as [string, ...string[]]), prompt: z.string().max(300), preview: z.boolean().optional() }).strict();
+const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.enum(VOICE_IDS as [string, ...string[]]), prompt: z.string().max(300), preview: z.boolean().optional(), legacyPrompt: z.string().max(300).optional() }).strict();
 const ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost"]);
 const WINDOW = 10 * 60_000, PER_IP = Number(process.env.TTS_PER_IP ?? 120), PER_DAY = Number(process.env.TTS_PER_DAY ?? 3000);
 const hits = new Map<string, number[]>();
@@ -46,12 +46,13 @@ async function handle(req: Request): Promise<Response> {
   if (!project) return fail(req, 503, "سرویس صدا روی این سرور فعال نیست.");
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(req, 400, "درخواست صدا معتبر نیست.");
-  const { text, voice, prompt, preview } = parsed.data;
+  // legacyPrompt = دستور لحن قدیمی همان دیالوگ، فقط برای پیدا کردن MP3 کش‌شدهٔ 2.5 (به مدل فرستاده نمی‌شود)
+  const { text, voice, prompt, preview, legacyPrompt } = parsed.data;
   const cfg = ttsConfig();
   const models = modelChain(cfg, preview);
   // کلید کش مدل را دارد؛ اول کلیپ‌های 3.8، بعد کلیپ قدیمی MP3 همان جمله (فقط خواندن).
   const lookups = [...(await Promise.all(models.map(async (m) => ({ key: await cacheKey(m, voice, prompt, text), model: m, type: "audio/wav" })))),
-    ...(preview ? [] : [{ key: await cacheKey(LEGACY_CACHE_MODEL, voice, prompt, text, "mp3"), model: LEGACY_CACHE_MODEL, type: "audio/mpeg" }])];
+    ...(preview ? [] : [{ key: await cacheKey(LEGACY_CACHE_MODEL, voice, legacyPrompt ?? prompt, text, "mp3"), model: LEGACY_CACHE_MODEL, type: "audio/mpeg" }])];
   const audio = (bytes: ArrayBuffer | Uint8Array, hit: boolean, model: string, type: string) =>
     new Response(bytes as BodyInit, { headers: { ...cors(req), "content-type": type, "cache-control": "private, max-age=31536000, immutable", "x-cache": hit ? "hit" : "miss", "x-tts-model": model } });
   try {

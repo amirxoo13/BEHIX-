@@ -65,10 +65,18 @@ const MOODS: Partial<Record<Expression, string>> = {
   embarrassed: "shyly, embarrassed", thinking: "thoughtfully, slowly", sleepy: "sleepily",
 };
 /**
- * دستور لحن برای Gemini TTS (speechMetadata.style)؛ فارسی محاوره‌ای طبیعی.
- * TODO(skills): AI skill task id "tts.line" (skills/audio-voice-direction)؛ بارگذار src/ai/skills.ts هنوز در این شاخه نیست.
+ * لحن کوتاه برای Gemini 3.8 TTS (speechMetadata.style): کمتر از ۱۵ کلمه، فقط حس و گویش.
+ * سن و جنسیت با خود صدا می‌آید نه با لحن، و پیش‌درآمدهایی مثل «Read this line…» روی 3.8 گاهی خوانده می‌شوند
+ * (skills/audio-voice-direction؛ مستند: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/text-to-speech/prompting-guide).
+ * TODO(skills): AI skill task id "tts.line" (skills/audio-voice-direction)؛ بارگذار src/ai/skills.ts هنوز روی master نیست.
  */
-export function stylePrompt(mood?: Expression, kind?: Look["kind"]): string {
+export function stylePrompt(mood?: Expression, _kind?: Look["kind"]): string {
+  const m = mood ? MOODS[mood] : undefined;
+  return m ? `${m}; natural, colloquial Tehrani Persian` : "natural, colloquial Tehrani Persian";
+}
+
+/** دستور لحن قدیمی (Gemini 2.5)؛ فقط برای ساختن کلید کلیپ‌های MP3 ذخیره‌شده، هرگز فرستاده نمی‌شود. */
+export function legacyStylePrompt(mood?: Expression, kind?: Look["kind"]): string {
   const who = kind === "boy" || kind === "girl" ? "a child" : kind === "oldMan" || kind === "oldWoman" ? "an elderly person" : "an adult";
   return `Read this line as ${who} in natural, colloquial Tehrani Persian${mood && MOODS[mood] ? `, ${MOODS[mood]}` : ""}. Do not add words.`;
 }

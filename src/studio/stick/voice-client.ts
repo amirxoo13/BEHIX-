@@ -6,18 +6,18 @@ import type { Expression } from "./face.ts";
 import type { Look } from "./figure.ts";
 import { readArtifact, saveArtifact } from "./project-db.ts";
 import type { Directed } from "./story-direct.ts";
-import { clipKey, concatClips, defaultVoices, encodeWav, LEGACY_CACHE_MODEL, mixClips, MIX_RATE, placeVoices, splitLine, stylePrompt, TTS_PREVIEW_MODEL, type Voice, type VoiceClip } from "./voice.ts";
+import { clipKey, concatClips, defaultVoices, encodeWav, LEGACY_CACHE_MODEL, mixClips, MIX_RATE, placeVoices, legacyStylePrompt, splitLine, stylePrompt, TTS_PREVIEW_MODEL, type Voice, type VoiceClip } from "./voice.ts";
 
 const API = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? "";
 /**
  * key = کلید مدل اصلی (3.8 Flash) که کلیپ تازه زیرش ذخیره می‌شود.
  * altKeys = کلیدهای دیگری که فقط خوانده می‌شوند: Flash-Lite (جایگزین) و MP3 قدیمی Gemini 2.5.
  */
-export type LineJob = { beatId: string; text: string; voice: Voice; prompt: string; key: string; altKeys: string[] };
+export type LineJob = { beatId: string; text: string; voice: Voice; prompt: string; legacyPrompt: string; key: string; altKeys: string[] };
 
 /** کلیدهای ذخیرهٔ یک دیالوگ روی دستگاه، به ترتیب جستجو. */
-export async function jobKeys(text: string, voice: Voice, prompt: string): Promise<{ key: string; altKeys: string[] }> {
-  const [key, lite, legacy] = await Promise.all([clipKey(text, voice, prompt), clipKey(text, voice, prompt, TTS_PREVIEW_MODEL), clipKey(text, voice, prompt, LEGACY_CACHE_MODEL)]);
+export async function jobKeys(text: string, voice: Voice, prompt: string, legacyPrompt = prompt): Promise<{ key: string; altKeys: string[] }> {
+  const [key, lite, legacy] = await Promise.all([clipKey(text, voice, prompt), clipKey(text, voice, prompt, TTS_PREVIEW_MODEL), clipKey(text, voice, legacyPrompt, LEGACY_CACHE_MODEL)]);
   return { key, altKeys: [lite, legacy] };
 }
 
@@ -31,7 +31,8 @@ export async function lineJobs(directed: Directed, voices: Record<string, Voice>
     if (b.kind !== "line" || !b.speaker || !voices[b.speaker]) continue;
     const mood: Expression | undefined = directed.cues.find((c) => c.beatId === b.id)?.mood;
     const prompt = stylePrompt(mood, looks[b.speaker]?.kind);
-    jobs.push({ beatId: b.id, text: b.text, voice: voices[b.speaker], prompt, ...(await jobKeys(b.text, voices[b.speaker], prompt)) });
+    const legacyPrompt = legacyStylePrompt(mood, looks[b.speaker]?.kind);
+    jobs.push({ beatId: b.id, text: b.text, voice: voices[b.speaker], prompt, legacyPrompt, ...(await jobKeys(b.text, voices[b.speaker], prompt, legacyPrompt)) });
   }
   return jobs;
 }
@@ -73,7 +74,7 @@ export class LineError extends Error {
 }
 
 async function fetchClip(j: LineJob, text: string, signal?: AbortSignal): Promise<{ clip: VoiceClip; blob: Blob }> {
-  const r = await fetch(`${API}/api/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: j.voice, prompt: j.prompt }), signal });
+  const r = await fetch(`${API}/api/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: j.voice, prompt: j.prompt, ...(text === j.text ? { legacyPrompt: j.legacyPrompt } : {}) }), signal });
   if (!r.ok) {
     const msg = ((await r.json().catch(() => null)) as { message?: string } | null)?.message ?? `خطای سرور صدا (${r.status})`;
     throw new LineError(msg, j.beatId, r.status === 429 || r.status === 503);
