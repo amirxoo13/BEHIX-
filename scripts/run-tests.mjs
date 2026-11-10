@@ -40,6 +40,7 @@ async function main() {
     "src/lib/gemini-tts.test.ts",
     "src/lib/gcp-stt.test.ts",
     "src/lib/voice-limits.test.ts",
+    "src/lib/voice-line.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",
     "src/studio/v2/*.test.ts",
