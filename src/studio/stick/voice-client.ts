@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/user-auth";
 /**
  * سمت مرورگر صداگذاری: گرفتن کلیپ و زمان‌بندی لب از /api/voice (دیالوگ بلند یا سرور قدیمی: /api/tts)،
  * نگهداری روی دستگاه (IndexedDB: `voice:<key>` صدا، `viseme:<key>` VisemeTimeline) و رمزگشایی.
@@ -57,7 +58,7 @@ export async function directVoices(jobs: LineJob[], cast: { id: string; name?: s
   for (let i = 0; i < jobs.length; i += 60) {
     const part = jobs.slice(i, i + 60);
     try {
-      const r = await fetch(`${API}/api/voice-direction`, {
+      const r = await authFetch(`${API}/api/voice-direction`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ cast: people, lines: part.map((j) => ({ id: j.beatId, speaker: j.speaker, text: j.text, ...(j.mood ? { mood: j.mood } : {}), style: j.prompt })) }),
@@ -162,7 +163,7 @@ export class LineError extends Error {
 }
 
 async function fetchClip(j: LineJob, text: string, signal?: AbortSignal): Promise<{ clip: VoiceClip; blob: Blob }> {
-  const r = await fetch(`${API}/api/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: j.voice, prompt: j.prompt, ...(text === j.text ? { legacyPrompt: j.legacyPrompt } : {}) }), signal });
+  const r = await authFetch(`${API}/api/tts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: j.voice, prompt: j.prompt, ...(text === j.text ? { legacyPrompt: j.legacyPrompt } : {}) }), signal });
   if (!r.ok) {
     const msg = ((await r.json().catch(() => null)) as { message?: string } | null)?.message ?? `خطای سرور صدا (${r.status})`;
     throw new LineError(msg, j.beatId, r.status === 429 || r.status === 503);
@@ -178,7 +179,7 @@ type Made = { beatId: string; clip: VoiceClip; blob: Blob; timeline?: VisemeTime
 
 /** چند دیالوگ کوتاه در یک درخواست /api/voice. null = این سرور /api/voice ندارد. نتیجهٔ هر دیالوگ جداست. */
 async function fetchVoices(jobs: LineJob[], signal?: AbortSignal): Promise<(Made | LineError)[] | null> {
-  const r = await fetch(`${API}/api/voice`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(voiceRequest(jobs)), signal });
+  const r = await authFetch(`${API}/api/voice`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(voiceRequest(jobs)), signal });
   if (r.status === 404 || r.status === 405) return null;
   if (!r.ok) {
     const msg = ((await r.json().catch(() => null)) as { message?: string } | null)?.message ?? `خطای سرور صدا (${r.status})`;
@@ -188,7 +189,7 @@ async function fetchVoices(jobs: LineJob[], signal?: AbortSignal): Promise<(Made
   return Promise.all(results.map(async (res): Promise<Made | LineError> => {
     if (res.error || !res.audioUrl) return new LineError(res.error ?? "خطای سرور صدا", res.beatId, !!res.fatal);
     try {
-      const a = await fetch(resolveAudioUrl(API, res.audioUrl), { signal });
+      const a = await authFetch(resolveAudioUrl(API, res.audioUrl), { signal });
       if (!a.ok) return new LineError(`خطای دریافت صدا (${a.status})`, res.beatId, false);
       const blob = await a.blob();
       return { beatId: res.beatId, clip: await decode(blob), blob, timeline: res.timeline };

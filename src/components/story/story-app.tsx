@@ -8,6 +8,7 @@ import { SceneBoard } from "@/components/story/scene-board";
 import { TimelineStrip } from "@/components/story/timeline-strip";
 import { useVoices, VoicePanel } from "@/components/story/voice-panel";
 import { MusicPanel } from "@/components/story/music-panel";
+import { AccountButton } from "@/components/account-dialog";
 import { audioContext } from "@/studio/stick/voice-client";
 import type { PlacedClip } from "@/studio/stick/voice";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
@@ -150,6 +151,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
           <span className={workspace.message ? "save-state is-error" : "save-state"} role="status">{status}</span>
         </div>
         <div className="editor-bar-end studio-actions">
+          <AccountButton />
           <button type="button" className="icon-btn" disabled={!workspace.canUndo} onClick={workspace.undo} aria-label="برگردان" title="برگرداندن (Ctrl+Z)"><Undo2 size={18} aria-hidden /></button>
           <button type="button" className="icon-btn" disabled={!workspace.canRedo} onClick={workspace.redo} aria-label="از نو" title="از نو (Ctrl+Shift+Z)"><Redo2 size={18} aria-hidden /></button>
           <button type="button" className="btn btn-primary" disabled={!directed} onClick={() => setExporting(true)}><Download size={18} aria-hidden /> <span className="hide-sm">خروجی</span></button>

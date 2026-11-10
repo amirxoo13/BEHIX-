@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/user-auth";
 import { useEffect, useRef, useState } from "react";
 import { Music, Play, Square, Trash2 } from "lucide-react";
 import type { StoryProject } from "@/studio/stick/project";
@@ -39,7 +40,7 @@ export function MusicPanel({ project, duration, at, commit }: {
 
   useEffect(() => {
     let alive = true;
-    fetch(`${API_BASE}/api/music?status=1`)
+    authFetch(`${API_BASE}/api/music?status=1`)
       .then((r) => (r.ok ? r.json() : { enabled: false }))
       .then((s: { enabled?: boolean }) => alive && setStatus({ enabled: s.enabled === true }))
       .catch(() => alive && setStatus({ enabled: false }));
@@ -54,7 +55,7 @@ export function MusicPanel({ project, duration, at, commit }: {
     setBusy(true);
     setNote("در حال ساخت موسیقی… (ممکن است تا یک دقیقه طول بکشد)");
     try {
-      const r = await fetch(`${API_BASE}/api/music`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief: brief.trim(), seconds, ...(mood ? { mood } : {}) }) });
+      const r = await authFetch(`${API_BASE}/api/music`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief: brief.trim(), seconds, ...(mood ? { mood } : {}) }) });
       const j = (await r.json().catch(() => null)) as { audioUrl?: string; prompt?: string; message?: string } | null;
       if (!r.ok || !j?.audioUrl) throw new Error(j?.message ?? `خطای سرور موسیقی (${r.status})`);
       const sha = /clip=([0-9a-f]{64})\.mp3/.exec(j.audioUrl)?.[1];

@@ -9,7 +9,7 @@ const hits = new Map<string, number[]>();
 export const cors = (req: Request): Record<string, string> => {
   const origin = req.headers.get("origin");
   return origin && ORIGINS.has(origin)
-    ? { "access-control-allow-origin": origin, "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-expose-headers": "x-tts-model, x-cache", vary: "origin" }
+    ? { "access-control-allow-origin": origin, "access-control-allow-headers": "content-type, authorization", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-expose-headers": "x-tts-model, x-cache", vary: "origin" }
     : {};
 };
 

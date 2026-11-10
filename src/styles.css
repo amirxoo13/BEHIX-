@@ -933,3 +933,18 @@
   .music-list li { display: flex; align-items: center; gap: 0.4rem; }
   .music-list li span { flex: 1; font-size: 0.85rem; }
 }
+
+/* حساب کاربری */
+.account-dialog { width: min(26rem, calc(100vw - 1.5rem)); }
+.account-form { display: grid; gap: 0.8rem; }
+.account-form .field { display: grid; gap: 0.3rem; font-weight: 700; font-size: 0.9rem; }
+.account-form input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 0.6rem; border: 1px solid var(--color-line); background: var(--color-bg); color: var(--color-fg); font: inherit; }
+.account-form input:focus-visible { outline: 2px solid var(--color-cyan); outline-offset: 1px; }
+.account-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--color-cyan); font: inherit; font-size: 0.88rem; cursor: pointer; }
+.link-btn:disabled { opacity: 0.5; cursor: default; }
+.form-note { margin: 0; font-size: 0.88rem; color: var(--color-muted); }
+.form-note.is-error { color: var(--color-danger); }
+.account-email { margin: 0; font-weight: 800; }
+.account-dialog .muted { margin: 0; color: var(--color-muted); font-size: 0.9rem; line-height: 1.7; }
+.icon-btn.is-on { color: var(--color-cyan); }
