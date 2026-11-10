@@ -11,10 +11,12 @@ import { drawPaper } from "./paper.ts";
 import { NIGHT_FILL, PAPER, PLACES, nightPaper, type Env, type PlaceId } from "./places.ts";
 import { POSES } from "./poses.ts";
 import { thoughtBubble } from "./props.ts";
+import type { CharacterRef } from "../v2/character-ref.ts";
+import { drawRigCharacter } from "../v2/story-rig.ts";
 
 export const FRAME = { w: 1080, h: 1920, floor: 1340, captionY: 1560, scale: 2.4 };
 
-export type CastMember = { id: string; name: string; look: Look };
+export type CastMember = { id: string; name: string; look: Look; character?: CharacterRef };
 
 export type CameraKey = { t: number; zoom: number; cx: number; cy: number };
 
@@ -121,7 +123,7 @@ export function renderStory(ctx: Ctx, tl: Timeline, t: number, paper: RenderCanv
       const px = w * (opts.positions?.[a.cast] ?? f.x);
       // نشسته: لگن روی نشیمن (پای بچه آویزان می‌ماند)؛ ایستاده: کف پا روی زمین
       const py = hipHeight(f.state.pose,sc,floor,seatTop,place.seats.length>0);
-      drawFigure(ctx, member.look, f.state, px, py, sc);
+      if (!drawRigCharacter(ctx, member, a.track, f, { t: lt, x: px, floorY: floor, scale: sc, width: w })) drawFigure(ctx, member.look, f.state, px, py, sc);
       const j = joints(f.state.pose);
       heads.set(a.cast, { x: px + j.headC.x * sc, y: py + (j.headC.y - BODY.headR) * sc });
     }

@@ -8,6 +8,7 @@ import { parseStory, type Beat, type StoryPlan } from "./story-parse.ts";
 import { directStory } from "./story-direct.ts";
 import { VOICE_IDS } from "./voice.ts";
 import type { Format } from "./layout.ts";
+import { characterRefSchema } from "../v2/character-ref.ts";
 
 const finite = z.number().finite();
 export const lookSchema = z
@@ -69,7 +70,7 @@ const editSchema = z
   })
   .strict();
 const castSchema = z
-  .object({ id: z.string().min(1).max(100), name: z.string().min(1).max(80), look: lookSchema })
+  .object({ id: z.string().min(1).max(100), name: z.string().min(1).max(80), look: lookSchema, character: characterRefSchema.optional() })
   .strict();
 export const projectSchema = z
   .object({
@@ -224,7 +225,10 @@ export function compileProject(p: StoryProject) {
         }
       }
   const directed = directStory(plan);
-  return { ...directed, unresolved: edits.filter((e) => e.unresolved) };
+  // نوع شخصیت (آدمک/عکس/ریگ) فقط وقتی ذخیره شده باشد به خط زمان می‌رسد؛ بدون آن خروجی مثل قبل است.
+  const refs = new Map(p.cast.flatMap((c) => (c.character ? [[c.id, c.character] as const] : [])));
+  const timeline = refs.size ? { ...directed.timeline, cast: directed.timeline.cast.map((c) => (refs.has(c.id) ? { ...c, character: refs.get(c.id) } : c)) } : directed.timeline;
+  return { ...directed, timeline, unresolved: edits.filter((e) => e.unresolved) };
 }
 export function copyCharacter(p: StoryProject, character: LibraryCharacter): StoryProject {
   // Snapshot semantics: library changes never mutate existing projects.
