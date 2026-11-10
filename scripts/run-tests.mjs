@@ -34,6 +34,7 @@ async function main() {
     "src/lib/rate-limit.test.ts",
     "src/lib/studio-auth.test.ts",
     "src/lib/studio-quota.test.ts",
+    "src/lib/studio-keys.test.ts",
     "src/lib/tts-quota.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",

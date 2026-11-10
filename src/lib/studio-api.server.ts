@@ -5,13 +5,14 @@
  * - همهٔ اقدام‌های پولی (character، keyframe، puppet) و خواندن فایل (GET) کاربرِ تأییدشده می‌خواهند
  *   (studio-auth.server.ts). GET هم بسته است چون هیچ کلاینتی آن را با <img> بی‌هدر نمی‌خواند و فایل‌ها
  *   شخصی‌اند؛ کلاینت باید با هدر Authorization بخواند و blob بسازد.
+ * - فایل‌ها مال سازنده‌اند (studio-keys.ts): GET و مرجع‌های فریم کلیدی فقط فایل خود کاربر یا فایل قدیمی بی‌صاحب.
  * - هیچ کلیدی در مرورگر نیست؛ سرور با حساب سرویس Google Cloud کار می‌کند.
  */
 import { z } from "zod";
 import { clientIp } from "./rate-limit.ts";
 import { ownerId, verifyStudioRequest, type AuthResult, type StudioUser } from "./studio-auth.server.ts";
 import { refundStudio, reserveStudio, type Reservation } from "./studio-quota.ts";
-import { KEY_RE } from "./studio-media.server.ts";
+import { KEY_RE, canRead } from "./studio-keys.ts";
 
 export const studioBody = z.discriminatedUnion("action", [
   z.object({ action: z.literal("character"), description: z.string().trim().min(10).max(600) }).strict(),
@@ -57,11 +58,14 @@ export function createStudioApi(deps: StudioDeps) {
     const parsed = studioBody.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return fail(400, "درخواست معتبر نیست.");
     const b = parsed.data;
+    const owner = ownerId(who.user.uid);
+    // مرجع فریم کلیدی باید مال خود کاربر (یا فایل قدیمی بی‌صاحب) باشد
+    if (b.action === "keyframe" && !b.cast.every((k) => canRead(k, owner))) return fail(403, "به این برگهٔ شخصیت دسترسی ندارید.");
     let held: Reservation | null = null;
     try {
       const block = limited(await deps.ip(req));
       if (block) return fail(429, block);
-      const r = await deps.reserve(ownerId(who.user.uid));
+      const r = await deps.reserve(owner);
       if ("error" in r) return fail(429, r.error);
       held = r;
       const result = await deps.run(b, who.user);
@@ -78,6 +82,8 @@ export function createStudioApi(deps: StudioDeps) {
     if (!deps.bucket() || !KEY_RE.test(k)) return fail(404, "فایل پیدا نشد.");
     const who = await deps.auth(req.headers);
     if (!who.ok) return fail(who.status, who.message);
+    // فایل کاربر دیگر: همان 404 (وجودش هم لو نمی‌رود)
+    if (!canRead(k, ownerId(who.user.uid))) return fail(404, "فایل پیدا نشد.");
     try {
       const r = await deps.getObject(k, req.headers.get("range"));
       if (!r.ok && r.status !== 206) return fail(r.status === 404 ? 404 : 502, "فایل پیدا نشد.");
@@ -106,10 +112,12 @@ export async function liveStudioDeps(): Promise<StudioDeps> {
       const { getRequestIP } = await import("@tanstack/react-start/server");
       return clientIp(req.headers, getRequestIP());
     },
-    run: (b) =>
-      b.action === "puppet" ? createPuppet(b.id, b.name, b.who)
-      : b.action === "character" ? media.createCharacter(b.description)
-      : media.createKeyframe(b.cast, b.direction),
+    run: (b, user) => {
+      const owner = ownerId(user.uid);
+      return b.action === "puppet" ? createPuppet(b.id, b.name, b.who, owner)
+        : b.action === "character" ? media.createCharacter(b.description, owner)
+        : media.createKeyframe(b.cast, b.direction, owner);
+    },
     getObject: media.getObject,
     reserve: (owner) => reserveStudio(quota(), owner),
     refund: (r) => refundStudio(quota(), r),

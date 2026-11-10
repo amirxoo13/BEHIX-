@@ -5,6 +5,7 @@
 import { PNG } from "pngjs";
 import { gcpAccessToken, gcpProject } from "./gcp-auth.server.ts";
 import { STYLE, generateImage, putObject } from "./studio-media.server.ts";
+import { puppetKeys } from "./studio-keys.ts";
 import { JOINT_NAMES, PART_DEPTH, bonesOf, jointsToPixels, measureBody, validateJoints, type Bone, type Joints, type Part, type PuppetRig } from "../studio/v2/puppet.ts";
 
 export const TEXT_MODEL = process.env.STUDIO_TEXT_MODEL || "gemini-3.8-flash";
@@ -196,14 +197,18 @@ export const refPosePrompt = (who: string) =>
 /** نام قبلی، برای سازگاری. */
 export const aPosePrompt = refPosePrompt;
 
-/** یک شخصیت کامل می‌سازد: تصویر، شفاف‌سازی، مفاصل، فایل عروسک در Cloud Storage. */
-export async function createPuppet(id: string, name: string, who: string): Promise<PuppetRig> {
+/**
+ * یک شخصیت کامل می‌سازد: تصویر، شفاف‌سازی، مفاصل، فایل عروسک در Cloud Storage.
+ * هر ساخت یک نسخهٔ تازه زیر پوشهٔ صاحبش است (cast/<owner>/<id>/<version>.png|json) و با
+ * ifGenerationMatch=0 نوشته می‌شود؛ هیچ عروسک موجودی (از جمله مال کاربر دیگر) بازنویسی نمی‌شود.
+ */
+export async function createPuppet(id: string, name: string, who: string, owner: string): Promise<PuppetRig> {
+  const keys = puppetKeys(owner, id);
   const img = await generateImage(refPosePrompt(who), [], "3:4");
   const joints1000 = await measureJoints(img);
   const png = keyOutBackground(PNG.sync.read(Buffer.from(img.data, "base64")));
-  const key = `cast/${id}.png`;
-  const { rig, atlas } = assemblePuppet(id, name, key, png, jointsToPixels(joints1000, png.width, png.height));
-  await putObject(key, PNG.sync.write(atlas), "image/png");
-  await putObject(`cast/${id}.json`, Buffer.from(JSON.stringify(rig)), "application/json");
+  const { rig, atlas } = assemblePuppet(id, name, keys.png, png, jointsToPixels(joints1000, png.width, png.height));
+  await putObject(keys.png, PNG.sync.write(atlas), "image/png");
+  await putObject(keys.json, Buffer.from(JSON.stringify(rig)), "application/json");
   return rig;
 }
