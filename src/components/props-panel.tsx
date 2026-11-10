@@ -2,7 +2,7 @@ import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { fa } from "@/studio/format";
 import { WORLD } from "@/studio/labels";
-import { MAX_PROPS, PROPS, placeProps, propDef, type PropId, type PropPlacement } from "@/studio/props";
+import { MAX_PROPS, PROPS, nextPropPlacement, placeProps, propDef, withPropId, type PropId, type PropPlacement } from "@/studio/props";
 import { useStudio } from "@/studio/store";
 import type { Shot } from "@/studio/types";
 
@@ -19,16 +19,16 @@ export function PropsPanel({ shot, busy }: { shot: Shot; busy: boolean }) {
   const add = () => {
     if (shot.props.length >= MAX_PROPS) return;
     // جای پیشنهادی همان چیدن خودکار است، بعد کاربر جابه‌جا می‌کند.
-    const auto = placeProps([...shot.props.map((p) => p.id), adding]).find((p) => p.id === adding);
-    const placed = auto ?? { id: adding, x: 0.5, layer: propDef(adding).layer };
     // میز خودکار فقط وقتی جا هست اضافه می‌شود؛ شیء انتخاب‌شده هیچ‌وقت بریده نمی‌شود.
     const extra =
-      auto &&
       !shot.props.some((p) => p.id === "table") &&
       propDef(adding).mount === "table" &&
       shot.props.length + 2 <= MAX_PROPS;
     const table = placeProps(["table"])[0];
-    set([...(extra ? [table] : []), ...shot.props, placed]);
+    const base = extra ? [table, ...shot.props] : shot.props;
+    // free slot of its kind, so a second copy of the same prop never lands on the first one
+    const placed = nextPropPlacement(base, adding);
+    set([...base, placed]);
   };
 
   return (
@@ -51,7 +51,7 @@ export function PropsPanel({ shot, busy }: { shot: Shot; busy: boolean }) {
                 className="field"
                 value={p.id}
                 disabled={busy}
-                onChange={(e) => patch(i, { id: e.target.value as PropId })}
+                onChange={(e) => set(shot.props.map((q, j) => (j === i ? withPropId(q, e.target.value as PropId) : q)))}
               >
                 {PROPS.map((d) => (
                   <option key={d.id} value={d.id}>

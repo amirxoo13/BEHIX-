@@ -11,7 +11,7 @@ import { audioContext } from "@/studio/stick/voice-client";
 import type { PlacedClip } from "@/studio/stick/voice";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
 import { compileProject, setEdit, type StoryProject } from "@/studio/stick/project";
-import { frameFor, FORMATS, type Format } from "@/studio/stick/layout";
+import { frameFor, stageFor, FORMATS, type Format } from "@/studio/stick/layout";
 import { actorAt } from "@/studio/stick/animate";
 import { loadRenderFonts } from "@/studio/stick/fonts";
 import { makePaper } from "@/studio/stick/paper";
@@ -466,8 +466,9 @@ function Player({ ref, directed, timeline, audio, project, selected, commit, onT
     const rect = event.currentTarget.getBoundingClientRect();
     const screen = ((event.clientX - rect.left) / rect.width) * frame.w;
     const scene = sceneAt(timeline, tRef.current), cam = cameraAt(scene.cameras, tRef.current - scene.start);
-    const cx = (cam.cx * frame.w) / FRAME.w;
-    return Math.max(0.08, Math.min(0.92, ((screen - cx) / cam.zoom + cx) / frame.w));
+    const stage = stageFor(format);
+    const cx = stage.ox + cam.cx * stage.k;
+    return Math.max(0.08, Math.min(0.92, ((screen - cx) / cam.zoom + cx - stage.ox) / (FRAME.w * stage.k)));
   };
 
   return (

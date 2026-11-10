@@ -1,0 +1,44 @@
+{
+  "schema": 1, "id": "living.wide.night.a", "place": "living", "angle": "wide",
+  "label": "پذیرایی — نمای باز، شب", "stage": { "w": 1080, "h": 1920 }, "overscan": { "x": 135, "y": 0 },
+  "layers": [
+    { "role": "sky", "z": 0, "parallax": 0.05, "rect": { "x": -135, "y": 0, "w": 1350, "h": 900 },
+      "asset": { "key": "sets/living.wide.night.a/sky.3f9c1e", "w": 1350, "h": 900, "tiers": ["s", "m"], "formats": ["avif", "webp"], "alpha": false },
+      "haze": { "color": "#1c2236", "amount": 0.2 }, "animate": { "kind": "drift", "speed": 4, "amp": 1 } },
+    { "role": "far", "z": 10, "parallax": 0.35, "rect": { "x": -135, "y": 0, "w": 1350, "h": 1920 },
+      "asset": { "key": "sets/living.wide.night.a/far.a81d02", "w": 1350, "h": 1920, "tiers": ["s", "m", "l"], "formats": ["avif", "webp"], "alpha": false }, "blur": 1.5 },
+    { "role": "mid", "z": 30, "parallax": 0.85, "rect": { "x": -110, "y": 420, "w": 1300, "h": 1500 },
+      "asset": { "key": "sets/living.wide.night.a/mid.77b0aa", "w": 1300, "h": 1500, "tiers": ["s", "m", "l"], "formats": ["avif", "webp"], "alpha": true } },
+    { "role": "near", "z": 60, "parallax": 1.0, "rect": { "x": 0, "y": 1180, "w": 1080, "h": 740 },
+      "asset": { "key": "sets/living.wide.night.a/near.0c41f7", "w": 1080, "h": 740, "tiers": ["s", "m", "l"], "formats": ["avif", "webp"], "alpha": true } },
+    { "role": "overlay", "z": 90, "parallax": 1.35, "rect": { "x": -200, "y": 0, "w": 420, "h": 1920 },
+      "asset": { "key": "sets/living.wide.night.a/overlay.5e2d90", "w": 420, "h": 1920, "tiers": ["s", "m"], "formats": ["webp"], "alpha": true }, "blur": 6 }
+  ],
+  "perspective": { "groundY": 1340, "horizonY": 760, "vanishX": 560, "refHeightPx": 816, "scaleAt": "linear" },
+  "walk": { "poly": [[60, 1240], [1020, 1240], [1080, 1600], [0, 1600]], "minDepth": 0.8, "maxDepth": 1.15 },
+  "anchors": [
+    { "id": "sofa.seat.1", "kind": "seat", "x": 356, "y": 1190, "depth": 0.95, "facing": "camera", "capacity": 1, "layer": "mid" },
+    { "id": "sofa.seat.2", "kind": "seat", "x": 540, "y": 1190, "depth": 0.95, "facing": "camera", "capacity": 1, "layer": "mid" },
+    { "id": "table.top", "kind": "surface", "x": 540, "y": 1290, "depth": 1.02, "layer": "near" },
+    { "id": "door.L", "kind": "entry", "x": 40, "y": 1250, "depth": 0.9 },
+    { "id": "lamp.1", "kind": "light", "x": 1000, "y": 880, "depth": 0.9 }
+  ],
+  "seats": [0.33, 0.5],
+  "style": "behix-stick-v1",
+  "gen": {
+    "task": "world-set.layer-art",
+    "model": "gemini-nano-banana-2.1", "location": "global",
+    "promptTemplate": "{style} Interior of a Tehran apartment living room, {angle}, {timeOfDay}. {layerInstruction}", "promptLang": "en",
+    "vars": { "angle": "wide eye-level, 35mm", "timeOfDay": "night, warm floor lamp" },
+    "refs": ["styles/behix-stick-v1/ref-1.png", "cast/parviz-sheet.png"], "aspectRatio": "16:9", "resolution": "2K", "mimeType": "image/png",
+    "output": { "uriPrefix": "gs://MEDIA_BUCKET/sets/living.wide.night.a/raw/", "delivery": "URI" }, "outputHash": "sha256:9d1f0000",
+    "separation": "plate+split", "splitModel": "gemini-3.8-flash",
+    "edits": [
+      { "model": "gemini-nano-banana-2.1", "instruction": "Remove the foreground armchair and fill the floor and wall behind it", "outputHash": "sha256:41ac0000" },
+      { "model": "gemini-nano-banana-2.1", "instruction": "Extend the left side of the room by 15% in the same style", "outputHash": "sha256:c07e0000" }
+    ],
+    "alpha": { "requested": true, "verified": true, "cleanup": "cloud-run-postprocess" },
+    "createdAt": "2026-11-10T12:00:00Z", "reviewed": true
+  },
+  "fallback": { "place": "living" }, "version": 1, "hash": "e1c09f6b"
+}

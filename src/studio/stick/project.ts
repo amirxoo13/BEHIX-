@@ -1,5 +1,6 @@
 import { GESTURE_LABELS, MOVE_LABELS, HOLD_LABELS } from "./edit-options.ts";
 import { PLACE_IDS } from "./places.ts";
+import { shotCameraSchema } from "../world/camera.ts";
 import { normalizeFa } from "../catalog.ts";
 import { z } from "zod";
 import { FACES, type Expression } from "./face.ts";
@@ -64,6 +65,10 @@ const editSchema = z
     sit: z.boolean().optional(),
     place: z.enum(PLACE_IDS as [typeof PLACE_IDS[number], ...typeof PLACE_IDS]).optional(),
     night: z.boolean().optional(),
+    /** optional layered set id for the scene (world registry); absent = procedural set of `place` */
+    set: z.string().min(1).max(100).optional(),
+    /** optional planned camera for the scene (world/camera.ts); absent = automatic camera */
+    camera: shotCameraSchema.optional(),
     shot: z.enum(["wide", "medium", "close"]).optional(),
     /** مدت را برنامه به اندازهٔ صدای دیالوگ گذاشته (نه کاربر)؛ با صدای تازه دوباره تنظیم می‌شود. */
     fit: z.boolean().optional(),
@@ -171,7 +176,7 @@ export function setPlan(p: StoryProject, plan: FilmPlan | undefined): StoryProje
 export function setEdit(
   p: StoryProject,
   beatId: string,
-  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night" | "shot" | "fit">,
+  patch: Pick<StoryEdit, "actor" | "x" | "face" | "duration" | "gesture" | "move" | "hold" | "sit" | "place" | "night" | "set" | "camera" | "shot" | "fit">,
 ): StoryProject {
   const plan = projectStory(p);
   const match = anchors(plan).find((a) => a.beat.id === beatId);
@@ -217,6 +222,8 @@ export function compileProject(p: StoryProject) {
         }
         if (edit.place !== undefined) scene.place = edit.place;
         if (edit.night !== undefined) scene.night = edit.night;
+        if (edit.set !== undefined) scene.set = edit.set;
+        if (edit.camera !== undefined) scene.camera = edit.camera;
         if (edit.shot && beat.kind !== "narration") beat.shot = edit.shot;
         if (beat.kind !== "narration" && edit.actor && (edit.x !== undefined || edit.face || edit.gesture || edit.move || edit.hold || edit.sit !== undefined)) {
           let act = beat.acts.find((a) => a.who === edit.actor);

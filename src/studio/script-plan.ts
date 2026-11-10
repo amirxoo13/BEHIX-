@@ -11,6 +11,7 @@ import { CAST, findChar } from "./characters.ts";
 import {
   ACTION_ENTRIES,
   BACKGROUNDS,
+  SENTENCE_BACKGROUNDS,
   CHARACTERS,
   EMOTION_ENTRIES,
   PROP_ENTRIES,
@@ -92,8 +93,9 @@ export function isHeader(line: string): string | null {
 /** اولویت وقتی چند مکان در یک خط آمده: مکان‌های تهران و کافه‌ها از «خیابان/خانه» دقیق‌ترند. */
 const GROUP_RANK: Record<string, number> = { tehran: 0, venue: 1, home: 2, out: 3 };
 
-export function backgroundOf(text: string): BgId | undefined {
-  const found = findAll(text, BACKGROUNDS);
+/** `sentence`: text is a description line, not a heading (bare «ماشین/تاکسی» is then a prop, not a place). */
+export function backgroundOf(text: string, sentence = false): BgId | undefined {
+  const found = findAll(text, sentence ? SENTENCE_BACKGROUNDS : BACKGROUNDS);
   if (found.length === 0) return undefined;
   return [...found].sort(
     (a, b) => (GROUP_RANK[WORLD[a.id].group] ?? 9) - (GROUP_RANK[WORLD[b.id].group] ?? 9) || a.at - b.at,
@@ -267,7 +269,7 @@ export function planFromDictionary(script: string, limits: PlanLimits = DICTIONA
     for (const id of propsIn(line)) if (!current.props.includes(id)) current.props.push(id);
     for (const c of findAll(line, CHARACTERS)) addCast(c.id);
     if (!current.background && !current.backgroundFromText) {
-      current.backgroundFromText = backgroundOf(line);
+      current.backgroundFromText = backgroundOf(line, true);
     }
     const sfx = findFirst(line, SFX_ENTRIES);
     if (sfx) pendingSfx = sfx;
