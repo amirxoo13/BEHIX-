@@ -922,4 +922,6 @@
   .voice-head { display: flex; gap: 0.6rem; align-items: center; }
   .voice-head svg { color: var(--color-violet); flex: none; }
   .voice-head small { display: block; color: var(--color-muted); font-size: 0.76rem; }
+  .voice-direct { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .voice-direct .btn { min-height: 44px; }
 }

@@ -17,7 +17,7 @@ const API = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/
  * key = کلید مدل اصلی (3.8 Flash) که کلیپ تازه زیرش ذخیره می‌شود.
  * altKeys = کلیدهای دیگری که فقط خوانده می‌شوند: Flash-Lite (جایگزین) و MP3 قدیمی Gemini 2.5.
  */
-export type LineJob = { beatId: string; text: string; voice: Voice; prompt: string; legacyPrompt: string; key: string; altKeys: string[] };
+export type LineJob = { beatId: string; speaker: string; mood?: Expression; text: string; voice: Voice; prompt: string; legacyPrompt: string; key: string; altKeys: string[] };
 
 /** کلیدهای ذخیرهٔ یک دیالوگ روی دستگاه، به ترتیب جستجو. */
 export async function jobKeys(text: string, voice: Voice, prompt: string, legacyPrompt = prompt): Promise<{ key: string; altKeys: string[] }> {
@@ -28,17 +28,55 @@ export async function jobKeys(text: string, voice: Voice, prompt: string, legacy
 let ctx: AudioContext | null = null;
 export const audioContext = () => (ctx ??= new AudioContext());
 
-/** کار صداگذاری هر دیالوگ (متن، صدا، لحن و کلید ذخیره). */
-export async function lineJobs(directed: Directed, voices: Record<string, Voice>, looks: Record<string, Look>): Promise<LineJob[]> {
+/** کار صداگذاری هر دیالوگ (متن، صدا، لحن و کلید ذخیره). styles = لحن کارگردانی‌شده (beatId → style)؛ بدون آن stylePrompt(mood). */
+export async function lineJobs(directed: Directed, voices: Record<string, Voice>, looks: Record<string, Look>, styles: Record<string, string> = {}): Promise<LineJob[]> {
   const jobs: LineJob[] = [];
   for (const b of directed.beats) {
     if (b.kind !== "line" || !b.speaker || !voices[b.speaker]) continue;
     const mood: Expression | undefined = directed.cues.find((c) => c.beatId === b.id)?.mood;
-    const prompt = stylePrompt(mood, looks[b.speaker]?.kind);
+    const prompt = styles[b.id]?.trim() || stylePrompt(mood, looks[b.speaker]?.kind);
     const legacyPrompt = legacyStylePrompt(mood, looks[b.speaker]?.kind);
-    jobs.push({ beatId: b.id, text: b.text, voice: voices[b.speaker], prompt, legacyPrompt, ...(await jobKeys(b.text, voices[b.speaker], prompt, legacyPrompt)) });
+    jobs.push({ beatId: b.id, speaker: b.speaker, ...(mood ? { mood } : {}), text: b.text, voice: voices[b.speaker], prompt, legacyPrompt, ...(await jobKeys(b.text, voices[b.speaker], prompt, legacyPrompt)) });
   }
   return jobs;
+}
+
+export type Direction = { source: "gemini" | "fallback"; model?: string; cast: Record<string, Voice>; lines: { id: string; voice: Voice; style: string }[]; warning?: string };
+
+/**
+ * کارگردانی صدا با Gemini (مهارت tts.line، سمت سرور). هرگز خطا نمی‌دهد: بدون سرور یا با خطا، همان انتخاب فعلی
+ * (source: "fallback") برمی‌گردد. دیالوگ‌ها در دسته‌های ۶۰تایی فرستاده می‌شوند.
+ */
+export async function directVoices(jobs: LineJob[], cast: { id: string; name?: string; kind: string }[], voices: Record<string, Voice>, signal?: AbortSignal): Promise<Direction> {
+  const people = cast.filter((c) => voices[c.id]).map((c) => ({ id: c.id, ...(c.name ? { name: c.name.slice(0, 80) } : {}), kind: c.kind, voice: voices[c.id] }));
+  const fallback = (warning: string): Direction => ({ source: "fallback", cast: { ...voices }, lines: jobs.map((j) => ({ id: j.beatId, voice: j.voice, style: j.prompt })), warning });
+  if (!people.length || !jobs.length) return fallback("دیالوگی برای کارگردانی نیست.");
+  const out: Direction = { source: "fallback", cast: { ...voices }, lines: [] };
+  for (let i = 0; i < jobs.length; i += 60) {
+    const part = jobs.slice(i, i + 60);
+    try {
+      const r = await fetch(`${API}/api/voice-direction`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cast: people, lines: part.map((j) => ({ id: j.beatId, speaker: j.speaker, text: j.text, ...(j.mood ? { mood: j.mood } : {}), style: j.prompt })) }),
+        signal,
+      });
+      if (!r.ok) return fallback(`کارگردانی صدا انجام نشد (${r.status})؛ انتخاب فعلی ماند.`);
+      const d = (await r.json()) as Direction;
+      if (d.source === "gemini") {
+        out.source = "gemini";
+        out.model = d.model;
+        // صدای هر شخصیت از اولین دسته‌ای که پیشنهاد داد ثابت می‌ماند
+        if (i === 0) Object.assign(out.cast, d.cast);
+      }
+      if (d.warning) out.warning = d.warning;
+      out.lines.push(...(Array.isArray(d.lines) ? d.lines : []));
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      return fallback("ارتباط با سرور برقرار نشد؛ انتخاب فعلی ماند.");
+    }
+  }
+  return out;
 }
 
 /** WAV (3.8) و MP3 (کلیپ‌های قدیمی) هر دو با decodeAudioData خوانده می‌شوند. */
@@ -246,9 +284,9 @@ export async function synthesize(
 }
 
 /** صدای ذخیره‌شدهٔ یک پروژه برای ساخت فیلم (مثلاً ساخت گروهی): تایم‌لاین صداگذاری‌شده، صدای میکس‌شده و زمان‌بندی لب هر دیالوگ. */
-export async function savedVoicing(directed: Directed, chosen: Parameters<typeof defaultVoices>[1]) {
+export async function savedVoicing(directed: Directed, chosen: Parameters<typeof defaultVoices>[1], styles?: Record<string, string>) {
   const cast = directed.timeline.cast;
-  const jobs = await lineJobs(directed, defaultVoices(cast, chosen), Object.fromEntries(cast.map((c) => [c.id, c.look])));
+  const jobs = await lineJobs(directed, defaultVoices(cast, chosen), Object.fromEntries(cast.map((c) => [c.id, c.look])), styles);
   const clips = await loadClips(jobs);
   const timelines = await ensureTimelines(jobs, clips, await loadTimelines(jobs));
   const { timeline, placed } = placeVoices(directed, clips);

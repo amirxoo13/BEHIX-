@@ -89,6 +89,8 @@ export const projectSchema = z
         fps: z.union([z.literal(30), z.literal(60)]),
         captions: z.boolean(),
         voices: z.record(z.string().max(100), z.enum(VOICE_IDS as [string, ...string[]])).optional(),
+        /** لحن پیشنهادی کارگردانی صدا برای هر دیالوگ (beatId → style انگلیسی کوتاه)؛ بدون آن stylePrompt(mood). */
+        styles: z.record(z.string().max(100), z.string().max(120)).optional(),
       })
       .strict(),
     updatedAt: finite.nonnegative(),
