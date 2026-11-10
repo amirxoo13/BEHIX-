@@ -32,9 +32,15 @@ async function main() {
     "src/lib/auth/trusted-hosts.test.ts",
     "src/lib/preview-path-prefix.test.ts",
     "src/lib/rate-limit.test.ts",
+    "src/lib/studio-auth.test.ts",
+    "src/lib/studio-quota.test.ts",
+    "src/lib/studio-keys.test.ts",
+    "src/lib/studio-ai-tasks.test.ts",
     "src/lib/tts-quota.test.ts",
+    "src/lib/gemini-tts.test.ts",
     "src/studio/*.test.ts",
     "src/studio/stick/*.test.ts",
+    "src/studio/v2/*.test.ts",
   ]);
   process.exit(combineStatus([scripts, ts]));
 }

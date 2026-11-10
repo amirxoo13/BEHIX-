@@ -2,18 +2,21 @@
 /**
  * تأیید واقعی Google Cloud برای BEHIX (بدون هیچ دادهٔ ساختگی):
  *   - Gemini روی Vertex AI: برای هر «مدل × منطقه» یک درخواست فارسی واقعی می‌فرستد.
- *   - Gemini TTS (Cloud Text-to-Speech): یک جملهٔ فارسی واقعی می‌سازد و MP3 را ذخیره می‌کند.
+ *   - Gemini 3.8 TTS (Agent Platform generateContent، همان کد /api/tts): برای هر «مدل × منطقه» یک جملهٔ فارسی
+ *     واقعی می‌سازد و WAV را ذخیره می‌کند (سرآیند RIFF، نرخ نمونه و مدت را گزارش می‌کند).
  * اجرا:
  *   node --experimental-strip-types scripts/gcp-verify.mjs
- * متغیرهای اختیاری: GOOGLE_CLOUD_PROJECT، VERIFY_MODELS، VERIFY_LOCATIONS، VERIFY_TTS_MODELS، VERIFY_OUT
+ * متغیرهای اختیاری: GOOGLE_CLOUD_PROJECT، VERIFY_MODELS، VERIFY_LOCATIONS، VERIFY_TTS_MODELS، VERIFY_TTS_LOCATIONS، VERIFY_OUT
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { gcpAccessToken, gcpProject } from "../src/lib/gcp-auth.server.ts";
+import { isWav, synthesizeGemini, wavPcm } from "../src/lib/gemini-tts.server.ts";
 
 const list = (v, d) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : d);
 const models = list(process.env.VERIFY_MODELS, ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.5-flash"]);
 const locations = list(process.env.VERIFY_LOCATIONS, ["global", "us-central1"]);
-const ttsModels = list(process.env.VERIFY_TTS_MODELS, ["gemini-2.5-pro-tts", "gemini-2.5-flash-tts"]);
+const ttsModels = list(process.env.VERIFY_TTS_MODELS, ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]);
+const ttsLocations = list(process.env.VERIFY_TTS_LOCATIONS, ["global", "us", "eu"]);
 const outDir = process.env.VERIFY_OUT || "verify-out";
 
 const project = await gcpProject();
@@ -71,34 +74,38 @@ for (const model of models) {
 }
 
 for (const model of ttsModels) {
-  const row = { model, voice: "Kore", languageCode: "fa-IR", ok: false };
-  const started = Date.now();
-  try {
-    const r = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize", {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({
-        input: { text: "سلام! امروز هوا خیلی خوبه، بریم یه قدمی بزنیم؟", prompt: "Read this line as an adult in natural, colloquial Tehrani Persian, warmly. Do not add words." },
-        voice: { languageCode: "fa-IR", name: "Kore", modelName: model },
-        audioConfig: { audioEncoding: "MP3", sampleRateHertz: 24000 },
-      }),
-      signal: AbortSignal.timeout(90_000),
-    });
-    row.status = r.status;
-    row.ms = Date.now() - started;
-    const j = await r.json();
-    if (r.ok && j.audioContent) {
-      const bytes = Buffer.from(j.audioContent, "base64");
+  for (const location of ttsLocations) {
+    const row = { model, location, voice: "Kore", ok: false };
+    const started = Date.now();
+    try {
+      // بدون جایگزین: هر مدل جدا آزموده می‌شود
+      const { bytes, mimeType, wrapped } = await synthesizeGemini({
+        project,
+        location,
+        models: [model],
+        text: "سلام! امروز هوا خیلی خوبه، بریم یه قدمی بزنیم؟",
+        voice: "Kore",
+        style: "Read this line as an adult in natural, colloquial Tehrani Persian, warmly. Do not add words.",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      row.ms = Date.now() - started;
       row.bytes = bytes.length;
-      row.file = `${outDir}/tts-${model}.mp3`;
+      row.apiMimeType = mimeType;
+      row.riffFromApi = !wrapped; // false = API sent headerless PCM and we wrapped it
+      if (!isWav(bytes)) throw new Error("not WAV after wrapping");
+      const { pcm, sampleRate } = wavPcm(bytes);
+      row.sampleRate = sampleRate;
+      row.seconds = Math.round((pcm.length / 2 / sampleRate) * 100) / 100;
+      row.file = `${outDir}/tts-${model}-${location}.wav`;
       await writeFile(row.file, bytes);
-      row.ok = bytes.length > 2000;
-    } else row.error = j.error?.message?.slice(0, 300);
-  } catch (e) {
-    row.error = String(e?.message ?? e);
+      row.ok = row.seconds > 0.5;
+    } catch (e) {
+      row.ms = Date.now() - started;
+      row.error = e?.attempts ? JSON.stringify(e.attempts).slice(0, 400) : String(e?.message ?? e);
+    }
+    report.tts.push(row);
+    console.log(`[tts] ${model} @ ${location}: ${row.ok ? "OK" : "FAIL"} ${row.ms}ms ${row.seconds ?? ""}s ${row.sampleRate ?? ""}Hz ${row.apiMimeType ?? ""} riff=${row.riffFromApi ?? ""} ${row.error ?? ""}`);
   }
-  report.tts.push(row);
-  console.log(`[tts] ${model}: ${row.ok ? "OK" : "FAIL"} ${row.status ?? ""} ${row.ms ?? ""}ms ${row.bytes ?? ""} ${row.error ?? ""}`);
 }
 
 await writeFile(`${outDir}/gcp-verify.json`, JSON.stringify(report, null, 2));
