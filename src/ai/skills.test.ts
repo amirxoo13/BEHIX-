@@ -40,8 +40,12 @@ describe("skills loader", () => {
   });
   it("UT-SK-02 parseSkill types source and license; source requires an accepted license", () => {
     const s = parseSkill(skill(`${BASE}\nsource: https://github.com/a/b\nlicense: Apache-2.0`), "/skills/demo-skill/SKILL.md");
-    assert.equal(s.source, "https://github.com/a/b");
-    assert.equal(s.license, "Apache-2.0");
+    assert.deepEqual(s.source, ["https://github.com/a/b"]);
+    assert.deepEqual(s.license, ["Apache-2.0"]);
+    const multi = parseSkill(skill(`${BASE}\nsource: [https://github.com/a/b, https://github.com/c/d]\nlicense: [MIT, Apache-2.0]`), "x");
+    assert.deepEqual(multi.source, ["https://github.com/a/b", "https://github.com/c/d"]);
+    assert.deepEqual(multi.license, ["MIT", "Apache-2.0"]);
+    assert.throws(() => parseSkill(skill(`${BASE}\nsource: [https://github.com/a/b, http://x]\nlicense: MIT`), "x"), /https/);
     assert.equal(s.version, 1);
     const original = parseSkill(skill(BASE), "/skills/demo-skill/SKILL.md");
     assert.equal(original.source, undefined);
@@ -88,6 +92,21 @@ describe("repo skills (/skills/*/SKILL.md)", () => {
     }
     for (const t of Object.values(CHAR_TASKS)) used.add(t); // character call sites pass CHAR_TASKS.* through (ai.system ?? skillSystem)
     for (const t of used) assert.ok(t in SKILL_TASKS, `unregistered task ${t}`);
+  });
+  it("UT-SK-08 story skills load with attribution and feed both film-plan stages", () => {
+    const byId = new Map(skills.map((s) => [s.id, s]));
+    for (const id of ["story-screenwriting", "story-shot-grammar"]) {
+      const s = byId.get(id);
+      assert.ok(s, `${id} missing`);
+      assert.equal(s!.owner, "story");
+      assert.ok(s!.source?.length && s!.source.every((u) => u.startsWith("https://github.com/")));
+      assert.deepEqual(s!.license, ["MIT"]);
+      assert.ok(!/veo|seedance|kling/i.test(s!.body), `${id} mentions AI video`);
+    }
+    assert.ok(skillsFor("film-plan.outline", skills).includes("story-screenwriting v1"));
+    const shots = skillsFor("film-plan.shots", skills);
+    assert.ok(shots.includes("story-screenwriting v1") && shots.includes("story-shot-grammar v1"));
+    assert.ok(existsSync(join(SKILLS_DIR, "THIRD_PARTY_NOTICES.md")));
   });
   for (const [task, owner] of Object.entries(SKILL_TASKS)) {
     const has = skills.some((s) => s.tasks.includes(task));
