@@ -59,7 +59,7 @@ describe("skills loader", () => {
     assert.throws(() => parseSkill(skill(BASE.replace("version: 1", "version: one")), "x"), /version/);
     assert.throws(() => parseSkill(skill(BASE), "/skills/other/SKILL.md"), /folder/);
     assert.throws(() => parseSkill(skill(BASE, "w ".repeat(MAX_SKILL_WORDS + 1)), "x"), /cap/);
-    assert.throws(() => parseSkill(skill(BASE, "Use gemini-2.5-pro."), "x"), /forbidden/);
+    assert.throws(() => parseSkill(skill(BASE, "Use gemini-4-argon."), "x"), /forbidden/);
     assert.throws(() => loadSkills({ "/a/SKILL.md": skill(BASE), "/b/SKILL.md": skill(BASE) }), /duplicate/);
   });
   it("UT-SK-04 skillsFor / withSkills prepend matching bodies deterministically", () => {

@@ -30,7 +30,8 @@ export const SKILL_LICENSES = ["MIT", "Apache-2.0", "CC-BY-4.0", "CC-BY-3.0"] as
 export type SkillLicense = (typeof SKILL_LICENSES)[number];
 
 export const MAX_SKILL_WORDS = 1500;
-const FORBIDDEN = [/gemini[-\s]?2\.5/i, /gemini-4-argon/i];
+/** Skills must not name retired (1.x / 2.x) generations or the slow opt-in model. */
+const FORBIDDEN = [/gemini[-\s]?[12]\./i, /gemini-4-argon/i];
 
 export type Skill = {
   id: string;
