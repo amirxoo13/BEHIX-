@@ -19,6 +19,7 @@ import { Route as ScenarioRouteImport } from './routes/scenario'
 import { Route as SoundRouteImport } from './routes/sound'
 import { Route as StageRouteImport } from './routes/stage'
 import { Route as WorldRouteImport } from './routes/world'
+import { Route as ApiKitRouteImport } from './routes/api/kit'
 import { Route as ApiMusicRouteImport } from './routes/api/music'
 import { Route as ApiStudioRouteImport } from './routes/api/studio'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
@@ -76,6 +77,11 @@ const WorldRoute = WorldRouteImport.update({
   path: '/world',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiKitRoute = ApiKitRouteImport.update({
+  id: '/api/kit',
+  path: '/api/kit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMusicRoute = ApiMusicRouteImport.update({
   id: '/api/music',
   path: '/api/music',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
   '/world': typeof WorldRoute
+  '/api/kit': typeof ApiKitRoute
   '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
   '/world': typeof WorldRoute
+  '/api/kit': typeof ApiKitRoute
   '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/sound': typeof SoundRoute
   '/stage': typeof StageRoute
   '/world': typeof WorldRoute
+  '/api/kit': typeof ApiKitRoute
   '/api/music': typeof ApiMusicRoute
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
     | '/sound'
     | '/stage'
     | '/world'
+    | '/api/kit'
     | '/api/music'
     | '/api/studio'
     | '/api/tts'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/sound'
     | '/stage'
     | '/world'
+    | '/api/kit'
     | '/api/music'
     | '/api/studio'
     | '/api/tts'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/sound'
     | '/stage'
     | '/world'
+    | '/api/kit'
     | '/api/music'
     | '/api/studio'
     | '/api/tts'
@@ -230,6 +242,7 @@ export interface RootRouteChildren {
   SoundRoute: typeof SoundRoute
   StageRoute: typeof StageRoute
   WorldRoute: typeof WorldRoute
+  ApiKitRoute: typeof ApiKitRoute
   ApiMusicRoute: typeof ApiMusicRoute
   ApiStudioRoute: typeof ApiStudioRoute
   ApiTtsRoute: typeof ApiTtsRoute
@@ -310,6 +323,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorldRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/kit': {
+      id: '/api/kit'
+      path: '/api/kit'
+      fullPath: '/api/kit'
+      preLoaderRoute: typeof ApiKitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/music': {
       id: '/api/music'
       path: '/api/music'
@@ -366,6 +386,7 @@ const rootRouteChildren: RootRouteChildren = {
   SoundRoute: SoundRoute,
   StageRoute: StageRoute,
   WorldRoute: WorldRoute,
+  ApiKitRoute: ApiKitRoute,
   ApiMusicRoute: ApiMusicRoute,
   ApiStudioRoute: ApiStudioRoute,
   ApiTtsRoute: ApiTtsRoute,

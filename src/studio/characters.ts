@@ -129,7 +129,7 @@ let custom: CharacterDef[] = [];
 const listeners: (() => void)[] = [];
 
 /** حداکثر شخصیت سفارشی در یک پروژه. */
-export const MAX_CUSTOM = 8;
+export const MAX_CUSTOM = 100;
 
 export function isCustomId(id: string): boolean {
   return /^u-[a-z0-9]{3,24}$/.test(id);

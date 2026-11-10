@@ -1,6 +1,8 @@
 import { tearsAt } from "./tears.ts";
 import type { CharacterDef, Emotion, Viseme } from "./types";
 import { INK, RIG, type BodyPose } from "./rig";
+import { drawKitActor } from "./kit/draw.ts";
+import { kitMouthFor, type KitMouth } from "./kit/kit.ts";
 
 export type FaceDraw = {
   blink: number;
@@ -593,6 +595,7 @@ export function headImage(src: string): HTMLImageElement | null {
 /** قبل از رندر فیلم: همهٔ سرهای عکسی کامل بارگذاری شوند تا هیچ فریمی سر نقاشی‌شده نداشته باشد. */
 export async function preloadHeads(chars: CharacterDef[]): Promise<void> {
   if (typeof Image === "undefined") return;
+  await preloadKits(chars);
   await Promise.all(
     chars
       .filter((c) => c.head)
@@ -602,6 +605,35 @@ export async function preloadHeads(chars: CharacterDef[]): Promise<void> {
         catch { throw new Error(`تصویر شخصیت «${c.name}» خوانده نشد؛ تصویر را جایگزین کنید.`); }
       }),
   );
+}
+
+/* ---------- شخصیت Gemini (کیت) ---------- */
+
+/** آدرس تکه‌های کیت: در اپ اندروید /api/… به سرور سایت (VITE_API_BASE) می‌رود. */
+const API_BASE = ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE ?? "").replace(/\/$/, "");
+export const kitSrc = (src: string) => (src.startsWith("/api/") ? API_BASE + src : src);
+
+function kitSources(c: CharacterDef): string[] {
+  const k = c.kit;
+  if (!k) return [];
+  return [k.torso, k.upperArm, k.forearm, k.hand, k.thigh, k.shin, k.foot, k.head, ...Object.values(k.mouths), ...(k.blink ? [k.blink] : [])].map((p) => p.src);
+}
+
+/** قبل از رندر فیلم: همهٔ تکه‌های کیت‌ها کامل بارگذاری شوند. */
+export async function preloadKits(chars: CharacterDef[]): Promise<void> {
+  const srcs = chars.flatMap(kitSources);
+  await Promise.all(srcs.map(async (s) => {
+    headImage(kitSrc(s));
+    try { await heads.get(kitSrc(s))?.decode(); }
+    catch { throw new Error("تکه‌های شخصیت Gemini بارگذاری نشد؛ اتصال اینترنت را بررسی کنید."); }
+  }));
+}
+
+/** دهان موتور (viseme + میزان باز بودن) → یکی از ۹ دهان کیت. */
+function kitMouth(face: FaceDraw): KitMouth {
+  if (face.viseme === "rest") return face.open > 0.25 ? "eh" : "rest";
+  if (face.viseme === "ah" || face.viseme === "shout") return face.open > 0.55 ? "ah" : "eh";
+  return kitMouthFor(face.viseme);
 }
 
 /** دهان سر نقاشی‌شده در این ارتفاع است؛ دهان عکس هم همین‌جا قرار می‌گیرد تا گردن درست وصل شود. */
@@ -741,6 +773,14 @@ export function drawActor(
   ctx.save();
   ctx.translate(x, footY);
   const sc = scale * char.scale;
+  if (char.kit) {
+    ctx.scale(sc, sc);
+    const ok = drawKitActor(ctx, char.kit, pose, { mouth: kitMouth(face), blink: face.blink > 0.5 }, (s) => headImage(kitSrc(s)));
+    ctx.restore();
+    // تا تکه‌ها بار نشده‌اند چیزی کشیده نمی‌شود (خروجی ویدیو قبلش preloadHeads را صبر می‌کند)
+    void ok;
+    return;
+  }
   if (pose.profile) ctx.scale(facing * sc, sc);
   else ctx.scale(sc, sc);
   ctx.rotate((pose.torso * Math.PI) / 180);

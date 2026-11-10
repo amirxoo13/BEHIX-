@@ -40,7 +40,7 @@ jobs:
       - name: App unit tests
         run: >-
           node --experimental-strip-types --test
-          "src/lib/**/*.test.ts" "src/studio/*.test.ts" "src/studio/stick/*.test.ts"
+          "src/lib/**/*.test.ts" "src/studio/*.test.ts" "src/studio/stick/*.test.ts" "src/studio/kit/*.test.ts"
 
       # Four tests read .grok/skills/og/*, which is git-ignored platform material that
       # exists only inside the Grok sandbox, so they cannot run on a plain checkout.

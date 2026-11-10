@@ -52,6 +52,7 @@ async function main() {
     "src/studio/stick/*.test.ts",
     "src/studio/v2/*.test.ts",
     "src/studio/world/*.test.ts",
+    "src/studio/kit/*.test.ts",
   ]);
   process.exit(combineStatus([scripts, ts]));
 }

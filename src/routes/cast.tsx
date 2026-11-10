@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bust } from "@/components/bust";
 import { CharacterMaker } from "@/components/character-maker";
+import { KitMaker } from "@/components/kit-maker";
 import { SceneBar } from "@/components/scene-bar";
 import { PhaseHead, Shell } from "@/components/shell";
 import { CAST, findChar } from "@/studio/characters";
@@ -65,6 +66,7 @@ function CastPage() {
           );
         })}
       </div>
+      <KitMaker />
       <CharacterMaker />
     </Shell>
   );

@@ -2,6 +2,7 @@ import { validPlacement } from "./placement.ts";
 // ذخیره‌سازی امن پروژه: IndexedDB با مهاجرت از localStorage و پشتیبان JSON.
 // این ماژول به React/zustand وابسته نیست تا در Node قابل تست باشد.
 import { CAST, MAX_CUSTOM, isCustomId } from "./characters.ts";
+import { KIT_MOUTHS, type CharacterKit } from "./kit/kit.ts";
 import { DEFAULT_GENRE, DEFAULT_LOGLINE, DEFAULT_TITLE, KEY } from "./project.ts";
 import { MAX_PROPS, PROP_IDS, type PropPlacement } from "./props.ts";
 import { SFXS, WORLD } from "./labels.ts";
@@ -76,6 +77,17 @@ function point(v: unknown): { x: number; y: number } | null {
 }
 
 /** شخصیت سفارشی معتبر، یا null. تصویر فقط data URL تصویر و با اندازهٔ محدود پذیرفته می‌شود. */
+/** کیت Gemini: فقط آدرس‌های همین سایت (/api/kit?f=…) و ساختار درست پذیرفته می‌شود. */
+function repairKit(v: unknown): CharacterKit | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const k = v as CharacterKit;
+  const img = (p: unknown) => !!p && typeof p === "object" && typeof (p as { src?: unknown }).src === "string" && /^\/api\/kit\?f=[A-Za-z0-9_%-]+\.png$/.test((p as { src: string }).src) && typeof (p as { w?: unknown }).w === "number" && typeof (p as { h?: unknown }).h === "number";
+  const parts = [k.torso, k.upperArm, k.forearm, k.hand, k.thigh, k.shin, k.foot, k.head];
+  if (k.version !== 1 || !parts.every(img) || !k.mouths || !KIT_MOUTHS.every((m) => img(k.mouths[m]))) return undefined;
+  if (k.blink && !img(k.blink)) return undefined;
+  return k;
+}
+
 export function repairCharacter(v: unknown): CharacterDef | null {
   const o = v && typeof v === "object" ? (v as Record<string, unknown>) : null;
   if (!o || typeof o.id !== "string" || !isCustomId(o.id)) return null;
@@ -98,6 +110,8 @@ export function repairCharacter(v: unknown): CharacterDef | null {
     scale: typeof o.scale === "number" && o.scale >= 0.6 && o.scale <= 1.3 ? o.scale : 1,
     build: o.build === "slim" || o.build === "heavy" ? o.build : "normal",
   };
+  const kit = repairKit(o.kit);
+  if (kit) def.kit = kit;
   const h = o.head && typeof o.head === "object" ? (o.head as Record<string, unknown>) : null;
   if (h && typeof h.src === "string" && /^data:image\/(png|webp|jpeg);base64,/.test(h.src) && h.src.length <= MAX_HEAD_SRC) {
     const mouth = point(h.mouth);

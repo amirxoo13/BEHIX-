@@ -1,4 +1,5 @@
 import type { PropPlacement } from "./props.ts";
+import type { CharacterKit } from "./kit/kit.ts";
 
 export type Aspect = "wide" | "square" | "story";
 
@@ -92,6 +93,8 @@ export type CharacterDef = {
   build?: Build;
   /** سر از روی عکس (مثلاً کارتونی Canva)؛ اگر باشد به‌جای سر نقاشی‌شده کشیده می‌شود. */
   head?: HeadImage;
+  /** شخصیت ساخته‌شده با Gemini (تکه‌های بدن، سر، ۹ دهان) که روی اسکلت موتور کشیده می‌شود؛ اگر باشد بر بقیه مقدم است. */
+  kit?: CharacterKit;
 };
 
 export type Build = "slim" | "normal" | "heavy";
