@@ -3,10 +3,11 @@ import { z } from "zod";
 import { MAX_LINE, TTS_MODEL, VOICE_IDS } from "@/studio/stick/voice";
 import { reserveDaily } from "@/lib/tts-quota";
 import { clientIp } from "@/lib/rate-limit";
+import { gcpAccessToken } from "@/lib/gcp-auth.server";
 
 /**
  * صدای فارسی دیالوگ با Gemini TTS (Cloud Text-to-Speech).
- * احراز هویت با حساب سرویس Cloud Run از metadata server؛ هیچ کلیدی در کد یا مرورگر نیست.
+ * احراز هویت با اعتبار پیش‌فرض Google Cloud (حساب سرویس Cloud Run یا gcloud محلی)؛ هیچ کلیدی در کد یا مرورگر نیست.
  * کلیپ‌ها در Cloud Storage کش می‌شوند تا یک جمله دو بار هزینه نداشته باشد.
  */
 const body = z.object({ text: z.string().trim().min(1).max(MAX_LINE), voice: z.enum(VOICE_IDS as [string, ...string[]]), prompt: z.string().max(300) }).strict();
@@ -19,16 +20,6 @@ const cors = (req: Request): Record<string, string> => {
   return origin && ORIGINS.has(origin) ? { "access-control-allow-origin": origin, "access-control-allow-headers": "content-type", "access-control-allow-methods": "POST, OPTIONS", vary: "origin" } : {};
 };
 const fail = (req: Request, status: number, message: string) => Response.json({ message }, { status, headers: { ...cors(req), "cache-control": "no-store" } });
-
-let token: { value: string; until: number } | null = null;
-async function accessToken(): Promise<string> {
-  if (token && token.until > Date.now() + 60_000) return token.value;
-  const r = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", { headers: { "Metadata-Flavor": "Google" } });
-  if (!r.ok) throw new Error(`metadata token ${r.status}`);
-  const j = (await r.json()) as { access_token: string; expires_in: number };
-  token = { value: j.access_token, until: Date.now() + j.expires_in * 1000 };
-  return token.value;
-}
 
 const DAILY_FULL = "سقف روزانهٔ ساخت صدا پر شده است؛ فردا دوباره امتحان کنید.";
 function limited(ip: string): string | null {
@@ -56,7 +47,7 @@ async function handle(req: Request): Promise<Response> {
   const audio = (bytes: ArrayBuffer, hit: boolean) =>
     new Response(bytes, { headers: { ...cors(req), "content-type": "audio/mpeg", "cache-control": "private, max-age=31536000, immutable", "x-cache": hit ? "hit" : "miss" } });
   try {
-    const auth = { authorization: `Bearer ${await accessToken()}` };
+    const auth = { authorization: `Bearer ${await gcpAccessToken()}` };
     if (bucket) {
       const cached = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(key)}?alt=media`, { headers: auth });
       if (cached.ok) return audio(await cached.arrayBuffer(), true);
