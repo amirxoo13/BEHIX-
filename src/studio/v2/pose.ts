@@ -142,13 +142,23 @@ export function poseAt(keys: PoseKey[], t: number): { pose: Pose; id: PoseId; mo
   while (i + 1 < keys.length && keys[i + 1].t <= t) i++;
   const cur = keys[i];
   if (i === 0 || t < cur.t) return { pose: poseOf(keys[0].pose), id: keys[0].pose, moving: false };
-  const gap = i + 1 < keys.length ? keys[i + 1].t - cur.t : Infinity;
-  const dur = Math.max(0.2, Math.min(TRANSITION, gap));
-  const u = (t - cur.t) / dur;
+  const u = (t - cur.t) / keyDuration(keys, i);
   if (u >= 1) return { pose: poseOf(cur.pose), id: cur.pose, moving: false };
-  // اگر کلید قبلی هنوز کامل ننشسته بود، از همان‌جا که بود ادامه می‌دهیم (بدون پرش).
-  const from = poseAt(keys.slice(0, i), cur.t).pose;
-  return { pose: transition(from, poseOf(cur.pose), u), id: cur.pose, moving: true };
+  return { pose: keyState(keys, i, t), id: cur.pose, moving: true };
+}
+
+/** مدت گذار کلید i: تا کلید بعدی کوتاه می‌شود ولی هرگز کمتر از ۰٫۲ ثانیه نیست. */
+function keyDuration(keys: PoseKey[], i: number): number {
+  const gap = i + 1 < keys.length ? keys[i + 1].t - keys[i].t : Infinity;
+  return Math.max(0.2, Math.min(TRANSITION, gap));
+}
+
+/** ژست بدن در زمان t وقتی کلید i فعال است. اگر کلید قبلی هنوز کامل ننشسته بود، از همان‌جا که بود ادامه می‌دهیم (بدون پرش). */
+function keyState(keys: PoseKey[], i: number, t: number): Pose {
+  const cur = keys[i];
+  const u = (t - cur.t) / keyDuration(keys, i);
+  if (i === 0 || u >= 1) return poseOf(cur.pose);
+  return transition(keyState(keys, i - 1, cur.t), poseOf(cur.pose), u);
 }
 
 /**
