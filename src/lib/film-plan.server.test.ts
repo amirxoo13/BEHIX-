@@ -49,8 +49,16 @@ function standard(call: Call): Response {
   return json({ shots: sceneShots()[Number(m[1]) - 1] });
 }
 const deps = (fetchFn: typeof fetch, config?: FilmPlanConfig): Deps => ({ fetch: fetchFn, accessToken: async () => "token", project: "behix-test", config, system: (task, base) => `[skills:${task}]\n${base}` });
+// AbortSignal.timeout تایمرِ unref دارد و حلقهٔ رویداد Node را زنده نگه نمی‌دارد؛ بدون این تایمرِ ref،
+// Node پیش از رسیدن abort خارج می‌شود و تست «لغو» حساب می‌شود (CI با کد ۱ می‌میرد).
 const hangUntilAbort = (signal: AbortSignal | undefined) =>
-  new Promise<Response>((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason)));
+  new Promise<Response>((_, reject) => {
+    const keepAlive = setInterval(() => {}, 1000);
+    signal?.addEventListener("abort", () => {
+      clearInterval(keepAlive);
+      reject(signal.reason);
+    });
+  });
 
 describe("film plan on Vertex (mocked fetch)", () => {
   it("UT-FPS-01 defaults: both stages use gemini-3.8-flash with the modest thinking budget", async () => {

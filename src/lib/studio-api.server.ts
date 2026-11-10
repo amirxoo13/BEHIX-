@@ -45,7 +45,11 @@ export function createStudioApi(deps: StudioDeps) {
     if (list.length >= PER_IP) return "درخواست‌ها زیاد است؛ چند دقیقه دیگر دوباره امتحان کنید.";
     list.push(t);
     hits.set(ip, list);
-    if (hits.size > 5000) hits.clear();
+    // فقط نشانی‌هایی که در پنجره هیچ درخواستی ندارند حذف می‌شوند؛ clear() سقف همه را صفر می‌کرد.
+    if (hits.size > 5000) {
+      for (const [k, v] of hits) if (!v.some((x) => t - x < WINDOW)) hits.delete(k);
+      if (hits.size > 5000) hits.delete(hits.keys().next().value as string);
+    }
     return null;
   }
 

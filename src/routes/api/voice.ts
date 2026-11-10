@@ -28,7 +28,8 @@ const b64 = (u: Uint8Array) => Buffer.from(u.buffer, u.byteOffset, u.byteLength)
 
 async function post(req: Request): Promise<Response> {
   const project = process.env.GOOGLE_CLOUD_PROJECT, bucket = process.env.TTS_BUCKET;
-  if (!project) return fail(req, 503, "سرویس صدا روی این سرور فعال نیست.");
+  // بدون باکت، سهمیهٔ روزانهٔ پایدار و کش وجود ندارد؛ پس سرویس پولی روشن نمی‌شود (سند self-host هم همین را می‌گوید).
+  if (!project || !bucket) return fail(req, 503, "سرویس صدا روی این سرور فعال نیست.");
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail(req, 400, "درخواست صدا معتبر نیست.");
   try {

@@ -3,7 +3,7 @@
  * خروجی: dist-android/index.html و فایل‌هایش؛ `npx cap sync android` آن را داخل اپ کپی می‌کند.
  * فقط تصویرهای برند از public کپی می‌شوند (نه فایل‌های سنگین mediapipe که این صفحه لازم ندارد).
  */
-import { cpSync, renameSync } from "node:fs";
+import { cpSync, existsSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import viteReact from "@vitejs/plugin-react";
@@ -17,7 +17,10 @@ function androidAssets(): Plugin {
     name: "behix:android-assets",
     apply: "build",
     closeBundle() {
-      renameSync(resolve(outDir, "android.html"), resolve(outDir, "index.html"));
+      // اگر ساخت شکسته باشد android.html نوشته نمی‌شود؛ این‌جا ساکت می‌مانیم تا خطای اصلی Rollup دیده شود.
+      const page = resolve(outDir, "android.html");
+      if (!existsSync(page)) return;
+      renameSync(page, resolve(outDir, "index.html"));
       cpSync(resolve(__dirname, "public/brand"), resolve(outDir, "brand"), { recursive: true });
       cpSync(resolve(__dirname, "public/favicon.svg"), resolve(outDir, "favicon.svg"));
     },
@@ -26,7 +29,13 @@ function androidAssets(): Plugin {
 
 export default defineConfig({
   plugins: [viteReact(), tailwindcss(), androidAssets()],
-  resolve: { alias: { "@": resolve(__dirname, "src") } },
+  resolve: {
+    // کد سرور (تابع‌های createServerFn) نباید وارد باندل اپ آفلاین شود؛ جایگزین کلاینتی‌اش را می‌گذاریم.
+    alias: [
+      { find: /^@\/lib\/film-plan-ai$/, replacement: resolve(__dirname, "src/android/film-plan-ai.ts") },
+      { find: "@", replacement: resolve(__dirname, "src") },
+    ],
+  },
   publicDir: false,
   base: "./",
   worker: { format: "es" },
