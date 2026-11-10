@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Mic } from "lucide-react";
+import { Mic, Wand2 } from "lucide-react";
 import { setEdit, type StoryProject } from "@/studio/stick/project";
 import type { Directed } from "@/studio/stick/story-direct";
 import { defaultVoices, lineDurationFor, placeVoices, type Voice, type VoiceClip } from "@/studio/stick/voice";
-import { lineJobs, loadClips, synthesize, type LineJob } from "@/studio/stick/voice-client";
+import { directVoices, ensureTimelines, lineJobs, loadClips, loadTimelines, synthesize, type LineJob } from "@/studio/stick/voice-client";
+import type { VisemeTimeline } from "@/studio/v2/viseme-timeline";
 import { fa } from "@/studio/format";
 
 /** وضعیت صداگذاری پروژه: صدای هر شخصیت، کلیپ‌های موجود و ساخت کلیپ‌های تازه. */
@@ -12,6 +13,8 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
   const voices = useMemo(() => (cast ? defaultVoices(cast, project?.settings.voices) : {}), [cast, project?.settings.voices]);
   const [jobs, setJobs] = useState<LineJob[]>([]);
   const [clips, setClips] = useState<Map<string, VoiceClip>>(new Map());
+  // زمان‌بندی لب هر دیالوگ (beatId → VisemeTimeline): از STT در /api/voice، یا دامنه‌ای برای کلیپ‌های بدون آن
+  const [timelines, setTimelines] = useState<Map<string, VisemeTimeline>>(new Map());
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0);
   const [error, setError] = useState("");
@@ -21,12 +24,14 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     if (!directed || !cast) return;
     let alive = true;
     const looks = Object.fromEntries(cast.map((c) => [c.id, c.look]));
-    void lineJobs(directed, voices, looks)
+    void lineJobs(directed, voices, looks, project?.settings.styles)
       .then(async (j) => {
         const loaded = await loadClips(j);
+        const times = await ensureTimelines(j, loaded, await loadTimelines(j));
         if (!alive) return;
         setJobs(j);
         setClips(loaded);
+        setTimelines(times);
         // کلیپ از قبل ذخیره‌شده (مثلاً همان جمله در دیالوگ تازه): مدت دیالوگ اندازهٔ صدایش می‌شود،
         // مگر کاربر خودش مدت را انتخاب کرده باشد. مقایسه با ویرایش ذخیره‌شده است (نه طول نهایی بخش) تا حلقه نشود
         // و اصلاح خودکار مرحلهٔ واگرد نمی‌سازد تا واگرد/ازنو را به‌هم نزند.
@@ -40,7 +45,7 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     return () => {
       alive = false;
     };
-  }, [directed, cast, voices]); // eslint-disable-line react-hooks/exhaustive-deps -- project.edits is read once per compile
+  }, [directed, cast, voices, project?.settings.styles]); // eslint-disable-line react-hooks/exhaustive-deps -- project.edits is read once per compile
   useEffect(() => () => abort.current?.abort(), []);
 
   const voiced = useMemo(() => (directed ? placeVoices(directed, clips) : null), [directed, clips]);
@@ -54,11 +59,13 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     setDone(0);
     setError("");
     try {
-      const { made, error: failed } = await synthesize(missing, setDone, ctrl.signal);
+      const { made, timelines: madeTimes, error: failed } = await synthesize(missing, setDone, ctrl.signal);
       // کلیپ‌های ساخته‌شده حتی اگر یکی خطا داد یا لغو شد نگه داشته می‌شوند؛
       // مدت هر دیالوگ به اندازهٔ صدای واقعی تا لب‌خوانی و زمان‌بندی دقیق شود
       if (made.size) {
         setClips((old) => new Map([...old, ...made]));
+        const times = await ensureTimelines(missing.filter((j) => made.has(j.beatId)), made, madeTimes);
+        setTimelines((old) => new Map([...old, ...times]));
         commit((p) => fitAll(p, [...made]), "silent");
       }
       if (failed !== undefined && !(failed instanceof DOMException && failed.name === "AbortError")) setError(failed instanceof Error ? failed.message : String(failed));
@@ -68,8 +75,36 @@ export function useVoices(project: StoryProject | null, directed: Directed | nul
     }
   }, [busy, missing, commit]);
 
+  const [directing, setDirecting] = useState(false);
+  const [directNote, setDirectNote] = useState("");
+  /** کارگردانی صدا (Gemini + مهارت tts.line): صدای شخصیت‌هایی که کاربر خودش انتخاب نکرده و لحن هر دیالوگ. */
+  const direct = useCallback(async () => {
+    if (directing || busy || !cast || !jobs.length) return;
+    setDirecting(true);
+    setDirectNote("");
+    try {
+      const d = await directVoices(jobs, cast.map((c) => ({ id: c.id, name: c.name, kind: c.look.kind })), voices);
+      if (d.source === "gemini") {
+        const chosen = project?.settings.voices ?? {};
+        const styles = Object.fromEntries(d.lines.filter((l) => l.style).map((l) => [l.id, l.style.slice(0, 120)]));
+        commit((p) => ({
+          ...p,
+          settings: {
+            ...p.settings,
+            voices: { ...Object.fromEntries(Object.entries(d.cast).filter(([id]) => !(id in chosen))), ...p.settings.voices },
+            styles: { ...p.settings.styles, ...styles },
+          },
+        }));
+        setDirectNote("لحن دیالوگ‌ها کارگردانی شد؛ دیالوگ‌هایی که لحنشان عوض شد دوباره صدا می‌گیرند.");
+      } else setDirectNote(d.warning ?? "انتخاب فعلی ماند.");
+    } finally {
+      setDirecting(false);
+    }
+  }, [directing, busy, cast, jobs, voices, project?.settings.voices, commit]);
+  const clearDirection = () => commit((p) => ({ ...p, settings: { ...p.settings, styles: undefined } }));
+
   const setVoice = (castId: string, voice: Voice) => commit((p) => ({ ...p, settings: { ...p.settings, voices: { ...p.settings.voices, [castId]: voice } } }));
-  return { voices, setVoice, jobs, missing: missing.length, voiced, generate, busy, done, error, cancel: () => abort.current?.abort() };
+  return { voices, setVoice, jobs, missing: missing.length, voiced, timelines, generate, busy, done, error, cancel: () => abort.current?.abort(), direct, directing, directNote, directed: Boolean(project?.settings.styles && Object.keys(project.settings.styles).length), clearDirection };
 }
 
 export type Voicing = ReturnType<typeof useVoices>;
@@ -100,6 +135,15 @@ export function VoicePanel({ v }: { v: Voicing }) {
       ) : (
         <p className="hint">همهٔ دیالوگ‌ها صدا دارند. با تغییر متن، صدا یا حالت، فقط همان دیالوگ دوباره ساخته می‌شود.</p>
       )}
+      {!v.busy && (
+        <div className="voice-direct">
+          <button type="button" className="btn btn-ghost btn-sm" disabled={v.directing} onClick={() => void v.direct()}>
+            <Wand2 size={16} aria-hidden /> {v.directing ? "در حال کارگردانی…" : "کارگردانی لحن‌ها با Gemini"}
+          </button>
+          {v.directed && <button type="button" className="btn btn-ghost btn-sm" onClick={v.clearDirection}>لحن پیش‌فرض</button>}
+        </div>
+      )}
+      {v.directNote && <p className="hint" role="status">{v.directNote}</p>}
       {v.error && <p role="alert" className="story-warn">{v.error}</p>}
     </div>
   );

@@ -24,6 +24,7 @@ import { Route as ApiMusicRouteImport } from './routes/api/music'
 import { Route as ApiStudioRouteImport } from './routes/api/studio'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
 import { Route as ApiVoiceRouteImport } from './routes/api/voice'
+import { Route as ApiVoiceDirectionRouteImport } from './routes/api/voice-direction'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -101,6 +102,11 @@ const ApiVoiceRoute = ApiVoiceRouteImport.update({
   path: '/api/voice',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVoiceDirectionRoute = ApiVoiceDirectionRouteImport.update({
+  id: '/api/voice-direction',
+  path: '/api/voice-direction',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
   '/api/voice': typeof ApiVoiceRoute
+  '/api/voice-direction': typeof ApiVoiceDirectionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
   '/api/voice': typeof ApiVoiceRoute
+  '/api/voice-direction': typeof ApiVoiceDirectionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/api/studio': typeof ApiStudioRoute
   '/api/tts': typeof ApiTtsRoute
   '/api/voice': typeof ApiVoiceRoute
+  '/api/voice-direction': typeof ApiVoiceDirectionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -180,6 +189,7 @@ export interface FileRouteTypes {
     | '/api/studio'
     | '/api/tts'
     | '/api/voice'
+    | '/api/voice-direction'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/api/studio'
     | '/api/tts'
     | '/api/voice'
+    | '/api/voice-direction'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/api/studio'
     | '/api/tts'
     | '/api/voice'
+    | '/api/voice-direction'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -235,6 +247,7 @@ export interface RootRouteChildren {
   ApiStudioRoute: typeof ApiStudioRoute
   ApiTtsRoute: typeof ApiTtsRoute
   ApiVoiceRoute: typeof ApiVoiceRoute
+  ApiVoiceDirectionRoute: typeof ApiVoiceDirectionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -345,6 +358,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVoiceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/voice-direction': {
+      id: '/api/voice-direction'
+      path: '/api/voice-direction'
+      fullPath: '/api/voice-direction'
+      preLoaderRoute: typeof ApiVoiceDirectionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -371,6 +391,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStudioRoute: ApiStudioRoute,
   ApiTtsRoute: ApiTtsRoute,
   ApiVoiceRoute: ApiVoiceRoute,
+  ApiVoiceDirectionRoute: ApiVoiceDirectionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

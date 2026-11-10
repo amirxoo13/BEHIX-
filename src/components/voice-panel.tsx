@@ -4,6 +4,7 @@ import { findChar } from "@/studio/characters";
 import { fa } from "@/studio/format";
 import { useStudio } from "@/studio/store";
 import { VOICES, speak, speakableText, type TtsProgress, type VoiceId } from "@/studio/tts";
+import { setUrlTimeline } from "@/studio/audio-timelines";
 import type { Shot } from "@/studio/types";
 
 const VOICE_KEY = "behix-voices";
@@ -69,9 +70,12 @@ export function VoicePanel() {
         if (!shot || !who || !speakableText(shot.dialogue)) continue;
         const label = `در حال ساخت صدای نمای ${fa(i + 1)} (${fa(done + 1)} از ${fa(indexes.length)})…`;
         setNote(label);
-        const { blob, seconds } = await speak(shot.dialogue, voiceFor(who), (p) => setNote(progressText(p, label)));
+        const { blob, seconds, timeline } = await speak(shot.dialogue, voiceFor(who), (p) => setNote(progressText(p, label)));
         const s = useStudio.getState();
-        s.setAudio(shot.id, URL.createObjectURL(blob));
+        const url = URL.createObjectURL(blob);
+        // زمان‌بندی لب دامنه‌ای همین کلیپ (timing: amplitude)، با کلید همان آدرس کلیپ
+        setUrlTimeline(url, { ...timeline, lineId: shot.id });
+        s.setAudio(shot.id, url);
         // نما باید دست‌کم به اندازهٔ صدا طول بکشد (صدا با سرعت pitch پخش می‌شود).
         const need = Math.ceil((seconds / (shot.pitch || 1) + 0.4) * 10) / 10;
         if (need > shot.duration) s.patchShotAt(i, { duration: Math.min(30, need) });

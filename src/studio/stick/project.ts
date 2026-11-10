@@ -94,6 +94,19 @@ export const projectSchema = z
         fps: z.union([z.literal(30), z.literal(60)]),
         captions: z.boolean(),
         voices: z.record(z.string().max(100), z.enum(VOICE_IDS as [string, ...string[]])).optional(),
+        /** لحن پیشنهادی کارگردانی صدا برای هر دیالوگ (beatId → style انگلیسی کوتاه)؛ بدون آن stylePrompt(mood). */
+        styles: z.record(z.string().max(100), z.string().max(120)).optional(),
+        /** قطعه‌های موسیقی (Lyria) روی فیلم؛ فایل در IndexedDB با شناسهٔ src (`music:<sha>`). ثانیه. */
+        music: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(80), src: z.string().regex(/^music:[0-9a-f]{64}$/), start: finite.nonnegative(), duration: finite.positive(),
+              sourceSeconds: finite.positive(), gainDb: finite.min(-60).max(12), fadeIn: finite.nonnegative(), fadeOut: finite.nonnegative(),
+              loop: z.boolean().optional(), prompt: z.string().max(600).optional(),
+            }).strict(),
+          )
+          .max(8)
+          .optional(),
       })
       .strict(),
     updatedAt: finite.nonnegative(),

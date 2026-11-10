@@ -7,6 +7,7 @@ import { FilmPlanPanel } from "@/components/story/film-plan-panel";
 import { SceneBoard } from "@/components/story/scene-board";
 import { TimelineStrip } from "@/components/story/timeline-strip";
 import { useVoices, VoicePanel } from "@/components/story/voice-panel";
+import { MusicPanel } from "@/components/story/music-panel";
 import { audioContext } from "@/studio/stick/voice-client";
 import type { PlacedClip } from "@/studio/stick/voice";
 import type { useStoryWorkspace } from "@/studio/stick/use-workspace";
@@ -199,7 +200,7 @@ export function StoryApp({ brand, workspace, projectsLink }: {
             )}
           </div>
           <div className="pane pane-cast">
-            {project && directed && <><VoicePanel v={voicing} /><CastPanel project={project} cast={directed.timeline.cast} commit={commit} voices={voicing.voices} onVoice={voicing.setVoice} /></>}
+            {project && directed && <><VoicePanel v={voicing} /><MusicPanel project={project} duration={directed.timeline.duration} at={() => player.current?.time() ?? 0} commit={commit} /><CastPanel project={project} cast={directed.timeline.cast} commit={commit} voices={voicing.voices} onVoice={voicing.setVoice} /></>}
           </div>
           <div className="pane pane-scenes">
             {project && directed && <SceneBoard directed={directed} format={project.settings.format} selected={selectedId} onPick={(id) => pick(id)} commit={commit} />}

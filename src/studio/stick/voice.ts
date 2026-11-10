@@ -68,7 +68,7 @@ const MOODS: Partial<Record<Expression, string>> = {
  * لحن کوتاه برای Gemini 3.8 TTS (speechMetadata.style): کمتر از ۱۵ کلمه، فقط حس و گویش.
  * سن و جنسیت با خود صدا می‌آید نه با لحن، و پیش‌درآمدهایی مثل «Read this line…» روی 3.8 گاهی خوانده می‌شوند
  * (skills/audio-voice-direction؛ مستند: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/text-to-speech/prompting-guide).
- * TODO(skills): AI skill task id "tts.line" (skills/audio-voice-direction)؛ بارگذار src/ai/skills.ts هنوز روی master نیست.
+ * این لحن پیش‌فرض قطعی است؛ لحن پیشنهادی Gemini (مهارت tts.line در /api/voice-direction) جای آن می‌نشیند.
  */
 export function stylePrompt(mood?: Expression, _kind?: Look["kind"]): string {
   const m = mood ? MOODS[mood] : undefined;

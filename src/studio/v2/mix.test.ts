@@ -70,3 +70,17 @@ test("clip fade envelope inside a window", async () => {
   assert.ok(Math.abs(next[0].g - pts[2].g) < 1e-12, "seam value matches");
   assert.deepEqual(clipGainPoints(c, 16, 20), []);
 });
+
+test("music cue placement and FilmMix for a story", async () => {
+  const { musicPlacement, buildFilmMix, duckIntervals } = await import("./mix.ts");
+  const m = musicPlacement("cue1", "music:abc", 184, 10, 120, "Instrumental ...");
+  assert.equal(m.start, 10);
+  assert.equal(m.duration, 110, "trimmed to film end");
+  assert.equal(m.fadeIn, 1);
+  assert.equal(m.fadeOut, 2);
+  const mix = buildFilmMix(120, [{ beatId: "b1", src: "voice:k1", start: 12, duration: 2 }], [m]);
+  assert.deepEqual(validateMix(mix), []);
+  assert.deepEqual(mix.clips.map((c) => [c.id, c.bus]), [["line:b1", "dialogue"], ["cue1", "music"]]);
+  assert.deepEqual(duckIntervals(mix.clips, mix.duck.mergeGap), [[12, 14]]);
+  assert.equal(musicPlacement("x", "music:x", 30, 200, 60).start, 59.5, "start clamped into the film");
+});

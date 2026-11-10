@@ -51,9 +51,8 @@ export function ttsUrl(project: string, location: string, model: string): string
 
 /**
  * Request body for one single-speaker line. The style prompt goes in `speechMetadata.style`.
- * TODO(skills): AI skill task id "tts.line" (skills/audio-voice-direction, owner audio). The loader
- * src/ai/skills.ts (story branch) isn't in this worktree; once merged, the style text should be built with
- * skillsFor("tts.line") guidance (see stylePrompt in src/studio/stick/voice.ts, the other half of this call site).
+ * Skill "tts.line" (skills/audio-voice-direction) is applied upstream, in the voice-direction TEXT call
+ * (src/routes/api/voice-direction.ts) that writes `style`; skill text is never part of this TTS request.
  */
 export function buildTtsRequest(text: string, voice: string, style?: string) {
   const part: { text: string; speechMetadata?: { style: string } } = { text };

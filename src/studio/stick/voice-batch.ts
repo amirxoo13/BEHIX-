@@ -2,6 +2,7 @@
  * Pure helpers for the /api/voice client (batched audio + VisemeTimeline). No DOM, tested in Node.
  */
 import { repairTimeline, type VisemeTimeline } from "../v2/viseme-timeline.ts";
+import { alignLine } from "../v2/align.ts";
 
 export const VOICE_BATCH = 4;
 
@@ -26,3 +27,11 @@ export function parseVoiceResults(json: unknown, jobs: VoiceBatchJob[]): VoiceRe
 
 /** Relative audio URLs are resolved against the API base (Android app); data: URLs pass through. */
 export const resolveAudioUrl = (api: string, url: string) => (/^(data:|https?:)/.test(url) ? url : `${api}${url}`);
+
+/** Amplitude timing (`timing: "amplitude"`, or "text" for silence) for a clip that came without STT timing (e.g. /api/tts). */
+export function amplitudeTimeline(j: { beatId: string; text: string; voice: string; key: string }, clip: { samples: Float32Array; sampleRate: number }): VisemeTimeline {
+  return alignLine(
+    { text: j.text, duration: clip.samples.length / clip.sampleRate, samples: clip.samples, sampleRate: clip.sampleRate },
+    { lineId: j.beatId, clipKey: j.key, voice: { engine: "gemini-tts", name: j.voice } },
+  );
+}

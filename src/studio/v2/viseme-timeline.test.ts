@@ -83,3 +83,27 @@ describe("repairTimeline", () => {
     for (const v of [null, 1, "x", {}, { version: 2, text: "a", duration: 1 }, { version: 1, text: "a", duration: 0 }]) assert.equal(repairTimeline(v), undefined);
   });
 });
+
+it("mouthAt: hard cuts match visemeAt; crossfade blends into each span and back to rest", async () => {
+  const { mouthAt } = await import("./viseme-timeline.ts");
+  const { visemeAt } = await import("./mouth.ts");
+  const spans = [{ id: "mbp" as const, start: 0.1, end: 0.2 }, { id: "ah" as const, start: 0.2, end: 0.5, weight: 0.8 }, { id: "sz" as const, start: 0.7, end: 0.9 }];
+  for (const t of [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.55, 0.75, 0.95]) assert.equal(mouthAt(spans, t).id, visemeAt(spans, t).id, `t=${t}`);
+  assert.deepEqual(mouthAt(spans, 0.3), { id: "ah", nextId: "ah", mix: 0, weight: 0.8 });
+  const a = mouthAt({ visemes: spans }, 0.23, { crossfade: 0.06 });
+  assert.equal(a.id, "mbp"); assert.equal(a.nextId, "ah"); assert.ok(Math.abs(a.mix - 0.5) < 1e-9);
+  const gap = mouthAt(spans, 0.71, { crossfade: 0.06 });
+  assert.equal(gap.id, "rest"); assert.equal(gap.nextId, "sz"); // not adjacent → from rest
+  const after = mouthAt(spans, 0.93, { crossfade: 0.06 });
+  assert.equal(after.id, "sz"); assert.equal(after.nextId, "rest"); assert.ok(Math.abs(after.mix - 0.5) < 1e-9);
+  assert.deepEqual(mouthAt(spans, 2, { crossfade: 0.06 }), { id: "rest", nextId: "rest", mix: 0, weight: 1 });
+  assert.equal(mouthAt(spans, 0.3, { crossfade: 1 }).mix, 0, "crossfade capped at MAX_CROSSFADE (0.06 s)");
+  // rig without sz art: falls back sz → ee → eh
+  const has = (v: string) => ["rest", "mbp", "ah", "eh"].includes(v);
+  assert.equal(mouthAt(spans, 0.8, { has }).id, "eh");
+});
+
+it("placedSpans moves a line's spans to film time", async () => {
+  const { placedSpans } = await import("./viseme-timeline.ts");
+  assert.deepEqual(placedSpans({ visemes: [{ id: "ah", start: 0.1, end: 0.3, weight: 0.5 }] }, 12.5), [{ id: "ah", start: 12.6, end: 12.8, weight: 0.5 }]);
+});
