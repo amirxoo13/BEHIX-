@@ -35,3 +35,23 @@ describe("Persian text to speech helpers", () => {
     assert.equal(wavDuration(new ArrayBuffer(10)), 0);
   });
 });
+
+it("Piper WAV → amplitude VisemeTimeline via align.ts", async () => {
+  const { piperTimeline, wavMono } = await import("./tts.ts");
+  const rate = 22050, n = rate;
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE"); str(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) if (i > 4000 && i < 18000) v.setInt16(44 + i * 2, Math.round(Math.sin(i / 8) * 12000), true);
+  const mono = wavMono(buf);
+  assert.equal(mono.sampleRate, rate);
+  assert.equal(mono.samples.length, n);
+  const t = piperTimeline("سلام دنیا", buf, "fa_IR-amir-medium");
+  assert.equal(t.timing, "amplitude");
+  assert.equal(t.voice?.engine, "piper");
+  assert.equal(t.duration, 1);
+  assert.ok(t.visemes.some((s) => s.id !== "rest"));
+  assert.equal(piperTimeline("سلام", new ArrayBuffer(8), "x").timing, "text", "unreadable WAV → text timing");
+});
