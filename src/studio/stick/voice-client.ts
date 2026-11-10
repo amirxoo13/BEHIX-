@@ -13,6 +13,8 @@ export { amplitudeTimeline };
 import { clipKey, concatClips, defaultVoices, encodeWav, LEGACY_CACHE_MODEL, mixClips, MIX_RATE, placeVoices, legacyStylePrompt, splitLine, stylePrompt, TTS_PREVIEW_MODEL, type Voice, type VoiceClip } from "./voice.ts";
 
 const API = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? "";
+/** آدرس سرور API (اپ اندروید: VITE_API_BASE). */
+export const API_BASE = API;
 /**
  * key = کلید مدل اصلی (3.8 Flash) که کلیپ تازه زیرش ذخیره می‌شود.
  * altKeys = کلیدهای دیگری که فقط خوانده می‌شوند: Flash-Lite (جایگزین) و MP3 قدیمی Gemini 2.5.

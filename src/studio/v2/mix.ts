@@ -201,3 +201,26 @@ export function clipGainPoints(c: MixClip, from: number, to: number): { t: numbe
   const ts = [lo, a + c.fadeIn, b - c.fadeOut, hi].filter((t) => t >= lo && t <= hi).sort((x, y) => x - y);
   return ts.filter((t, i) => i === 0 || t > ts[i - 1]).map((t) => ({ t: t - from, g: env(t) }));
 }
+
+/** A music cue placed on the film (persisted in the story project as settings.music). */
+export type MusicPlacement = { id: string; src: string; start: number; duration: number; sourceSeconds: number; gainDb: number; fadeIn: number; fadeOut: number; loop?: boolean; prompt?: string };
+
+/** Default placement of a freshly generated cue: at `at` s, as long as the cue (or to film end), 1 s in / 2 s out. */
+export function musicPlacement(id: string, src: string, sourceSeconds: number, at: number, filmDuration: number, prompt?: string): MusicPlacement {
+  const start = Math.max(0, Math.min(at, Math.max(0, filmDuration - 0.5)));
+  const duration = Math.max(0.1, Math.min(sourceSeconds, filmDuration - start));
+  const fadeIn = Math.min(1, duration / 4), fadeOut = Math.min(2, duration / 3);
+  return { id, src, start, duration, sourceSeconds, gainDb: 0, fadeIn, fadeOut, ...(prompt ? { prompt: prompt.slice(0, 600) } : {}) };
+}
+
+export const musicClip = (m: MusicPlacement): MixClip => ({ id: m.id, bus: "music", src: m.src, start: m.start, offset: 0, duration: m.duration, gainDb: m.gainDb, fadeIn: m.fadeIn, fadeOut: m.fadeOut, ...(m.loop ? { loop: true } : {}) });
+
+/** FilmMix for a story film: placed dialogue (src = `voice:<key>`) + music cues, repaired to a valid mix. */
+export function buildFilmMix(duration: number, voices: { beatId: string; src: string; start: number; duration: number }[], music: MusicPlacement[] = []): FilmMix {
+  const m = emptyMix(duration);
+  m.clips = [
+    ...voices.map((v): MixClip => ({ id: `line:${v.beatId}`, bus: "dialogue", src: v.src, start: v.start, offset: 0, duration: v.duration, gainDb: 0, fadeIn: 0, fadeOut: 0 })),
+    ...music.map(musicClip),
+  ];
+  return repairMix(m);
+}
